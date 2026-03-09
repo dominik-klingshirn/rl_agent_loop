@@ -5,7 +5,7 @@ import random
 from datetime import timedelta 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv,VecNormalize
 from stable_baselines3.common.logger import Logger, make_output_format
 
 # -- Custom IMPORTS --
@@ -40,7 +40,15 @@ def run_training_cycle(iteration:int, seed_id:int):
 
     # Create Environment, custom wrapper for injecting new Reward Function
     env = make_vec_env(lambda: make_env(reward_code_path), n_envs=n_envs, seed=seed_id,vec_env_cls=SubprocVecEnv)
-
+    
+    # Since LLMs are terrible with reward scaling, we are utilizing a running normalization of the reward
+    env = VecNormalize(
+        env,
+        norm_obs=False,      # Must remain False so evaluation doesn't require loaded statistics
+        norm_reward=True,    # Dynamically scales the LLM's arbitrary reward outputs to ~N(0,1)
+        clip_reward=10.0,    # Hard clips extreme LLM hallucinations (e.g., if it outputs 50,000)
+        gamma=0.99           # Must match your PPO gamma parameter
+    )
     # Grab Path for saving raw data 
     logger_dir = ws.dirs["telemetry_iteration"] 
     progress_csv_suffix = f"_iter{iteration:02d}_seed{seed_id}"

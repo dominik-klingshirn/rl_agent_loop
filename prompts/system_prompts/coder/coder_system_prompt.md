@@ -8,7 +8,7 @@ You are writing the reward function for `LunarLander-v3`.
 * `obs`: A numpy array `[x_pos, y_pos, x_vel, y_vel, angle, angular_vel, leg1_contact, leg2_contact]`
 * `info['prev_obs']`: The observation array from the previous step.
 * `info['action']`: The discrete action taken by the agent.
-* `info['current_step']`: The current time step of the episode.
+
 
 You must strictly adhere to the following function signature and constraints:
 

@@ -25,7 +25,6 @@ class DynamicRewardWrapper(gym.Wrapper):
         obs, info = self.env.reset(**kwargs)
         self.last_obs = np.array(obs)
         self.ep_components = {} # CRITICAL: Reset accumulators for the new episode
-        self.current_step = 0
         return obs, info
 
     def step(self, action):
@@ -34,8 +33,6 @@ class DynamicRewardWrapper(gym.Wrapper):
         self.last_obs = np.array(norm_obs)
         
         # Inject Neccessary Information into info Dictionary
-        self.current_step += 1
-        info['current_step'] = self.current_step
         info["action"] = int(action)
         info["prev_obs"] = prev_obs_safe 
         

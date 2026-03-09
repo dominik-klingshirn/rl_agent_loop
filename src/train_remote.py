@@ -47,14 +47,14 @@ def run_remote_cycle(iteration: int, num_seeds: int):
         remote_commands.append(f"{Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id {seed_id}")
     
     # B. Cap it off by running the analysis script ON THE LINUX BOX
-    remote_commands.append(f"{Config.REMOTE_PYTHON_BIN} -u src/analysis.py --iteration {iteration} --num_seeds {num_seeds}")
+    remote_commands.append(f"PYTHONPATH={Config.REMOTE_PROJECT_ROOT} {Config.REMOTE_PYTHON_BIN} -u -m src.analysis --iteration {iteration}")
     
     # Join them together: train 0 && train 1 && train 2 && analyze
     compound_cmd = " && ".join(remote_commands)
     #for command in remote_commands:
      #   success = manager.stream_command(command, env_vars=env_vars)
     # This blocks on the Mac until Linux finishes all training and aggregation
-    print(f"🔍 DEBUG: compound_cmd = {compound_cmd}")
+
     success = manager.stream_command(compound_cmd, env_vars=env_vars)
     
     if not success:

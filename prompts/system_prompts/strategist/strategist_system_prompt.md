@@ -19,7 +19,7 @@ You must formulate your math using ONLY these available variables:
 * `obs`: A numpy array `[x_pos, y_pos, x_vel, y_vel, angle, angular_vel, leg1_contact, leg2_contact]`
 * `info['prev_obs']`: The observation array from the previous step.
 * `info['action']`: The discrete action taken by the agent.
-* `info['current_step']`: The current time step of the episode.
+
 
 **[DIRECTIVES & OUTPUT REQUIREMENTS]**
 Analyze the current Python reward implementation against the Diagnostic Report and the Experiment Ledger. Identify the mathematical root cause of the physical failures.

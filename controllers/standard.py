@@ -22,6 +22,14 @@ from src.pipeline_nodes import (
 
 MODEL_NAME = Config.LLM_MODEL
 
+model_overrides = {
+    "organizer": "deepseek-r1:14b",
+    "dispatcher":"deepseek-r1:14b",
+    "validator":"deepseek-r1:14b",
+    "coder": "qwen3-coder:30b",
+    "research_lead": "gemma3:27b"
+}
+
 def run_agentic_improvement(iteration: int):
     start_time = time.perf_counter()
     
@@ -31,7 +39,15 @@ def run_agentic_improvement(iteration: int):
     ws = ExperimentWorkspace(iteration)
     brain = CognitiveNode(iteration=iteration, workspace=ws, model=MODEL_NAME)
     ledger = ExperimentLedger(ws.model_root_path) 
-    
+    # Setting any model overrides for a MOE style run 
+    val_override = model_overrides.get("validator",None)
+    strat_override = model_overrides.get("strategist",None)
+    organ_override = model_overrides.get("organizer",None)
+    lead_override = model_overrides.get("research_lead",None)
+    dispatcher_override = model_overrides.get("dispatcher",None)
+    coder_override = model_overrides.get("coder",None)
+
+
     print(f"🔵 AGENT (Iter {iteration}): Active in {ws.model_root_path}")
 
     # Load Metrics from the recent training run
@@ -54,12 +70,13 @@ def run_agentic_improvement(iteration: int):
     if iteration > 1:
         print(f"🔍 Validating Hypothesis from Experiment {iteration - 1}")
         val_payload = ledger.get_hypothesis(iteration - 1)
-        
+
         ledger_entry = generate_ledger_entry(
             brain=brain, 
             iteration=iteration, 
             val_payload=val_payload, 
-            diagnostic_report=diagnostic_report
+            diagnostic_report=diagnostic_report,
+            model_override = val_override if val_override else MODEL_NAME
         )
         
         # Lock the post-mortem into the historical record
@@ -74,30 +91,34 @@ def run_agentic_improvement(iteration: int):
     # PHASE 2: RESEARCH & DECISION PIPELINE
     # =========================================================
     print("🧠 Initiating Cognitive Pipeline")
-    
+
     raw_proposals = generate_proposals(
         brain=brain, 
         iteration=iteration, 
         diagnostic_report=diagnostic_report, 
         current_code=current_code,
-        expt_ledger=ledger_context
+        expt_ledger=ledger_context,
+        model_override = strat_override if strat_override else MODEL_NAME
     )
     
     proposal_report = organize_proposals(
         brain=brain, 
-        proposals=raw_proposals
+        proposals=raw_proposals,
+        model_override = organ_override if organ_override else MODEL_NAME
     )
     
     chosen_proposal = choose_proposal(
         brain=brain, 
         iteration=iteration,
         proposal_report=proposal_report, 
-        expt_ledger=ledger_context
+        expt_ledger=ledger_context,
+        model_override = lead_override if lead_override else MODEL_NAME
     )
     
     work_order = generate_work_order(
         brain=brain, 
-        chosen_proposal=chosen_proposal
+        chosen_proposal=chosen_proposal,
+        model_override = dispatcher_override if dispatcher_override else MODEL_NAME
     )
 
     # =========================================================
@@ -116,7 +137,8 @@ def run_agentic_improvement(iteration: int):
         brain=brain, 
         coder_payload=work_order, 
         current_code=current_code,
-        max_retries=5 
+        max_retries=5,
+        model_override = coder_override if coder_override else MODEL_NAME 
     )
 
     # =========================================================
