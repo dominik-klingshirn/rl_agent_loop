@@ -121,11 +121,14 @@ def run_agentic_improvement(iteration: int):
         model_override = dispatcher_override if dispatcher_override else MODEL_NAME
     )
 
+    # Extract directives for Coder, and the falsifible parameters for the Validator
+    coder_payload, val_payload = utils.extract_work_order(work_order)
+    
     # =========================================================
     # PHASE 3: LOG INTENT (Open New Experiment)
     # =========================================================
     print(f"📓 Logging Hypothesis for Iteration {iteration}")
-    ledger.log_hypothesis(iteration=iteration, validator_payload=work_order)
+    ledger.log_hypothesis(iteration=iteration, validator_payload=val_payload)
 
     # =========================================================
     # PHASE 4: IMPLEMENTATION (WITH SAFETY NET)
@@ -135,7 +138,7 @@ def run_agentic_improvement(iteration: int):
     # We rely on CodeValidator inside generate_code to catch syntax/signature bugs
     new_code = generate_code(
         brain=brain, 
-        coder_payload=work_order, 
+        coder_payload=coder_payload, 
         current_code=current_code,
         max_retries=5,
         model_override = coder_override if coder_override else MODEL_NAME 

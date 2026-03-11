@@ -10,7 +10,7 @@ import numpy as np
 import gymnasium as gym
 from stable_baselines3.common.monitor import Monitor
 from typing import Tuple
-
+import pandas as pd
 from textwrap import indent
 import numpy as np
 
@@ -36,6 +36,11 @@ def extract_python_code(llm_response):
     match = re.search(r'```(.*?)```', llm_response, re.DOTALL)
     if match: return match.group(1).strip()
     return llm_response
+
+def extract_work_order(text:str):
+    coder_payload = text.split("<CODER_PAYLOAD>")[1].split("</CODER_PAYLOAD>")[0]
+    val_payload = text.split("<VALIDATOR_PAYLOAD>")[1].split("</VALIDATOR_PAYLOAD>")[0]
+    return coder_payload, val_payload
 
 def extract_json(llm_response):
     """
@@ -78,130 +83,8 @@ def load_dynamic_module(module_name, file_path):
     raise ImportError(f"Could not load module {module_name} from {file_path}")
 
 
-def plan_json_to_markdown(plan_json: str) -> str:
-    """
-    Convert the LLM's Reward Function Refinement Plan JSON into Markdown.
-
-    plan_json: JSON string with keys:
-      - Analysis (str)
-      - Identified Issues (str or list[str])
-      - Recommendations (str or list[str])
-      - Reward Function Refinement Plan:
-          - Modifications: list[{Description, Rationale}]
-          - Implementation Steps: str or list[str]
-          - Future Work: list[{Hypothesis, Confidence Score, Expected Outcome}]
-    """
-    plan = json.loads(plan_json)
-
-    analysis = plan.get("Analysis", "").strip()
-    issues = plan.get("Identified Issues", [])
-    recs = plan.get("Recommendations", [])
-    refinement = plan.get("Reward Function Refinement Plan", {}) or {}
-
-    mods = refinement.get("Modifications", [])
-    impl_steps = refinement.get("Implementation Steps", [])
-    future_work = refinement.get("Future Work", [])
-
-    # Normalize possibly-string fields to lists
-    if isinstance(issues, str):
-        issues = [s.strip() for s in issues.split("\n") if s.strip()]
-    if isinstance(recs, str):
-        recs = [s.strip() for s in recs.split("\n") if s.strip()]
-    if isinstance(impl_steps, str):
-        impl_steps = [s.strip() for s in impl_steps.split("\n") if s.strip()]
-    if isinstance(mods, dict):
-        mods = [mods]
-    if isinstance(future_work, dict):
-        future_work = [future_work]
-
-    lines = []
-
-    # Top-level analysis
-    if analysis:
-        lines.append("## Analysis")
-        lines.append("")
-        lines.append(analysis)
-        lines.append("")
-
-    # Issues
-    if issues:
-        lines.append("## Identified Issues")
-        lines.append("")
-        for i, issue in enumerate(issues, 1):
-            lines.append(f"{i}. {issue}")
-        lines.append("")
-
-    # Recommendations
-    if recs:
-        lines.append("## Recommendations")
-        lines.append("")
-        for i, rec in enumerate(recs, 1):
-            lines.append(f"{i}. {rec}")
-        lines.append("")
-
-    # Reward Function Refinement Plan
-    if mods or impl_steps or future_work:
-        lines.append("## Reward Function Refinement Plan")
-        lines.append("")
-
-    # Modifications
-    if mods:
-        lines.append("### Modifications")
-        lines.append("")
-        for idx, m in enumerate(mods, 1):
-            desc = (m.get("Description") or "").strip()
-            rat = (m.get("Rationale") or "").strip()
-            lines.append(f"#### Modification {idx}")
-            if desc:
-                lines.append("")
-                lines.append("**Description**")
-                lines.append("")
-                lines.append(desc)
-            if rat:
-                lines.append("")
-                lines.append("**Rationale**")
-                lines.append("")
-                lines.append(rat)
-            lines.append("")
-
-    # Implementation Steps
-    if impl_steps:
-        lines.append("### Implementation Steps")
-        lines.append("")
-        for i, step in enumerate(impl_steps, 1):
-            lines.append(f"{i}. {step}")
-        lines.append("")
-
-    # Future Work
-    if future_work:
-        lines.append("### Future Work")
-        lines.append("")
-        for i, fw in enumerate(future_work, 1):
-            hyp = (fw.get("Hypothesis") or "").strip()
-            conf = fw.get("Confidence Score") or fw.get("Confidence") or ""
-            exp = (fw.get("Expected Outcome") or "").strip()
-
-            lines.append(f"#### Hypothesis {i}")
-            if hyp:
-                lines.append("")
-                lines.append("**Hypothesis**")
-                lines.append("")
-                lines.append(hyp)
-            if conf != "":
-                lines.append("")
-                lines.append(f"**Confidence Score:** {conf}")
-            if exp:
-                lines.append("")
-                lines.append("**Expected Outcome**")
-                lines.append("")
-                lines.append(exp)
-            lines.append("")
-
-    return "\n".join(lines).rstrip()
-
-
 # ---------------------------------------------------------
-# ENVIRONMENTS
+# ENVIRONMENT
 # ---------------------------------------------------------
 def make_env(reward_code_path:str | None = None):
     env = gym.make(Config.ENV_ID)
@@ -244,158 +127,7 @@ def compute_trend_consistency(values: np.ndarray) -> str:
         return "mostly_monotonic_decreasing"    
 
 
-#def summarize_training_log(ws: ExperimentWorkspace, iteration: int):
-    """
-    Summarize training metrics with relational features for generalization.
-    
-    Provides:
-    1. Tertile temporal splits (first/middle/final third means)
-    2. Relational features (ratios, change rates)
-    3. Coupling indicators (metric interactions)
-    4. Trend characterizations (monotonicity, volatility)
-    """
- #   log_path = ws.dirs["telemetry_training"] / f"progress_{iteration:02d}.csv"
- #   df = pd.read_csv(log_path)
-def summarize_training_log(df):
-    # Calculate tertile split indices
-    n = len(df)
-    first_third_end = n // 3
-    second_third_end = 2 * n // 3
-    
-    # Define metrics to track
-    metrics = [
-        'train/policy_gradient_loss',
-        'train/approx_kl',
-        'train/loss',
-        'train/explained_variance',
-        'train/entropy_loss',
-        'train/value_loss',
-        'train/clip_fraction'
-    ]
-    
-    training_summary = {}
-    raw_data = {}  # Store for relational computations
-    
-    # Compute tertile statistics for each metric
-    for metric in metrics:
-        metric_name = metric.replace('train/', '')
-        
-        values = df[metric].values
-        first_third = values[:first_third_end]
-        middle_third = values[first_third_end:second_third_end]
-        final_third = values[second_third_end:]
-        
-        training_summary[metric_name] = {
-            "first_third_mean": np.mean(first_third).round(4) if len(first_third) > 0 else 0,
-            "middle_third_mean": np.mean(middle_third).round(4) if len(middle_third) > 0 else 0,
-            "final_third_mean": np.mean(final_third).round(4) if len(final_third) > 0 else 0,
-            "overall_median": np.median(values).round(4),
-        }
-        
-        # Store raw data for relational features
-        raw_data[metric_name] = {
-            'first': first_third,
-            'middle': middle_third,
-            'final': final_third,
-            'all': values
-        }
-    
-    # === RELATIONAL FEATURES (scale-invariant) ===
-    
-    def safe_ratio(numerator, denominator, default=1.0):
-        """Compute ratio with protection against division by zero."""
-        if abs(denominator) < 1e-8:
-            return default
-        return round(numerator / denominator, 4)
-    
-    def safe_change_rate(start, end):
-        """Compute relative change rate."""
-        if abs(start) < 1e-8:
-            return 0.0
-        return round((end - start) / abs(start), 4)
-    
-    ev_first = training_summary['explained_variance']['first_third_mean']
-    ev_middle = training_summary['explained_variance']['middle_third_mean']
-    ev_final = training_summary['explained_variance']['final_third_mean']
-    
-    vl_first = training_summary['value_loss']['first_third_mean']
-    vl_final = training_summary['value_loss']['final_third_mean']
-    
-    ent_first = abs(training_summary['entropy_loss']['first_third_mean'])
-    ent_final = abs(training_summary['entropy_loss']['final_third_mean'])
-    
-    kl_first = training_summary['approx_kl']['first_third_mean']
-    kl_middle = training_summary['approx_kl']['middle_third_mean']
-    kl_final = training_summary['approx_kl']['final_third_mean']
-    
-    cf_mean = training_summary['clip_fraction']['overall_median']
-    
-    training_summary["_relational"] = {
-        # Improvement factors (how much did things change?)
-        "ev_improvement_factor": safe_ratio(ev_final, max(ev_first, 1e-4)),
-        "value_loss_reduction_factor": safe_ratio(vl_first, max(vl_final, 1)),
-        "entropy_decay_rate": safe_change_rate(ent_first, ent_final),
-        
-        # Learning rate comparisons (which component learned faster?)
-        "critic_vs_policy_learning_ratio": safe_ratio(
-            safe_ratio(vl_first, max(vl_final, 1)),  # critic improvement
-            safe_ratio(ent_first, max(ent_final, 1e-4))  # policy convergence
-        ),
-        
-        # Volatility measures
-        "kl_coefficient_of_variation": safe_ratio(
-            np.std(raw_data['approx_kl']['all']),
-            np.mean(raw_data['approx_kl']['all'])
-        ) if len(raw_data['approx_kl']['all']) > 1 else 0,
-        
-        "ev_coefficient_of_variation": safe_ratio(
-            np.std(raw_data['explained_variance']['all']),
-            np.mean(raw_data['explained_variance']['all'])
-        ) if len(raw_data['explained_variance']['all']) > 1 else 0,
-    }
-    
-    # === COUPLING INDICATORS (metric interactions) ===
-    
-    training_summary["_coupling"] = {
-        # Policy update characteristics
-        "updates_conservative": (kl_final < kl_first) and (cf_mean < 0.05),
-        "updates_aggressive": (kl_middle > kl_first * 1.5) and (cf_mean > 0.1),
-        
-        # Reward signal patterns
-        "late_phase_ev_breakthrough": (ev_final > ev_middle * 2) and (ev_middle < 0.2),
-        "early_phase_ev_plateau": (ev_middle > 0.5) and (abs(ev_final - ev_middle) < 0.1),
-        
-        # Actor-critic synchronization
-        "critic_bottleneck": (ev_final < 0.3) and (kl_final < kl_first),
-        "weak_gradients_despite_good_critic": (ev_final > 0.6) and (kl_final < 0.01),
-        
-        # Exploration patterns
-        "premature_convergence": (ent_final / ent_first < 0.5) and (ev_final < 0.5),
-        "maintained_exploration": (ent_final / ent_first > 0.8),
-    }
-    
-    # === TREND CHARACTERIZATIONS ===
-    
-    training_summary["_trends"] = {
-        "explained_variance_pattern": compute_trend_consistency(raw_data['explained_variance']['all']),
-        "value_loss_pattern": compute_trend_consistency(raw_data['value_loss']['all']),
-        "approx_kl_pattern": compute_trend_consistency(raw_data['approx_kl']['all']),
-        "entropy_pattern": compute_trend_consistency(raw_data['entropy_loss']['all']),
-    }
-    
-    # === METADATA ===
-    """
-    training_summary["_metadata"] = {
-        "n_updates": int(df['train/n_updates'].iloc[-1]),
-        "n_steps": len(df),
-        "first_third_steps": first_third_end,
-        "middle_third_steps": second_third_end - first_third_end,
-        "final_third_steps": n - second_third_end,
-        "learning_rate": df['train/learning_rate'].iloc[-1].round(6),
-        "clip_range": df['train/clip_range'].iloc[-1].round(4),
-    }
-    """
-    return training_summary
+
 # ==============================================================================
 # Testing out new training data formating function that goes with new summarize_training_log()
 # ==============================================================================
