@@ -3,10 +3,15 @@
 venv/
 __pycache__/
 *.pyc
+.DS_Store
+
+
 # below venv utilized pygame-ce instead of pygame, more actively managed
 venv_test/
 stable_requirements_backup.txt
-# Ignore output logs and models (they are too big)
+
+
+# Ignore output logs and models 
 experiments/
 misc/
 logs/
@@ -25,4 +30,5 @@ testing_*.py
 testing_suite/
 inspect_model.py
 sandbox.ipynb
+
 
