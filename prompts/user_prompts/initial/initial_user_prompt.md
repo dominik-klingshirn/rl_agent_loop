@@ -15,4 +15,3 @@ Write **only Python code** that implements a physics-informed reward shaping fun
 * **Output Python code only** inside a markdown block. No conversational text.
 * **Return a Tuple:** You MUST return a `Tuple[float, dict]`. 
 * **Component Tracking:** Break down your total reward into granular pieces (e.g., distance penalty, velocity penalty) and return them in the dictionary. 
-* **Temporal Context:** You have access to `info["current_step"]` if you wish to apply time-based scaling or penalties.

@@ -5,7 +5,7 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 # Define the contenders
-MODELS=("deepseek-r1:32b") # "deepseek-r1:32b" "openthinker:32b"
+MODELS=("cogito:32b" "nemotron-3-nano:30b") # "deepseek-r1:32b" "openthinker:32b"
 # Capture arguments
 ITERATIONS=${1:-5}     # required-ish: default 5
 TIMESTEPS=${2:-50000}  # required-ish: default 50000

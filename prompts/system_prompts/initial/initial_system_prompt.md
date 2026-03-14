@@ -20,7 +20,6 @@ def calculate_reward(observation, info):
         info (dict): Environment metadata. Contains ONLY:
             - info["prev_obs"] (np.ndarray): Observation vector from previous step
             - info["action"] (int): Index of the action taken (0-3)
-            - info["current_step"] (int): The current timestep in the episode
             
     Returns:
         Tuple[float, dict]: (total_reward, components_dictionary)

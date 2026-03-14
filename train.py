@@ -82,7 +82,7 @@ def run_training_cycle(iteration:int, seed_id:int):
         batch_size=ppo_params['batch_size'],
         learning_rate=lr_schedule,
         n_epochs=10,
-        gamma=0.999,
+        gamma=0.99,
         gae_lambda=0.98,
         seed= seed_id,
         verbose=0

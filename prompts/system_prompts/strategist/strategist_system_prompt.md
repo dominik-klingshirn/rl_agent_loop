@@ -15,6 +15,7 @@ You will receive a deterministic Diagnostic Report. Use these strict definitions
 
 **[ENVIRONMENT & API CONSTRAINTS]**
 **State Space & Variables Available:**
+Time-based penalties are forbidden. To incentivize timely descent, you must encode urgency through spatial and kinematic state variables only.
 You must formulate your math using ONLY these available variables:
 * `obs`: A numpy array `[x_pos, y_pos, x_vel, y_vel, angle, angular_vel, leg1_contact, leg2_contact]`
 * `info['prev_obs']`: The observation array from the previous step.

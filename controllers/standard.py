@@ -26,8 +26,7 @@ model_overrides = {
     "organizer": "deepseek-r1:14b",
     "dispatcher":"deepseek-r1:14b",
     "validator":"deepseek-r1:14b",
-    "coder": "qwen3-coder:30b",
-    "research_lead": "gemma3:27b"
+    "coder": "qwen3-coder:30b"
 }
 
 def run_agentic_improvement(iteration: int):
