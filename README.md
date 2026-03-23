@@ -1,7 +1,8 @@
 # Autonomous Algorithmic Reward Design (ARD) via Multi-Agent Orchestration
 
-**A locally-hosted, closed-loop pipeline that translates continuous-control physics into deterministic statistics to autonomously write, train, and debug Reinforcement Learning reward functions.**
+**This project is a locally-hosted autonomous system where LLM agents design and refine reward functions to train reinforcement learning agents, reducing the need for manual reward engineering.**
 
+Under the hood, a closed-loop pipeline translates raw training telemetry into structured statistics, which a multi-agent LLM system uses to iteratively write, test, and debug reward functions.
 
 **High-level System Overview**
 ![ARD Pipeline Architecture](assets/ard_pipeline_overview.png)
