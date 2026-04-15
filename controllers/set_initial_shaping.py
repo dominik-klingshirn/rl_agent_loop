@@ -28,12 +28,12 @@ def set_inital_shaping(reward_func:str='spin_crash'):
     # Grab the curated faulty reward function
     base_load_path = Path("/Users/dominikklingshirn/Projects/RL-Lab/rl_agent_loop/curated_reward_functions")
     reward_funcs = {
-        "lunar" :          Path("curated_reward_functions/lunar.py"),
-        "sideways_slide" : Path("curated_reward_functions/sideways_slide.py"),
-        "spin_crash":      Path("curated_reward_functions/spin_crash.py"),
-        "vertical_bounce": Path("curated_reward_functions/vertical_bounce.py"),
-        "weird_reward":    Path("curated_reward_functions/weird_reward.py"),
-        "wild_oscillation":Path("curated_reward_functions/wild_oscillation.py")
+        "lunar" :          Path("lunar.py"),
+        "sideways_slide" : Path("sideways_slide.py"),
+        "spin_crash":      Path("spin_crash.py"),
+        "vertical_bounce": Path("vertical_bounce.py"),
+        "weird_reward":    Path("weird_reward.py"),
+        "wild_oscillation":Path("wild_oscillation.py")
     }
     load_path = base_load_path /reward_funcs[reward_func]
     
