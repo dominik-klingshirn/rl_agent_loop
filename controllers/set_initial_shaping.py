@@ -19,7 +19,7 @@ MODEL_NAME = "gpt-oss:20b"
 #MODEL_NAME = Config.LLM_MODEL
 
 
-def get_inital_shaping(reward_func:str='spin_crash'):
+def set_inital_shaping(reward_func:str='spin_crash'):
 
     # Initialize Workspace & Ledger for Iteration 0
     ws = ExperimentWorkspace(iteration=0)
@@ -39,3 +39,6 @@ def get_inital_shaping(reward_func:str='spin_crash'):
     
     shutil.copy(load_path,save_path)
     print(f"Initial shaping loaded from: {load_path}\nSaved to: {save_path}")
+
+if __name__ == "__main__":
+    set_inital_shaping()
