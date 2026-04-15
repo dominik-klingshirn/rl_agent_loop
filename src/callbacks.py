@@ -106,7 +106,11 @@ class MultiEnvEpisodeTracker(BaseCallback):
             # buffer only contains episodes from this rollout
             # We append to master CSV for incremental collection, crash-proof
             df = pd.DataFrame(self.episode_buffer)
-            df.to_csv(self.master_csv, mode='a', header=not self.master_csv.exists(), index=False)
+            df.to_csv(self.master_csv, 
+                      mode='a', 
+                      header=not self.master_csv.exists(), 
+                      encoding='utf-8',
+                      index=False)
             # Aggregates → progress.csv (Monitor-style)
             scores = df['ep_rew_total'].values
             self.logger.record("rollout/ep_count", len(scores))

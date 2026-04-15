@@ -21,8 +21,17 @@ from src.pipeline_nodes import (
 )
 
 MODEL_NAME = Config.LLM_MODEL
-
-model_overrides = {
+if MODEL_NAME == 'deepseek-r1:32b':
+    model_overrides = {
+        "research_lead":"gemma3:27b",
+        "organizer": "deepseek-r1:14b",
+        "dispatcher":"deepseek-r1:14b",
+        "validator":"deepseek-r1:14b",
+        "coder": "qwen3-coder:30b"
+    }
+else: 
+    model_overrides = {
+    "research_lead":"deepseek-r1:32b",
     "organizer": "deepseek-r1:14b",
     "dispatcher":"deepseek-r1:14b",
     "validator":"deepseek-r1:14b",

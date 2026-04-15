@@ -5,7 +5,7 @@ Review the following proposals against our historical data and make an executive
 
 ### [1. EXPERIMENT LEDGER (HISTORY)]
 
-This is the immutable record of past iterations. Do not repeat our mistakes.
+This is the immutable record of past iterations. Do not repeat previous failed hypotheses.
 {experiment_ledger}
 
 ### [2. STRATEGIST PROPOSALS]

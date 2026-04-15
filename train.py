@@ -113,7 +113,11 @@ def run_training_cycle(iteration:int, seed_id:int):
 
     # Save Evaluation Data 
     eval_csv_path = ws.dirs['telemetry_iteration'] / f"iter{iteration:02d}_seed{seed_id}_eval.csv"
-    pd.DataFrame(eval_data).to_csv(eval_csv_path,  mode='a', header=not eval_csv_path.exists(), index=False)
+    pd.DataFrame(eval_data).to_csv(eval_csv_path,  
+                                   mode='a', 
+                                   header=not eval_csv_path.exists(), 
+                                   encoding='utf-8',
+                                   index=False)
 
     end_time = time.perf_counter()
     elapsed_time = end_time - start_time

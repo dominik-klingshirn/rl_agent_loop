@@ -5,7 +5,7 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 # Define the contenders
-MODELS=("cogito:32b" "nemotron-3-nano:30b") # "deepseek-r1:32b" "openthinker:32b"
+MODELS=("deepseek-r1:32b" "gemma3:27b") # "deepseek-r1:32b" "openthinker:32b"
 # Capture arguments
 ITERATIONS=${1:-5}     # required-ish: default 5
 TIMESTEPS=${2:-50000}  # required-ish: default 50000
@@ -107,7 +107,7 @@ for model in "${MODELS[@]}"; do
   echo "📂 Target Directory: experiments/$CAMPAIGN_TAG"
   # 2. Generate Initial Reward Function
   echo -e "${GREEN}[Step 0] Generating Base Reward Function ${NC}"
-  python3 controllers/initial_shaping.py 
+  python3 controllers/set_initial_shaping.py 
 
   # 3. RUN THE INNER LOOP
   ./inner_loop.sh "$ITERATIONS" "$SELECTED_CONTROLLER" "$TRAINING_SCRIPT"
