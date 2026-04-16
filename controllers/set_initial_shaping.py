@@ -19,7 +19,7 @@ MODEL_NAME = "gpt-oss:20b"
 #MODEL_NAME = Config.LLM_MODEL
 
 
-def set_inital_shaping(reward_func:str='spin_crash'):
+def set_inital_shaping(reward_func:str='wild_oscillation'):
 
     # Initialize Workspace & Ledger for Iteration 0
     ws = ExperimentWorkspace(iteration=0)
