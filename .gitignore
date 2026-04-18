@@ -17,7 +17,8 @@ misc/
 logs/
 models/
 plots/
-
+showcase_videos/
+loop_videos.py
 *.json
 
 # Unit tests/ experimental or temp scripts

@@ -744,8 +744,9 @@ def generate_metric_payload(iteration:int, num_of_seeds:int =3):
 
 def generate_diagnostic_report(metrics: dict) -> str:
     section_1 = translate_optimization_health(metrics)
-    section_2 = translate_reward_topology(metrics)
-    section_3 = translate_behavior_kinematics(metrics)
+    section_2 = translate_behavior_kinematics(metrics)
+    section_3 = translate_reward_topology(metrics)
+    
     report = section_1 + f"\n" + section_2 +f"\n"+ section_3
     return report
 

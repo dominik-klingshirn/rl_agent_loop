@@ -101,9 +101,9 @@ class CognitiveNode:
             plan_path = self.ws.get_path("cognition_markdown", self.iteration, "cognition_record.md")
             final_content = f"# Cognition prompts and calls: Iteration:{self.iteration}\n\n"
             for filename, prompt_obj in self.markdown_buffer:
-                final_content += "*"*25 +f"\n"+ "*"*25 +f"\n" + "*"*25 +f"\n"
+                final_content += "*"*25 +f"\n"+ "*"*25 +f"\n" 
                 final_content += f"# {filename}"
-                final_content += f"\n"+ "*"*25 +f"\n"+ "*"*25 +f"\n" + "*"*25 +f"\n"
+                final_content += f"\n"+ "*"*25 +f"\n"+ "*"*25 +f"\n" 
                 final_content += prompt_obj + f"\n\n"
 
             with open(plan_path, "w") as f:

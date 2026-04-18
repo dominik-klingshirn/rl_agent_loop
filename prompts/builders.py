@@ -1,5 +1,7 @@
 from typing import Tuple
 from prompts.loader import load_template
+
+
 def build_strategist_prompt(template: Tuple[str, str], iteration_number: int, current_reward_code: str, diagnostic_report: str, experiment_ledger: str) -> Tuple[str, str]:
     """Builds the prompt for the Strategist to generate reward shaping proposals."""
     # Load Prompts

@@ -1,8 +1,16 @@
 # Autonomous Algorithmic Reward Design (ARD) via Multi-Agent Orchestration
 
-**This project is a locally-hosted autonomous system where LLM agents design and refine reward functions to train reinforcement learning agents, reducing the need for manual reward engineering.**
+**This project demonstrates a closed-loop system that autonomously improves reinforcement learning reward functions.
+Starting from deliberately flawed objectives that produce unstable behavior, the system iteratively diagnoses failure modes and converges toward stable, successful control policies.**
 
-Under the hood, a closed-loop pipeline translates raw training telemetry into structured statistics, which a multi-agent LLM system uses to iteratively write, test, and debug reward functions.
+## Core Insight
+
+The system does not directly modify the trained policy.  
+Instead, it improves the *reward function* that defines the task.
+
+By iteratively analyzing behavior and refining incentives, the system transforms unstable or misaligned objectives into ones that reliably produce successful outcomes.
+
+Under the hood, a closed-loop pipeline translates raw training telemetry into a structure diagnostic report, which a multi-agent LLM system uses to iteratively write, test, and debug reward functions.
 
 **High-level System Overview**
 ![ARD Pipeline Architecture](assets/ard_pipeline_overview.png)
@@ -95,6 +103,12 @@ graph TD
     F -->|Imports| B
     L -->|Appends| E
 ```
+## What Makes This Approach Different
+
+- **Closed-loop reward optimization** instead of manual tuning  
+- **Structured diagnostics** replacing opaque reward curves  
+- **Role-specialized LLM system (mixture-of-agents)** for reasoning, coding, and validation  
+- **Behavior-first analysis** using semantic terminal states (e.g., crash, stable landing)  
 
 ## The Methodology: Translating Physics to Context
 
@@ -106,17 +120,24 @@ To give the LLM the context it needs to rewrite the reward function, this system
 * **Dynamic Proxy Metrics:** If the agent fails to land across all seeds, the translation layer dynamically shifts its correlation target. It calculates the Pearson correlation ($\rho$) between individual reward components and physical proxies like *Kinematic Stability* (Euclidean norm of velocities) or *Spatial Proximity* to the pad.
 * **Algorithmic Credit Assignment:** This allows the LLM to "see" exactly which term in its mathematical equation is helping the agent descend safely, and which term is inadvertently causing a crash.
 
-## Case Study: Catching Reward Hacking in Real-Time
+## Failure → Recovery Case Study
+![Failure to Recovery](assets/gemma3-27b__SpinCrash_poster_graph.svg)
 
-Because the system maintains an evolutionary memory (the Experiment Ledger), it actively catches and learns from its own mathematical exploits.
+To evaluate the system, experiments were initialized with deliberately flawed reward functions designed to induce specific failure behaviors:
 
-During an early iteration, the LLM attempted to penalize vertical velocity. However, the agent quickly realized that intentionally crashing ended the episode and prevented the negative penalty from accumulating. The **Validator** agent successfully intercepted this exploit:
+- Spinning and crashing  
+- Aggressive lateral oscillation  
+- Other unstable control patterns  
 
-> * **Status:** `Refuted` [Expected improvement vs. Population Success Rate: 0.0%].
-> * **Behavioral Reality:** The agent consistently crashed, with velocity penalties (`reward_velocity_penalty_x`) becoming a "TRAITOR COMPONENT" that inverted its intended effect, leading to catastrophic failure despite the scaling factor.
-> * **Lesson Learned:** Reward hacking manifests when penalty components invert their intended effect; scaling must be accompanied by a fundamental reassessment of component design.
-> 
-> 
+Across iterations, the system:
+
+1. Diagnoses behavioral failure modes from structured telemetry  
+2. Identifies misaligned reward components  
+3. Proposes and implements refined reward functions  
+4. Retrains and reevaluates the policy  
+
+Result:  
+The system consistently transforms unstable behaviors into controlled, task-aligned policies over successive iterations.
 
 ## Project Structure & Dynamic Workspaces
 
@@ -132,7 +153,6 @@ To handle continuous iteration loops and separate LLM inference from PPO trainin
 │           └── telemetry/       # Raw CSVs and metric payloads passed between Mac and Linux
 ├── prompts/              # System prompt templates for the multi-agent architecture
 ├── src/                  # Core Python modules (evaluation, callbacks, wrappers, ledger)
-├── testing_suite/        # Isolated Jupyter notebooks and scripts for local pipeline validation
 ├── train.py              # PPO execution script
 └── requirements.txt      
 ```
