@@ -7,7 +7,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Define the contenders (typically for the 'Strategist' role when running 'Mixture-of-Agents' style experiment)
-MODELS=("deepseek-r1:32b" "gemma3:27b") # "deepseek-r1:32b" "openthinker:32b"
+MODELS=("deepseek-r1:32b" "gemma3:27b" "devstral:24b") # "deepseek-r1:32b" "openthinker:32b"
 
 # --- Defaults ---
 ITERATIONS=""

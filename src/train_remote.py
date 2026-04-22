@@ -21,10 +21,10 @@ def run_remote_cycle(iteration: int, num_seeds: int):
 
     # 3. UPLOAD: Send the generated reward code to Linux
     # Source: experiments/Campaign/Model/generated_code/iterXX_reward.py (Mac)
-    local_reward_path = ws.get_path("code", iteration - 1, "reward.py")
+    local_reward_path = ws.get_path("code", iteration, "reward.py")
     # Dest: experiments/Campaign/Model/generated_code/iterXX_reward.py (Linux)
     # We use get_relative_path so we don't accidentally send Mac absolute paths (/Users/...) to Linux
-    relative_path = ws.get_relative_path("code", iteration - 1, "reward.py")
+    relative_path = ws.get_relative_path("code", iteration, "reward.py")
     
     print(f"📤 Uploading Reward Function: {local_reward_path}")
     manager.sync_file(str(local_reward_path), str(relative_path))
