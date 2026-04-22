@@ -59,11 +59,11 @@ def run_agentic_improvement(iteration: int):
     print(f"🔵 AGENT (Iter {iteration}): Active in {ws.model_root_path}")
 
     # Load Metrics from the recent training run
-    metrics = ws.load_metrics(iteration)
+    metrics = ws.load_metrics(iteration-1)
     if not metrics:
-        print(f"❌ No metrics found for Iteration {iteration}. Cannot proceed.")
+        print(f"❌ No metrics found for Iteration {iteration-1}. Cannot proceed.")
         return
-    print(f"    Iteration {iteration} Metrics Loaded ")
+    print(f"    Iteration {iteration-1} Metrics Loaded ")
     diagnostic_report = generate_diagnostic_report(metrics) 
 
     # Load the code that generated these metrics

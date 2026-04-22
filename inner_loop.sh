@@ -22,14 +22,16 @@ do
     echo -e "      ITERATION $i / $MAX_LOOPS"
     echo -e "==========================================${NC}"
 
-    # 1. Train the Agents
-    echo -e "${GREEN}[Step 1] Training Agents & Aggregation (Iteration $i) ${NC}"
-    python3 "$TRAINING_SCRIPT" --iteration "$i" --num_seeds "$NUM_SEEDS"
-
-    # 2. Improve the Code
-    echo -e "${GREEN}[Step 2] Designing New Reward Function (Iteration $i) ${NC}"
+    # 1. Improve the Code
+    echo -e "${GREEN}[Step 1] Designing New Reward Function (Iteration $i) ${NC}"
     MODULE_PATH=$(echo "$CONTROLLER_SCRIPT" | sed 's/\//./g' | sed 's/\.py//g')
     python3 -m "$MODULE_PATH" --iteration "$i"
+
+    # 2. Train the Agents
+    echo -e "${GREEN}[Step 2] Training Agents & Aggregation (Iteration $i) ${NC}"
+    python3 "$TRAINING_SCRIPT" --iteration "$i" --num_seeds "$NUM_SEEDS"
+
+
 
     # Optional: Short sleep to let file system buffers flush/sync
     sleep 2

@@ -1,20 +1,54 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+# Colors for Console 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+RED='\033[0;31m'
 NC='\033[0m'
-# Define the contenders
-MODELS=("deepseek-r1:32b" "gemma3:27b") # "deepseek-r1:32b" "openthinker:32b"
-# Capture arguments
-ITERATIONS=${1:-5}     # required-ish: default 5
-TIMESTEPS=${2:-50000}  # required-ish: default 50000
-TAG="${3:-}"           # optional experiment tag (e.g., testingPrompts, compareLLMs)
 
-# Export global settings for Python scripts
-export TOTAL_TIMESTEPS=$TIMESTEPS
+# Define the contenders (typically for the 'Strategist' role when running 'Mixture-of-Agents' style experiment)
+MODELS=("deepseek-r1:32b" "gemma3:27b") # "deepseek-r1:32b" "openthinker:32b"
+
+# --- Defaults ---
+ITERATIONS=""
+TIMESTEPS=""
+TAG=""
+REWARD_FUNC="spin_crash" 
+# Capture arguments
+# i: iterations, s: steps, t: tag, r: reward
+while getopts "i:s:t:r:" opt; do
+  case $opt in
+    i) ITERATIONS="$OPTARG" ;;       # Number of train / generate improved code cycles
+    s) TIMESTEPS="$OPTARG" ;;        # number of timesteps each agent is trained on reward function
+    t) TAG="$OPTARG" ;;              # optional experiment tag (e.g., testingPrompts, compareLLMs)
+    r) REWARD_FUNC="$OPTARG" ;;      # the initial deliberately flawed reward function to start with
+    *) echo "Usage: $0 [-i iterations] [-s steps] [-t tag] [-r reward_name]"; exit 1 ;;
+  esac
+done
+
+# MANDATORY CHECK: The "Go/No-Go" Gate
+# This checks if the required variables are still empty
+MISSING_ARGS=()
+[[ -z "$ITERATIONS" ]] && MISSING_ARGS+=("Iterations (-i)")
+[[ -z "$TIMESTEPS" ]]  && MISSING_ARGS+=("Timesteps (-s)")
+
+if [ ${#MISSING_ARGS[@]} -ne 0 ]; then
+  echo -e "\033[0;31m❌ ERROR: Missing required experiment parameters:\033[0m"
+  for arg in "${MISSING_ARGS[@]}"; do
+    echo "  - $arg"
+  done
+  echo -e "\nUsage: ./outer_loop.sh -i <int> -s <int> -r <string> [-t <string>]"
+  exit 1
+fi
+
+echo "\n🚀 Starting experiment: $ITERATIONS iterations, $TIMESTEPS timesteps, reward function '$REWARD_FUNC'"
+echo "Press Ctrl+C in the next 5 seconds to cancel."
+sleep 5
+
+# --- Export for Python ---
 # Add the project root to the Python search path
 export PYTHONPATH="${PYTHONPATH:-}:."
+export TOTAL_TIMESTEPS=$TIMESTEPS
 
 # Validate input for iterations
 if ! [[ "${ITERATIONS}" =~ ^[0-9]+$ ]]; then
@@ -30,10 +64,6 @@ case "$TAG" in
   *"agentic"*)
     echo "🤖 MODE DETECTED: Agentic Tools Experiment"
     SELECTED_CONTROLLER="controllers/agentic.py"
-    ;;
-  *"think"*)
-  echo "🤖 MODE DETECTED: Thinking Experiment"
-  SELECTED_CONTROLLER="controllers/thinking.py"
   ;;
   *)
     echo -e "\n"
@@ -99,15 +129,15 @@ for model in "${MODELS[@]}"; do
 
   # Example final pattern:
   # 2025-12-20_10cycles_500kSteps_LLMcomparison
-  CAMPAIGN_TAG="${TIMESTAMP}_${ITERATIONS}cycles_${STEP_STR}Steps${TAG_PART}"
+  CAMPAIGN_TAG="${TIMESTAMP}_${REWARD_FUNC}_${ITERATIONS}cycles_${STEP_STR}Steps${TAG_PART}"
 
   export CAMPAIGN_TAG
   export LLM_MODEL="$model"
 
   echo "📂 Target Directory: experiments/$CAMPAIGN_TAG"
   # 2. Generate Initial Reward Function
-  echo -e "${GREEN}[Step 0] Generating Base Reward Function ${NC}"
-  python3 controllers/set_initial_shaping.py 
+  echo -e "${GREEN}[Step 0] Populating Experiment Directory With Initial Flawed Reward Function ${NC}"
+  python3 controllers/set_initial_shaping.py --reward "$REWARD_FUNC"
 
   # 3. RUN THE INNER LOOP
   ./inner_loop.sh "$ITERATIONS" "$SELECTED_CONTROLLER" "$TRAINING_SCRIPT"
