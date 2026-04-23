@@ -33,7 +33,7 @@ def generate_proposals(brain: CognitiveNode, iteration: int, diagnostic_report: 
     )
 
     elapsed_time = time.perf_counter() - start_time
-    print(f"Proposal Generation took: {timedelta(seconds=elapsed_time)}")
+    print(f"Proposal Generation took: {timedelta(seconds=elapsed_time)}\n")
     return proposals
 
 def organize_proposals(brain: CognitiveNode, proposals: str, model_override:str=None) -> str:
@@ -56,7 +56,7 @@ def organize_proposals(brain: CognitiveNode, proposals: str, model_override:str=
     )
     
     elapsed_time = time.perf_counter() - start_time
-    print(f"Organizing Proposals took: {timedelta(seconds=elapsed_time)}")
+    print(f"Organizing Proposals took: {timedelta(seconds=elapsed_time)}\n")
     return proposal_report
 
 def choose_proposal(brain: CognitiveNode, iteration: int, proposal_report: str, expt_ledger: str, model_override:str=None) -> str:
@@ -81,7 +81,7 @@ def choose_proposal(brain: CognitiveNode, iteration: int, proposal_report: str, 
     )
     
     elapsed_time = time.perf_counter() - start_time
-    print(f"Choosing Proposal took: {timedelta(seconds=elapsed_time)}")
+    print(f"Choosing Proposal took: {timedelta(seconds=elapsed_time)}\n")
     return chosen_proposal
 
 def generate_work_order(brain: CognitiveNode, chosen_proposal: str, model_override:str=None) -> str:
@@ -104,7 +104,7 @@ def generate_work_order(brain: CognitiveNode, chosen_proposal: str, model_overri
     )
     
     elapsed_time = time.perf_counter() - start_time
-    print(f"Work Order Generation took: {timedelta(seconds=elapsed_time)}")
+    print(f"Work Order Generation took: {timedelta(seconds=elapsed_time)}\n")
     return work_order
 
 
@@ -154,7 +154,7 @@ def generate_code(brain: CognitiveNode, coder_payload: str, current_code: str, m
         print(f"🚨 Warning: Max retries ({max_retries}) reached. The resulting code may be unstable.")
 
     elapsed_time = time.perf_counter() - start_time
-    print(f"Coder Generation & Validation took: {timedelta(seconds=elapsed_time)}")
+    print(f"Coder Generation & Validation took: {timedelta(seconds=elapsed_time)}\n")
     
     return generated_code
 
@@ -179,6 +179,6 @@ def generate_ledger_entry(brain: CognitiveNode, iteration: int, val_payload: str
     )
 
     elapsed_time = time.perf_counter() - start_time
-    print(f"Peer Review took: {timedelta(seconds=elapsed_time)}")
+    print(f"Peer Review took: {timedelta(seconds=elapsed_time)}\n")
     
     return ledger_entry
