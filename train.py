@@ -122,7 +122,7 @@ def run_training_cycle(iteration:int, seed_id:int):
     elapsed_time = end_time - start_time
     # Format the output using timedelta
     print(f"✅ Training Cycle Complete | Seed {seed_id}")
-    print(f"Execution took: {timedelta(seconds=elapsed_time)}")
+    print(f"Execution took: {timedelta(seconds=elapsed_time)}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
