@@ -7,18 +7,16 @@ load_dotenv()
 class Config:
     # 1. Experiment Settings ###################################################################
     ENV_ID = "LunarLander-v3"
-    TOTAL_TIMESTEPS = int(os.getenv("TOTAL_TIMESTEPS", 50000))
+    TOTAL_TIMESTEPS = int(os.getenv("TOTAL_TIMESTEPS", 1000000))
+    TOTAL_ITERATIONS = int(os.getenv("TOTAL_ITERATIONS", 10))
     ALGORITHM = "PPO"
     
     # 2. Dynamic Experiment Directory Name ####################################################
     LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder")
     CAMPAIGN_TAG = os.getenv("CAMPAIGN_TAG", "Debug_Run")
+    INITIAL_FUNC=os.getenv("INITIAL_FUNC", "spin_crash")
     
     # 3. LLM Prompt Templates ###################################################################
-    initial_role = "initial_system_prompt"
-    initial_task = "initial_user_prompt"
-    initial_template = (initial_role,initial_task)
-
     strategist_role = "strategist_system_prompt"
     strategist_task = "strategist_user_prompt"
     strategist_template = (strategist_role,strategist_task)
