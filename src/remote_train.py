@@ -66,8 +66,6 @@ def run_remote_cycle(iteration: int, num_seeds: int):
     metrics_rel_path = ws.get_relative_path("telemetry_payloads", iteration, "metric_payload.json")
     local_metrics_dest = ws.get_path("telemetry_payloads", iteration, "metric_payload.json")
     
-    print(f"📥 Downloading Metrics: {metrics_rel_path}")
-    
     # Ensure the local folder exists before downloading
     local_metrics_dest.parent.mkdir(parents=True, exist_ok=True)
     
