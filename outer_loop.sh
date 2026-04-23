@@ -7,8 +7,8 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Define the contenders (typically for the 'Strategist' role when running 'Mixture-of-Agents' style experiment)
-MODELS=("deepseek-r1:32b" "gemma3:27b" "devstral:24b") # "deepseek-r1:32b" "openthinker:32b"
-
+MODELS=("gemma3:27b" "gemma4:26b" "qwen3:30b" "cogito:32b" "openthinker:32b") # "gemma3:27b" "deepseek-r1:32b" "openthinker:32b" "devstral:24b"
+MODELS=("qwen3:8b")
 # --- Defaults ---
 ITERATIONS=""
 TIMESTEPS=""
@@ -33,7 +33,7 @@ MISSING_ARGS=()
 [[ -z "$TIMESTEPS" ]]  && MISSING_ARGS+=("Timesteps (-s)")
 
 if [ ${#MISSING_ARGS[@]} -ne 0 ]; then
-  echo -e "\033[0;31m❌ ERROR: Missing required experiment parameters:\033[0m"
+  echo -e "${RED}❌ ERROR: Missing required experiment parameters:${NC}"
   for arg in "${MISSING_ARGS[@]}"; do
     echo "  - $arg"
   done
@@ -41,7 +41,12 @@ if [ ${#MISSING_ARGS[@]} -ne 0 ]; then
   exit 1
 fi
 
-echo "\n🚀 Starting experiment: $ITERATIONS iterations, $TIMESTEPS timesteps, reward function '$REWARD_FUNC'"
+echo ""
+echo "🚀 Starting experiment:"
+echo "                      Iterations = $ITERATIONS"
+echo "                      Timesteps  = $TIMESTEPS"
+echo "         Initial Reward Function = $REWARD_FUNC"
+echo ""
 echo "Press Ctrl+C in the next 5 seconds to cancel."
 sleep 5
 
@@ -49,6 +54,9 @@ sleep 5
 # Add the project root to the Python search path
 export PYTHONPATH="${PYTHONPATH:-}:."
 export TOTAL_TIMESTEPS=$TIMESTEPS
+export TOTAL_ITERATIONS=$ITERATIONS
+export INITIAL_FUNC=$REWARD_FUNC
+
 
 # Validate input for iterations
 if ! [[ "${ITERATIONS}" =~ ^[0-9]+$ ]]; then
@@ -76,11 +84,13 @@ esac
 if [[ "$TAG" == *"remote"* ]]; then
     echo "📡 ENGINE: Distributed Training (Mac -> Linux)"
     # This script runs on Mac but talks to Linux
-    TRAINING_SCRIPT="src/train_remote.py"
+    TRAINING_SCRIPT="src/remote_train.py"
+    PLOTTING_SCRIPT="src/remote_campaign_summary.py"
 else
     echo "💻 ENGINE: Local Training"
     # This script runs the PPO math locally
-    TRAINING_SCRIPT="src/train_local.py"
+    TRAINING_SCRIPT="src/local_train.py"
+    PLOTTING_SCRIPT="src/local_campaign_summary.py"
 fi
 
 # Format steps for directory naming (e.g. 500000 -> 500k, 1200000 -> 1.2M)
@@ -142,8 +152,8 @@ for model in "${MODELS[@]}"; do
   # 3. RUN THE INNER LOOP
   ./inner_loop.sh "$ITERATIONS" "$SELECTED_CONTROLLER" "$TRAINING_SCRIPT"
 
-  # 4. (Optional) GENERATE SUMMARY PLOT
-  # python3 src/plot_campaign_summary.py
+  # 4. GENERATE SUMMARY PLOT
+  python3 "$PLOTTING_SCRIPT"
 
   echo "✅ Campaign Complete for $model."
 done
