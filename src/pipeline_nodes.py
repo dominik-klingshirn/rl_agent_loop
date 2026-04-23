@@ -24,11 +24,16 @@ def generate_proposals(brain: CognitiveNode, iteration: int, diagnostic_report: 
     )
     
     print("Generating Proposals")
+    # Checking current model, getting corresponding options for task
+    curr_model = model_override if model_override else brain.model
+    options = Config.get_inference_options(curr_model, 'strategist')
+
+    # LLM Call
     proposals = brain.chat(
         phase_name='strategist',
         system_prompt=sys_prompt,
         user_prompt=user_prompt,
-        options=Config.think_options,
+        options=options,
         model_override = model_override if model_override else None
     )
 
@@ -47,11 +52,15 @@ def organize_proposals(brain: CognitiveNode, proposals: str, model_override:str=
     )
     
     print("Organizing Proposals")
+    # Checking current model, getting corresponding options for task
+    curr_model = model_override if model_override else brain.model
+    options = Config.get_inference_options(curr_model, 'organizer')
+
     proposal_report = brain.chat(
         phase_name='organizer',
         system_prompt=sys_prompt,
         user_prompt=user_prompt,
-        options=Config.think_options,
+        options=options,
         model_override = model_override if model_override else None
     )
     
@@ -72,11 +81,13 @@ def choose_proposal(brain: CognitiveNode, iteration: int, proposal_report: str, 
     )
     
     print("Choosing Proposal")
+    curr_model = model_override if model_override else brain.model
+    options = Config.get_inference_options(curr_model, 'research_lead')
     chosen_proposal = brain.chat(
         phase_name='research_lead',
         system_prompt=sys_prompt,
         user_prompt=user_prompt,
-        options=Config.think_options,
+        options=options,
         model_override = model_override if model_override else None
     )
     
@@ -95,18 +106,19 @@ def generate_work_order(brain: CognitiveNode, chosen_proposal: str, model_overri
     )
     
     print("Generating Work Order")
+    curr_model = model_override if model_override else brain.model
+    options = Config.get_inference_options(curr_model, 'dispatcher')
     work_order = brain.chat(
         phase_name='dispatcher',
         system_prompt=sys_prompt,
         user_prompt=user_prompt,
-        options=Config.think_options,
+        options=options,
         model_override = model_override if model_override else None
     )
     
     elapsed_time = time.perf_counter() - start_time
     print(f"Work Order Generation took: {timedelta(seconds=elapsed_time)}\n")
     return work_order
-
 
 def generate_code(brain: CognitiveNode, coder_payload: str, current_code: str, max_retries: int = 3, model_override:str=None) -> str:
     """Translates work orders into executable code with an iterative validation loop."""
@@ -123,12 +135,13 @@ def generate_code(brain: CognitiveNode, coder_payload: str, current_code: str, m
 
     while attempt < max_retries:
         print(f"Generating Code (Attempt {attempt + 1}/{max_retries})")
-        
+        curr_model = model_override if model_override else brain.model
+        options = Config.get_inference_options(curr_model, 'coder')
         raw_response = brain.chat(
             phase_name='coder',
             system_prompt=sys_prompt,
             user_prompt=user_prompt,
-            options=Config.think_options,
+            options=options,
             model_override = model_override if model_override else None
         )
 
@@ -170,11 +183,13 @@ def generate_ledger_entry(brain: CognitiveNode, iteration: int, val_payload: str
     )
     
     print("Generating Ledger Entry (Peer Review)")
+    curr_model = model_override if model_override else brain.model
+    options = Config.get_inference_options(curr_model, 'validator')
     ledger_entry = brain.chat(
         phase_name='validator',
         system_prompt=sys_prompt,
         user_prompt=user_prompt,
-        options=Config.think_options,
+        options=options,
         model_override = model_override if model_override else None
     )
 

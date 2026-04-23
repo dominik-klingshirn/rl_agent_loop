@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 # -- project imports --
-from config import Config
+from .config import Config
 
 
 

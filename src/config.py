@@ -77,113 +77,184 @@ class Config:
     def get_inference_options(model_name: str, role: str):
         """
         Returns optimal inference parameters based on Model Architecture AND Cognitive Role.
-        Target Hardware: Mac Studio/Pro (36GB Unified Memory).
-        
-        Refactor Update:
-        - Splits logic into 'Thinking' (Reasoning) vs 'Standard' (Non-Thinking).
-        - Implements specific roles: Diagnostician, Strategist, Research Lead, Coder.
-        - Manages Context (KV Cache) to prevent OOM on 36GB RAM.
+        Target Hardware: Mac Studio/Pro M4 Max (36GB Unified Memory), fully local via Ollama.
+
+        Pipeline Roles (6-stage Chain-of-Agents):
+            - validator:     Critical post-mortem analysis against diagnostic report
+            - strategist:    Divergent mathematical hypothesis generation
+            - organizer:     Strict deterministic format enforcement
+            - research_lead: Convergent executive selection via Occam's Razor
+            - dispatcher:    Deterministic payload routing/splitting (no creativity)
+            - coder:         Precise Python syntax translation from math spec
+
+        Context Sizing Philosophy:
+            Each role receives only the data it needs (zero-shot, structured prompts).
+            This is what prevents KV cache accumulation across the 20-iteration loop.
+            Organizer and Dispatcher get the smallest windows because their inputs
+            are already the cleaned outputs of the prior stage.
+
+        Notes on Reasoning Models (DeepSeek-R1, etc.):
+            - Never set repeat_penalty > 1.0: breaks Chain-of-Thought loops
+            - Never drop Coder temp below 0.5: causes stuttering/token repetition
+            - Organizer/Dispatcher on reasoning models is wasteful but supported
         """
         model_id = model_name.lower()
         role = role.lower()
-        
-        # Detect Reasoning Models (DeepSeek-R1, OpenThinker, etc.)
+
         is_reasoning = any(k in model_id for k in ["deepseek-r1", "thinking", "openthinker", "gpt-oss"])
 
-        # defaults
+        # Shared baseline — overridden per role below
         options = {
-            "num_ctx": 16384,     # Safe default
-            "num_predict": 4096,  # Standard output limit
+            "num_ctx": 16384,
+            "num_predict": 4096,
             "stop": ["<|end_of_text|>", "<|user|>", "User:", "Observation:"]
         }
 
         # ==============================================================================
         # SCENARIO A: THINKING / REASONING MODELS (DeepSeek-R1, etc.)
-        # Strategy: Maintain Entropy (0.6+) to prevent Loop Collapse. No Repetition Penalty.
+        # Global constraint: repeat_penalty must stay at 1.0 to preserve CoT integrity.
         # ==============================================================================
         if is_reasoning:
-            # GLOBAL REASONING DEFAULTS
             options.update({
-                "repeat_penalty": 1.0,   # CRITICAL: Do not penalize repetition (breaks CoT loops)
-                "num_predict": 8192,     # High limit to allow for <think> blocks
-                "top_k": 40,             # Standard sampling window
+                "repeat_penalty": 1.0,  # CRITICAL: Do not touch — breaks CoT loops
+                "top_k": 40,
             })
 
-            if role == 'diagnostician':
-                # Goal: Deep trend analysis.
-                # We keep temp at 0.6 to allow reasoning flow, but restrict top_p slightly
-                # to keep the "conclusion" phase grounded.
-                options["temperature"] = 0.6
-                options["top_p"] = 0.95
-                options["num_ctx"] = 20480 
-
-            elif role == 'strategist':
-                # Goal: Structured Diversity.
-                # Needs higher entropy to generate novel hypotheses in the CoT.
-                options["temperature"] = 0.75 
-                options["top_p"] = 0.95
-                options["num_ctx"] = 24576   # Max safe context for 36GB Mac
-
-            elif role == 'research_lead':
-                # Goal: Disciplined causal comparison.
-                # Slightly lower temp to encourage convergence on the most logical path.
-                options["temperature"] = 0.6
+            if role == "validator":
+                # Goal: Detect Goodhart's Law and reward hacking against a prior hypothesis.
+                # Needs reliable pattern-matching, not creative divergence.
+                # Context: Diagnostic Report + 1 ledger entry (targeted, not full history).
+                # Low temp keeps the post-mortem grounded; slight top_p room for nuanced language.
+                options["temperature"] = 0.5
                 options["top_p"] = 0.9
-                options["num_ctx"] = 24576
+                options["num_ctx"] = 16384
+                options["num_predict"] = 4096   # Post-mortem is an essay, not a treatise
 
-            elif role == 'coder':
-                # Goal: Precise code synthesis.
-                # WARNING: Do not drop temp to 0.1 for R1 models or they stutter.
-                # We rely on the model's internal verification rather than sampling restrictions.
-                options["temperature"] = 0.6 
+            elif role == "strategist":
+                # Goal: Generate 3 mathematically DISTINCT reward topologies.
+                # Must escape prior failure modes logged in the full Experiment Ledger.
+                # Highest entropy in the pipeline — needs to diverge from its own history.
+                # Context: Full ledger + diagnostic report = largest window justified.
+                options["temperature"] = 0.8
+                options["top_p"] = 0.95
+                options["num_ctx"] = 24576      # Max safe for 36GB — ledger grows over iterations
+                options["num_predict"] = 8192   # 3 detailed mathematical proposals with rationale
+
+            elif role == "organizer":
+                # Goal: Reformat the Strategist's output into a strict, machine-parseable schema.
+                # Zero creativity required — this is pure structural enforcement.
+                # Context: Just the Strategist's output (smallest meaningful window).
+                # Lower temp than any other role to prevent schema drift.
+                options["temperature"] = 0.4
+                options["top_p"] = 0.85
+                options["num_ctx"] = 12288      # Strategist output only — no history needed
+                options["num_predict"] = 4096   # Bounded by the schema structure itself
+
+            elif role == "research_lead":
+                # Goal: Apply Occam's Razor and select the single most viable hypothesis.
+                # Convergent reasoning — must commit to one choice, not hedge.
+                # Context: Organized proposals + ledger (to avoid repeating prior failures).
+                options["temperature"] = 0.55
                 options["top_p"] = 0.9
-                options["num_predict"] = 10000 # Max output for heavy refactoring
+                options["num_ctx"] = 20480      # Proposals + relevant ledger context
+                options["num_predict"] = 2048   # Selection + rationale, not a full essay
+
+            elif role == "dispatcher":
+                # Goal: Split the selected hypothesis into <CODER_PAYLOAD> and <VALIDATOR_PAYLOAD>.
+                # Pure deterministic routing — output is a strict schema split, not generation.
+                # Context: Just the Research Lead's single selected output.
+                options["temperature"] = 0.4
+                options["top_p"] = 0.85
+                options["num_ctx"] = 8192       # Single hypothesis only — smallest window
+                options["num_predict"] = 2048   # Two structured payload blocks, nothing more
+
+            elif role == "coder":
+                # Goal: Translate a mathematical spec into a valid Python reward function.
+                # WARNING: Do not drop below 0.5 for R1 models — causes token stutter.
+                # The model's internal verification handles correctness; we handle fluency.
+                # Context: CODER_PAYLOAD only (math spec, no reasoning history).
+                options["temperature"] = 0.55
+                options["top_p"] = 0.9
+                options["num_ctx"] = 16384      # Payload + room for full function output
+                options["num_predict"] = 10000  # Max — complex reward functions can be long
 
         # ==============================================================================
-        # SCENARIO B: STANDARD MODELS (Llama 3, Mistral, Command R)
-        # Strategy: "Cognitive Thermodynamics" - Use Temperature/Penalties as control levers.
+        # SCENARIO B: STANDARD MODELS (Llama 3, Mistral, Command R, etc.)
+        # "Cognitive Thermodynamics" — Temperature and penalties as direct control levers.
+        # Seed is set on deterministic roles to lock reproducibility within an iteration.
         # ==============================================================================
         else:
-            # GLOBAL STANDARD DEFAULTS
             options.update({
                 "num_predict": 4096,
             })
 
-            if role == 'diagnostician':
-                # Goal: Stable statistical interpretation. 
-                # Low temp, fixed seed recommended.
+            if role == "validator":
+                # Goal: Reliable, repeatable detection of reward hacking.
+                # Deterministic enough to produce consistent post-mortems across re-runs.
                 options["temperature"] = 0.2
                 options["top_p"] = 0.9
                 options["top_k"] = 40
                 options["repeat_penalty"] = 1.05
-                options["seed"] = 42  # Deterministic analysis
+                options["num_ctx"] = 16384
+                options["num_predict"] = 4096
+                options["seed"] = 42
 
-            elif role == 'strategist':
-                # Goal: Diverse, mechanistically distinct strategies.
-                # High temp + Presence Penalty to force new topic exploration.
-                options["temperature"] = 0.7
+            elif role == "strategist":
+                # Goal: Maximally diverse mathematical proposals.
+                # presence_penalty forces topical escape — prevents rehashing prior iterations.
+                # No seed — we explicitly want variance here.
+                options["temperature"] = 0.8
                 options["top_p"] = 0.95
                 options["top_k"] = 60
                 options["repeat_penalty"] = 1.1
-                options["presence_penalty"] = 0.2 # Forces topic shifting
+                options["presence_penalty"] = 0.3  # Forces mathematical novelty
                 options["num_ctx"] = 24576
+                options["num_predict"] = 8192
 
-            elif role == 'research_lead':
-                # Goal: Stable, rational selection.
-                # Balanced parameters.
-                options["temperature"] = 0.3
+            elif role == "organizer":
+                # Goal: Rigid schema enforcement. Effectively a deterministic formatter.
+                # Lowest temperature in the pipeline outside of Dispatcher.
+                # High repeat_penalty prevents schema elements from leaking into content fields.
+                options["temperature"] = 0.05
+                options["top_p"] = 0.8
+                options["top_k"] = 20
+                options["repeat_penalty"] = 1.1
+                options["num_ctx"] = 12288
+                options["num_predict"] = 4096
+                options["seed"] = 42
+
+            elif role == "research_lead":
+                # Goal: Rational, reproducible selection. Balanced against creative lock-in.
+                # Slightly warmer than Organizer to allow natural justification language.
+                options["temperature"] = 0.25
                 options["top_p"] = 0.9
                 options["top_k"] = 40
                 options["repeat_penalty"] = 1.05
+                options["num_ctx"] = 20480
+                options["num_predict"] = 2048
                 options["seed"] = 42
 
-            elif role == 'coder':
-                # Goal: Deterministic translation.
-                # Greedy decoding (very low temp).
+            elif role == "dispatcher":
+                # Goal: Clean deterministic payload split. Output is two labeled blocks.
+                # Near-greedy — this is a parsing task, not a generation task.
+                options["temperature"] = 0.05
+                options["top_p"] = 0.8
+                options["top_k"] = 20
+                options["repeat_penalty"] = 1.05
+                options["num_ctx"] = 8192
+                options["num_predict"] = 2048
+                options["seed"] = 42
+
+            elif role == "coder":
+                # Goal: Deterministic Python translation from math spec.
+                # Greedy decoding — correctness is the only objective here.
+                # Low repeat_penalty (not zero) prevents line-duplication bugs in loops/dicts.
                 options["temperature"] = 0.1
                 options["top_p"] = 0.85
                 options["top_k"] = 30
-                options["repeat_penalty"] = 1.02 # Slight penalty to prevent line-duplication bugs
+                options["repeat_penalty"] = 1.02
+                options["num_ctx"] = 16384
+                options["num_predict"] = 10000
                 options["seed"] = 42
 
         return options
