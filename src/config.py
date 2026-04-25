@@ -148,7 +148,7 @@ class Config:
                 options["temperature"] = 0.4
                 options["top_p"] = 0.85
                 options["num_ctx"] = 12288      # Strategist output only — no history needed
-                options["num_predict"] = 4096   # Bounded by the schema structure itself
+                options["num_predict"] = 8192   # Bounded by the schema structure itself
 
             elif role == "research_lead":
                 # Goal: Apply Occam's Razor and select the single most viable hypothesis.

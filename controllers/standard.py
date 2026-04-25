@@ -22,32 +22,33 @@ from src.pipeline_nodes import (
 
 MODEL_NAME = Config.LLM_MODEL
 
-"""if MODEL_NAME == 'gemma3:27b':
-    model_overrides = {
-        "research_lead":"qwen3:30b",
-        "organizer": "deepseek-r1:14b",
-        "dispatcher":"deepseek-r1:14b",
-        "validator":"deepseek-r1:14b",
-        "coder": "qwen3-coder:30b"
-    }"""
-
-if MODEL_NAME == 'qwen3:8b':
+"""if MODEL_NAME == 'qwen3:8b':
     model_overrides = {
         "research_lead":"deepseek-r1:8b",
         "organizer": "deepseek-r1:8b",
         "dispatcher":"deepseek-r1:8b",
         "validator":"deepseek-r1:8b",
         "coder": "qwen3-coder:30b"
+    }"""
+
+if MODEL_NAME == 'gemma3:27b':
+    model_overrides = {
+        "research_lead":"qwen3:30b",
+        "organizer": "deepseek-r1:14b",
+        "dispatcher":"deepseek-r1:14b",
+        "validator":"deepseek-r1:14b",
+        "coder": "qwen3-coder:30b"
     }
+
 
 else: 
     model_overrides = {
-    "research_lead":"deepseek-r1:32b",
-    "organizer": "deepseek-r1:14b",
-    "dispatcher":"deepseek-r1:14b",
-    "validator":"deepseek-r1:14b",
-    "coder": "qwen3-coder:30b"
-}
+        "research_lead":"deepseek-r1:32b",
+        "organizer": "deepseek-r1:14b",
+        "dispatcher":"deepseek-r1:14b",
+        "validator":"deepseek-r1:14b",
+        "coder": "qwen3-coder:30b"
+    }
 
 def run_agentic_improvement(iteration: int):
     start_time = time.perf_counter()

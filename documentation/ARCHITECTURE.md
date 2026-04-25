@@ -1,6 +1,6 @@
 # Architecture Overview: Multi-Agent Algorithmic Reward Design (Phase 1)
 
-This document details the system architecture and data flow for the Phase 1 Algorithmic Reward Design (ARD) pipeline. The system is designed as a fully autonomous, decoupled, dual-node loop that translates sparse physical telemetry into deterministic dense reward functions using a Mixture of Experts (MoE) LLM orchestration.
+This document details the system architecture and data flow for the Phase 1 Algorithmic Reward Design (ARD) pipeline. The system is designed as a fully autonomous, decoupled, dual-node loop that translates sparse physical telemetry into deterministic dense reward functions using a 'Mixture-of-Agents' LLM orchestration.
 
 ## 1. The Core Infrastructure Split
 
@@ -31,7 +31,7 @@ The Diagnostic Report is fed into a 6-stage routing protocol. Each "Agent" is a 
 1. **Validator:** Reviews the prior iteration's intended hypothesis against the current Diagnostic Report. It specifically hunts for Goodhart's Law (reward hacking) and logs a permanent Post-Mortem.
 2. **Strategist (High Temp, High Parameter):** Reads the Diagnostic Report and the historical Ledger. Generates 3 novel mathematical topologies to fix the identified physical failures.
 3. **Organizer (Low Temp):** Sanitizes the Strategist's abstract math into a strict Markdown schema.
-4. **Research Lead (Low Temp):** Acts as the executive filter. Applies Occam's Razor to select the single most viable mathematical hypothesis.
+4. **Research Lead (Low Temp):** Acts as the executive filter. Cross-references current Strategist proposals against outcomes of previous iterations logged in the `Experiment Ledger` to select the single most viable mathematical hypothesis.
 5. **Dispatcher:** Routes the chosen hypothesis, splitting it into a `<CODER_PAYLOAD>` and a `<VALIDATOR_PAYLOAD>`.
 6. **Coder (Syntax-Strict Model):** Operates in a highly restricted sandbox. Translates the payload into a strictly formatted Python function (`calculate_reward(obs, info)`).
 

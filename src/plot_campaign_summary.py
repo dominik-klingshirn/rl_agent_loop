@@ -102,11 +102,12 @@ def plot_landing_distribution(
     groupby_df['landing_rate'] = groupby_df[land_statuses].sum(axis=1) / groupby_df[all_statuses].sum(axis=1)
 
     df = pd.DataFrame({
-    'Iteration': groupby_df.index.to_list(),
-    'Centered Landing': groupby_df['landed_centered'],
-    'Off-Center Landing': groupby_df['imperfect_landings'],
-    'Timeout / Out of Bounds': groupby_df['other_fails'],
-    'Crash': groupby_df['crashed'],
+    'Iteration':           groupby_df.index.to_list(),
+    'Centered Landing':    groupby_df['landed_centered'],
+    'Off-Center Landing':  groupby_df['imperfect_landings'],
+    'Timeout':             groupby_df['hover_timeout'],
+    'Out of Bounds':       groupby_df['out_of_bounds'],
+    'Crash':               groupby_df['crashed']
 })
     iterations = df['Iteration'].to_list()
     df.set_index('Iteration', inplace=True)
@@ -114,10 +115,11 @@ def plot_landing_distribution(
     # --- 2. COLOR PALETTE FOR POSTER ---
     # Strategic colors: Success = Blues/Teals, Fails = Reds, Timeouts = Grays
     colors = {
-        'Centered Landing': '#2ca02c',       # Strong Green
-        'Off-Center Landing': '#1f77b4',   # Strong Blue
-        'Timeout / Out of Bounds': '#c5b0d5',       # Light Purple
-        'Crash': '#d62728'      # High-contrast Red
+        'Centered Landing':  '#2ca02c',   # Green   — success
+        'Off-Center Landing':'#1f77b4',   # Blue    — partial success
+        'Hover Timeout':     '#ff7f0e',   # Orange  — agent passive/paralyzed
+        'Out of Bounds':     '#9467bd',   # Purple  — agent unconstrained/escaping
+        'Crash':             '#d62728',   # Red     — catastrophic failure
     }
 
     # --- 3. FIGURE SETUP ---
@@ -176,7 +178,7 @@ def plot_landing_distribution(
 
 
     if save_file:
-        save_path = campaign_path / model_name/ f'all_iterations.png'
+        save_path = campaign_path / model_name/ f'all_iterations_{model_name}.png'
         #plt.savefig(save_path, format='svg', bbox_inches='tight')
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Campaign Summary Plot Saved at: {save_path} ")
