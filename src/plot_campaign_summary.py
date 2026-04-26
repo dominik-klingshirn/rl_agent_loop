@@ -105,7 +105,7 @@ def plot_landing_distribution(
     'Iteration':           groupby_df.index.to_list(),
     'Centered Landing':    groupby_df['landed_centered'],
     'Off-Center Landing':  groupby_df['imperfect_landings'],
-    'Hover Timeout':             groupby_df['hover_timeout'],
+    'Hover Timeout':       groupby_df['hover_timeout'],
     'Out of Bounds':       groupby_df['out_of_bounds'],
     'Crash':               groupby_df['crashed']
 })

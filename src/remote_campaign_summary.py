@@ -44,8 +44,8 @@ def remote_campaign_summary():
         print("❌ Critical Failure: Plotting Campaign Summary Failed.") 
         sys.exit(1)
 
-    sanitized_model = Config.LLM_MODEL.replace(":", "-")
-    plot_file = Path(f"experiments/{env_vars['CAMPAIGN_TAG']}/{sanitized_model}/all_iterations.png")
+    model_name = Config.LLM_MODEL.replace(":", "-")
+    plot_file = Path(f"experiments/{env_vars['CAMPAIGN_TAG']}/{model_name}/all_iterations_{model_name}.png")
     print(f"📥 Downloading Campaign Summary Plot: {plot_file}")
 
     plot_file.parent.mkdir(parents=True, exist_ok=True)
