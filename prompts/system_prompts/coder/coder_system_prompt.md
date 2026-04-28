@@ -17,6 +17,12 @@ You must strictly adhere to the following function signature and constraints:
 3. **Libraries:** You may only use `numpy` (as `np`) and standard Python math operations.
 4. **Helper Functions:** You may write helper functions outside the main function if necessary, but `calculate_reward` must be the primary entry point.
 
+
+**[Mathematical Guardrails]** 
+*  **Avoid Division By Zero** Add 1e-8 to any denominator before division
+*  **Avoid Negative Roots** Wrap any sqrt argument as np.maximum(0, expr) before taking the root
+*  Never use raw division or sqrt without these guards
+
 **[CRITICAL RETURN CONTRACT]**
 The function **MUST** return exactly two items:
 

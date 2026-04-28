@@ -7,9 +7,11 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Define the contenders (typically for the 'Strategist' role when running 'Mixture-of-Agents' style experiment)
-MODELS=("mistral:7b" "deepseek-r1:8b" "olmo2:7b" "gemma3:4b" "llama3.1:8b" "qwen3:4b" "qwen3:8b") # "gemma3:27b" "deepseek-r1:32b" "openthinker:32b" "devstral:24b"
+#MODELS=("dolphin3:8b" "olmo2:7b" "mistral:7b" "gemma3:4b" "llama3.1:8b" "qwen3:4b" "phi4-mini") # "gemma3:27b" "deepseek-r1:32b" "openthinker:32b" "devstral:24b"
+MODELS=("gemma3:12b" "gpt-oss:20b" "devstral:24b" "nemotron-cascade-2" "nemotron-3-nano:30b")
 #MODELS=("qwen3:8b")
 #MODELS=("gemma3:27b")
+
 # --- Defaults ---
 ITERATIONS=""
 TIMESTEPS=""

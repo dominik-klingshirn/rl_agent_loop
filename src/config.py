@@ -61,19 +61,8 @@ class Config:
         }
     # gpt_oss has 3 thinking levels : low, medium, high
     gpt_think_level = "low"
-    # For Phase 1: Researcher (Diagnosis)
-    analyst_options={
-        'num_ctx': 16384,      # M4 Max can handle this easily
-        'num_predict': 8000,   # Prevent cutoff
-        'temperature': 0.65,    # Balance creativity/precision
-        'top_p': 0.8,
-    }
-    # For Phase 2: Formatter (Process Plan)
-    formatter_options={
-        'num_ctx': 16384,
-        'num_predict': 5000,
-        'temperature': 0.2,  
-    }
+
+
     def get_inference_options(model_name: str, role: str):
         """
         Returns optimal inference parameters based on Model Architecture AND Cognitive Role.

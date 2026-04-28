@@ -30,7 +30,7 @@ MODEL_NAME = Config.LLM_MODEL
         "validator":"deepseek-r1:8b",
         "coder": "qwen3-coder:30b"
     }"""
-
+"""
 if MODEL_NAME == 'gemma3:27b':
     model_overrides = {
         "research_lead":"qwen3:30b",
@@ -38,11 +38,11 @@ if MODEL_NAME == 'gemma3:27b':
         "dispatcher":"deepseek-r1:14b",
         "validator":"deepseek-r1:14b",
         "coder": "qwen3-coder:30b"
-    }
+    }"""
 
 
-else: 
-    model_overrides = {
+
+model_overrides = {
         "research_lead":"deepseek-r1:32b",
         "organizer": "deepseek-r1:14b",
         "dispatcher":"deepseek-r1:14b",

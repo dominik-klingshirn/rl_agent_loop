@@ -108,6 +108,7 @@ def extract_chat_metrics(
     prompt_template_roles: Optional[str] = None,
     prompt_template_tasks: Optional[str] = None,
     cognition_path: Optional[str] = None,
+    options: Optional[Dict[str, Any]] = None,
     prompt_preview_len: int = 160,
     response_preview_len: int = 160,
 ) -> Dict[str, Any]:
@@ -120,8 +121,8 @@ def extract_chat_metrics(
     r = _to_plain(response)  # ChatResponse -> dict-like
 
     message = r.get("message") or {}
-    options = r.get("options") or {}
-
+    # Use explicitly passed options instead of inferring from response
+    used_options = options or r.get("options") or {}
     created_at = r.get("created_at")
     total_duration = r.get("total_duration")          # ns, if present
     load_duration = r.get("load_duration")            # ns, if present
@@ -170,17 +171,13 @@ def extract_chat_metrics(
         # Thinking / reasoning traces
         "has_thinking": has_thinking,
         "thinking_preview": thinking_preview,
-
-        # Options actually used (temperature, top_p, etc.)
-        "opt_temperature": options.get("temperature"),
-        "opt_top_p": options.get("top_p"),
-        "opt_top_k": options.get("top_k"),
-        "opt_repeat_penalty": options.get("repeat_penalty"),
-        "opt_num_ctx": options.get("num_ctx"),
-        "opt_num_predict": options.get("num_predict"),
-        "opt_think": options.get("think"),
-
-        # Low-level timing & token stats if available [web:35][web:111]
+        "opt_temperature": used_options.get("temperature"),
+        "opt_top_p": used_options.get("top_p"),
+        "opt_top_k": used_options.get("top_k"),
+        "opt_repeat_penalty": used_options.get("repeat_penalty"),
+        "opt_num_ctx": used_options.get("num_ctx"),
+        "opt_num_predict": used_options.get("num_predict"),
+        "opt_think": used_options.get("think"),
         "created_at": created_at,
         "total_duration_ns": total_duration,
         "load_duration_ns": load_duration,
@@ -205,6 +202,7 @@ def append_chatresponse_row(
     prompt_template_roles: Optional[str] = None,
     prompt_template_tasks: Optional[str] = None,
     cognition_path: Optional[str] = None,
+    options: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Append one row of ChatResponse metrics to `csv_path`.
@@ -229,6 +227,7 @@ def append_chatresponse_row(
         prompt_template_roles=prompt_template_roles,
         prompt_template_tasks=prompt_template_tasks,
         cognition_path=cognition_path,
+        options=options,
     )
 
     fieldnames = [
