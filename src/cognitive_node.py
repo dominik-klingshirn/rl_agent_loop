@@ -170,7 +170,8 @@ class CognitiveNode:
                 iteration=self.iteration,
                 phase=phase_name,
                 prompt_type=phase_name,
-                cognition_path=self.json_path
+                cognition_path=self.json_path,
+                options=options
             )
 
         # C. Markdown Buffer (Human Readable)
