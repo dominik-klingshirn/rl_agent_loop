@@ -18,4 +18,4 @@ These are the explicit mathematical updates you must integrate into the code abo
 {coder_payload_from_dispatcher}
 
 **ACTION REQUIRED:**
-Write the complete, updated Python script containing `calculate_reward(obs, info)`. Ensure all new math is implemented exactly as specified, properly scaled, correctly constrained
+Write the complete, updated Python script containing `calculate_reward(obs, info)`. You MUST aggressively execute any specified Code Deletions by removing that logic entirely, and integrate all Code Additions exactly as specified.

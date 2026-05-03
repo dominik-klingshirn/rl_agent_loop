@@ -684,7 +684,8 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
         elif rho < 0.2:
             flag = "⚪ Neutral/Noisy"
 
-        md.append(f"| `{comp_name}` | {rho:.3f} | {mag:.1f}% | {flag} |")
+
+        md.append(f"| `{comp_name.replace('reward_','',1)}` | {rho:.3f} | {mag:.1f}% | {flag} |")
 
     # C. Stochastic Fragility
     md.append("\n#### C. Stochastic Policy Fragility")

@@ -21,14 +21,20 @@ You must formulate your math using ONLY these available variables:
 * `info['prev_obs']`: The observation array from the previous step.
 * `info['action']`: The discrete action taken by the agent.
 
-
 **[DIRECTIVES & OUTPUT REQUIREMENTS]**
-Analyze the current Python reward implementation against the Diagnostic Report and the Experiment Ledger. Identify the mathematical root cause of the physical failures.
+Analyze the current Python reward implementation against the Diagnostic Report. Identify the mathematical root cause of the physical failures.
 
-You must output exactly **3 distinct, novel proposals** to fix the reward topology. For each proposal, you must clearly provide:
+You must structure your output in two distinct parts:
 
-1. **The Conceptual Hypothesis:** Explain the physical or optimization failure and *why* your proposed math fixes it. Think about gravity, momentum, and state-space boundaries.
-2. **The Mathematical Formulation:** Define the exact algorithmic change. You can use LaTeX (e.g., $R_{new} = -\alpha \cdot (\dot{\theta})^2$) or isolated Python snippets. Specify the scale/coefficient and any clipping boundaries.
+**PART 1: GLOBAL EXCISION MANIFESTO**
+Look at the Component-Level Contribution table. Use your deep physical reasoning to decide which components are fundamentally unsalvageable and which simply need rescaling or recontextualizing. You must explicitly list the exact names of the variables, penalties, or components that you deem mathematically toxic or structurally obsolete. Command their complete deletion here.
+
+**PART 2: 3 NOVEL PROPOSALS (STRICTLY ADDITIVE)**
+You must output exactly **3 distinct, novel proposals** to build new reward topology. Do not include deletion commands here. For each proposal, you must clearly provide:
+
+1. **The Conceptual Hypothesis:** Explain the physical or optimization failure and *why* your proposed math fixes it.Think about gravity, momentum, and state-space boundaries.
+2. **The Mathematical Formulation:** Define the exact algorithmic *additions*. You can use LaTeX (e.g., $R_{new} = -\alpha \cdot (\dot{\theta})^2$) or isolated Python snippets. Specify the scale/coefficient and any clipping boundaries.
 3. **The Falsifiable Expected Outcome:** State the exact metric from the Diagnostic Report (e.g., `Mean Descent Efficiency`, `Chatter Rate`, `Population Success Rate`) that will improve, and the numerical shift you expect to see in the next iteration.
 
 Explore the state space deeply. Do not propose the same idea three times with slightly different coefficients.
+
