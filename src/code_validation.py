@@ -73,33 +73,34 @@ class CodeValidator:
                 "Out of Bounds": np.array([1.5, 1.5, 0.0, 0.0, -np.pi, -5.0, 0.0, 0.0], dtype=np.float32)
             }
 
-            for state_name, obs in test_states.items():
-                dummy_info = {
-                    'prev_obs': obs, # Using current obs as prev_obs for structural testing
-                    'action': 0,
-                    'current_step': 10
-                }
-                
-                # Test Execution for this boundary
-                result = calc_func(obs, dummy_info)
-                
-                # Strict Signature Validation (Checked on every pass to ensure conditional logic doesn't break signature)
-                if not isinstance(result, tuple) or len(result) != 2:
-                    return False, f"Function must return a Tuple of length 2. Failed on boundary state: {state_name}."
-                
-                total_reward, components = result
-                
-                if not isinstance(total_reward, (float, int, np.floating, np.integer)):
-                    return False, f"First return value must be numeric. Failed on boundary state: {state_name}."
-                
-                if not isinstance(components, dict) or len(components) == 0:
-                    return False, f"Second return value must be a populated dictionary. Failed on boundary state: {state_name}."
-                
-                for k, v in components.items():
-                    if not isinstance(k, str):
-                        return False, f"Component dict keys must be strings. Failed on boundary state: {state_name} for key {k}."
-                    if not isinstance(v, (float, int, np.floating, np.integer)):
-                        return False, f"Component dict values must be numeric. Failed on boundary state: {state_name} for key '{k}'."
+            for action in range(4):
+                for state_name, obs in test_states.items():
+                    dummy_info = {
+                        'prev_obs': obs, # Using current obs as prev_obs for structural testing
+                        'action': action,
+                        'current_step': 10
+                    }
+                    
+                    # Test Execution for this boundary
+                    result = calc_func(obs, dummy_info)
+                    
+                    # Strict Signature Validation (Checked on every pass to ensure conditional logic doesn't break signature)
+                    if not isinstance(result, tuple) or len(result) != 2:
+                        return False, f"Function must return a Tuple of length 2. Failed on boundary state: {state_name}."
+                    
+                    total_reward, components = result
+                    
+                    if not isinstance(total_reward, (float, int, np.floating, np.integer)):
+                        return False, f"First return value must be numeric. Failed on boundary state: {state_name}."
+                    
+                    if not isinstance(components, dict) or len(components) == 0:
+                        return False, f"Second return value must be a populated dictionary. Failed on boundary state: {state_name}."
+                    
+                    for k, v in components.items():
+                        if not isinstance(k, str):
+                            return False, f"Component dict keys must be strings. Failed on boundary state: {state_name} for key {k}."
+                        if not isinstance(v, (float, int, np.floating, np.integer)):
+                            return False, f"Component dict values must be numeric. Failed on boundary state: {state_name} for key '{k}'."
 
         except ZeroDivisionError:
              return False, f"Mathematical Error: Division by zero detected during '{state_name}' boundary test. Ensure all denominators are guarded (e.g., + 1e-8)."
