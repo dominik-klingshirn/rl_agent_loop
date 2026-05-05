@@ -83,7 +83,7 @@ def run_agentic_improvement(iteration: int):
     with open(prev_code_path, "r") as f:
         prev_code = f.read()
     # Removing metadata added when saving the code last iteration, to reduce token cost
-    current_code = "import" + prev_code.split('import',1)[1:]
+    current_code = "import" + "".join(prev_code.split('import',1)[1:])
     # =========================================================
     # PHASE 1: HYPOTHESIS VALIDATION (The Causal Check)
     # =========================================================

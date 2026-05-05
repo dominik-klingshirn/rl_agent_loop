@@ -8,7 +8,7 @@ import os
 import warnings
 import sys
 import argparse
-
+from sklearn.feature_selection import mutual_info_classif
 
 # PROJECT IMPORTS 
 from src.workspace_manager import ExperimentWorkspace
@@ -431,6 +431,11 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
     Transforms episode-level stochastic training logs into metrics of reward topology.
     Derives true objective alignment strictly from semantic terminal states, using 
     failure-conditioned composite proxy metrics for edge cases (0% or 100% success).
+    
+    Tier 1 MI: adds mutual_info_classif(component, is_success) for each reward component
+    to surface non-linear dependencies that Pearson misses (thresholds, quadratics, saturating).
+    MI is computed only against the success rung — proxy rungs (sp/kin/att/imp) retain
+    Pearson-only credit assignment.
     """
     if not os.path.exists(csv_path):
         return {"seed_id": seed_id, "error": f"Train eps log not found at {csv_path}"}
@@ -502,6 +507,7 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
         t_kin = -np.sqrt(df['x_vel']**2 + df['y_vel']**2)
         t_att = -np.abs(df['angle'])
 
+        # --- Pearson block (unchanged) ---
         for col in reward_cols:
             # Calculate all base correlations
             r_succ = t_succ.corr(df[col]) if df['is_success'].std() > 0 else 0.0
@@ -518,6 +524,36 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
                 'att': float(r_att) if not np.isnan(r_att) else 0.0,
             }
             component_means[col] = float(df[col].mean())
+
+        # --- Tier 1 MI block: success-rung mutual information ---
+        # Only compute when is_success has both classes present.
+        # Batched call shares one kNN tree across all components for speed.
+        if df['is_success'].std() > 0 and len(df) >= 10:
+            try:
+                X = df[reward_cols].values
+                # Drop any rows containing NaN/inf in either X or target before fitting
+                y = df['is_success'].astype(int).values
+                finite_mask = np.isfinite(X).all(axis=1) & np.isfinite(y)
+                if finite_mask.sum() >= 10:
+                    mi_succ_array = mutual_info_classif(
+                        X[finite_mask], 
+                        y[finite_mask],
+                        n_neighbors=3,
+                        random_state=seed_id
+                    )
+                    for col, mi_val in zip(reward_cols, mi_succ_array):
+                        component_correlations[col]['mi_succ'] = float(mi_val)
+                else:
+                    for col in reward_cols:
+                        component_correlations[col]['mi_succ'] = 0.0
+            except Exception as e:
+                # MI estimation can fail on degenerate inputs; fail-soft to 0
+                for col in reward_cols:
+                    component_correlations[col]['mi_succ'] = 0.0
+        else:
+            # Single-class success or insufficient data: MI undefined for this rung
+            for col in reward_cols:
+                component_correlations[col]['mi_succ'] = 0.0
 
     # Construct the exact data contract for the Linux Aggregator
     payload = {
@@ -539,11 +575,18 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
 
     return payload
 
+
 def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
     """
     Ingests payloads from analyze_single_seed_stochastic().
     Dynamically analyzes LLM-generated reward components to find misaligned gradients.
     Returns the final JSON for the MacBook LLM Diagnostician.
+    
+    Tier 1 MI: adds 'alignment_mi_succ' and 'is_hidden_dependency' diagnostics.
+    The hidden-dependency flag fires only when the success rung is active AND a 
+    component has low |ρ| but non-trivial MI — i.e., a non-linear relationship that 
+    Pearson missed. Dead-weight detection now also requires low MI to avoid 
+    misclassifying small-magnitude gating terms (e.g., threshold bonuses).
     """
     if not seed_payloads:
         return json.dumps({"error": "No stochastic seed payloads provided."})
@@ -591,6 +634,9 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
     component_diagnostics = {}
     total_abs_magnitude = sum([abs(np.mean(vals)) for vals in comp_means.values()]) + 1e-5
     
+    # Tier 1: track whether the success rung is active for hidden-dependency detection
+    on_success_rung = (metric_key == 'succ')
+    
     for col in comp_base_corrs.keys():
 
         mean_val = np.mean(comp_means[col])
@@ -604,12 +650,41 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
             mean_rho = (w_sp * mean_sp) + (w_kin * mean_kin) + (w_att * mean_att)
         else:
             mean_rho = np.mean(comp_base_corrs[col][metric_key])
+        
+        # Tier 1: success-rung MI (always extract, but only act on it when active)
+        # .get() with [0.0] default handles seeds where MI was skipped due to single-class success
+        mi_succ_vals = comp_base_corrs[col].get('mi_succ', [0.0])
+        mean_mi_succ = float(np.mean(mi_succ_vals))
+        
+        # Pearson against success specifically — needed for the hidden-dependency comparison
+        # even when the active rung is a proxy. Used here only as input to the flag logic.
+        mean_rho_succ = float(np.mean(comp_base_corrs[col].get('succ', [0.0])))
+        
+        # Hidden Dependency: low linear correlation with success, but non-trivial MI.
+        # Gated on success rung being active so we don't fire spurious flags during
+        # 0%-success iterations where MI is meaningless (single-class) or 100%-success
+        # iterations where success no longer discriminates.
+        is_hidden_dependency = bool(
+            on_success_rung
+            and abs(mean_rho_succ) < 0.15
+            and mean_mi_succ > 0.05
+        )
+        
+        # Dead weight: low magnitude AND low MI. The MI guard prevents misclassifying
+        # small-coefficient gating terms (e.g., threshold bonuses) as inert.
+        # When MI is unavailable (proxy rung), we fall back to magnitude-only detection.
+        if on_success_rung:
+            is_dead_weight = bool(relative_contribution < 0.01 and mean_mi_succ < 0.05)
+        else:
+            is_dead_weight = bool(relative_contribution < 0.01)
 
         component_diagnostics[col] = {
             "alignment_rho": round(mean_rho, 3), 
+            "alignment_mi_succ": round(mean_mi_succ, 3),
             "is_traitor_component": bool(mean_rho < -0.2), # Actively penalizing successful behavior
+            "is_hidden_dependency": is_hidden_dependency,  # Non-linear dependency on success
             "relative_magnitude_pct": round(relative_contribution * 100, 1),
-            "is_dead_weight": bool(relative_contribution < 0.01) # Contributes < 1% to the gradient
+            "is_dead_weight": is_dead_weight
         }
 
     # Aggregate Terminal Distributions
@@ -625,7 +700,8 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
                 "topology_is_inverted_flag": bool(np.mean(oracle_rhos) < 0),
                 "mean_survival_hacking_rho": round(np.mean(hacking_rhos), 3),
                 "survival_hacking_detected_flag": bool(np.mean(hacking_rhos) > 0.6),
-                "target_metric_name": target_name # Pass to translation layer
+                "target_metric_name": target_name, # Pass to translation layer
+                "active_rung_is_success": on_success_rung  # NEW: lets translator know whether MI is meaningful
             },
             "dynamic_component_analysis": component_diagnostics,
             "policy_fragility": {
@@ -669,23 +745,37 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
 
     # Grab the dynamic target name (default to Success if missing)
     target_name = topo.get("target_metric_name", "Task Success")
-    md.append(f"| Reward Component | Correlation w/ {target_name} ($\\rho$) | Relative Magnitude | Diagnostic Flag |")
-    md.append("|:---|:---:|:---:|:---|")
+    on_success_rung = (target_name == "Task Success")
+    
+    if on_success_rung:
+        md.append("This table includes Mutual Information (MI) alongside ρ to surface non-linear dependencies that linear correlation misses.")
+        md.append(f"| Reward Component | ρ w/ Success | MI w/ Success | Relative Magnitude | Diagnostic Flag |")
+        md.append("|:---|:---:|:---:|:---:|:---|")
+    else:
+        md.append(f"| Reward Component | Correlation w/ {target_name} ($\\rho$) | Relative Magnitude | Diagnostic Flag |")
+        md.append("|:---|:---:|:---:|:---|")
     
     for comp_name, metrics in comps.items():
-        rho = metrics.get('alignment_rho', 0) # Key was renamed here
+        rho = metrics.get('alignment_rho', 0)
         mag = metrics.get('relative_magnitude_pct', 0)
         
+        # Flag resolution - hidden dependency takes precedence over neutral
         flag = "🟢 Optimal"
         if metrics.get('is_traitor_component'):
-            flag = "🔴 **TRAITOR COMPONENT** (Invert/Remove)"
+            flag = "🔴 **NEGATIVELY ALIGNED** (ρ < -0.2)"
+        elif metrics.get('is_hidden_dependency'):
+            flag = "🟣 **HIDDEN DEPENDENCY** (Non-linear — examine functional form)"
         elif metrics.get('is_dead_weight'):
-            flag = "🟡 **DEAD WEIGHT** (Scale Too Low)"
+            flag = "🟡 **LOW MAGNITUDE** (<1% of gradient)"
         elif rho < 0.2:
             flag = "⚪ Neutral/Noisy"
 
-
-        md.append(f"| `{comp_name.replace('reward_','',1)}` | {rho:.3f} | {mag:.1f}% | {flag} |")
+        clean_name = comp_name.replace('reward_', '', 1)
+        if on_success_rung:
+            mi = metrics.get('alignment_mi_succ', 0)
+            md.append(f"| `{clean_name}` | {rho:.3f} | {mi:.3f} | {mag:.1f}% | {flag} |")
+        else:
+            md.append(f"| `{clean_name}` | {rho:.3f} | {mag:.1f}% | {flag} |")
 
     # C. Stochastic Fragility
     md.append("\n#### C. Stochastic Policy Fragility")
