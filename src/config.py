@@ -124,8 +124,9 @@ class Config:
                 # Must escape prior failure modes logged in the full Experiment Ledger.
                 # Highest entropy in the pipeline — needs to diverge from its own history.
                 # Context: Full ledger + diagnostic report = largest window justified.
-                options["temperature"] = 0.8
+                options["temperature"] = 1.0
                 options["top_p"] = 0.95
+                options["top_k"]=64
                 options["num_ctx"] = 24576      # Max safe for 36GB — ledger grows over iterations
                 options["num_predict"] = 8192   # 3 detailed mathematical proposals with rationale
 

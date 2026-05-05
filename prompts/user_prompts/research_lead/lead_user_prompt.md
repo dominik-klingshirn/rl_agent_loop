@@ -12,5 +12,8 @@ This is the immutable record of past iterations. Do not repeat previous failed h
 
 {strategist_proposals_markdown}
 
+### [3. DIAGNOSTIC REPORT (CURRENT BEHAVIOR)]
+{diagnostic_report}
+
 **ACTION REQUIRED:**
 Evaluate the proposals based on your evaluation criteria. Output your `EXECUTIVE DECISION` selecting the single most viable Mathematical Contract.

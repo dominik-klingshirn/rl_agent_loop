@@ -8,9 +8,9 @@ NC='\033[0m'
 
 # Define the contenders (typically for the 'Strategist' role when running 'Mixture-of-Agents' style experiment)
 #MODELS=("dolphin3:8b" "olmo2:7b" "mistral:7b" "gemma3:4b" "llama3.1:8b" "qwen3:4b" "phi4-mini") # "gemma3:27b" "deepseek-r1:32b" "openthinker:32b" "devstral:24b"
-MODELS=("nemotron-3-nano:30b" "qwen3.5:35b-A3B" "gemma4:26b" "nemotron-cascade-2" "qwen3:30b" "qwq:32b")
+#MODELS=("nemotron-3-nano:30b" "qwen3.5:35b-A3B" "gemma4:26b" "nemotron-cascade-2" "qwen3:30b" "qwq:32b")
 #MODELS=("gemma3:27b")
-#MODELS=("gemma3:27b" "qwen3.5:35b-A3B" "gag0/qwen35-opus-distil:27b" "hf.co/reedmayhew/claude-3.7-sonnet-reasoning-gemma3-12B")
+MODELS=("gemma4:26b")
 
 # --- Defaults ---
 ITERATIONS=""

@@ -68,14 +68,15 @@ def organize_proposals(brain: CognitiveNode, proposals: str, model_override:str=
     print(f"Organizing Proposals took: {timedelta(seconds=elapsed_time)}\n")
     return proposal_report
 
-def choose_proposal(brain: CognitiveNode, iteration: int, proposal_report: str, expt_ledger: str, model_override:str=None) -> str:
+def choose_proposal(brain: CognitiveNode, iteration: int, diagnostic_report: str, proposal_report: str, expt_ledger: str, model_override:str=None) -> str:
     """Evaluates proposals against the experiment ledger to choose the most viable path."""
     start_time = time.perf_counter()
 
-    # Build Prompt (Removed unused diagnostic_report, added required iteration)
+    # Build Prompt 
     sys_prompt, user_prompt = prompts.build_lead_prompt(
         template=Config.lead_template,
         iteration=iteration,
+        diagnostic_report=diagnostic_report,
         experiment_ledger=expt_ledger,
         strategist_proposals_markdown=proposal_report
     )

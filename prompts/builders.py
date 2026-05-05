@@ -25,12 +25,13 @@ def build_organizer_prompt(template: Tuple[str, str], raw_strategist_output: str
     )
     return system_role, user_task
 
-def build_lead_prompt(template: Tuple[str, str], iteration: int, experiment_ledger: str, strategist_proposals_markdown: str) -> Tuple[str, str]:
+def build_lead_prompt(template: Tuple[str, str], iteration: int, diagnostic_report:str, experiment_ledger: str, strategist_proposals_markdown: str) -> Tuple[str, str]:
     """Builds the prompt for the Research Lead to make an executive decision."""
     system_role = load_template("system_prompts","research_lead",template[0])
     user_template = load_template("user_prompts","research_lead",template[1])
     user_task = user_template.format(
         iteration=iteration,
+        diagnostic_report=diagnostic_report,
         experiment_ledger=experiment_ledger,
         strategist_proposals_markdown=strategist_proposals_markdown
     )

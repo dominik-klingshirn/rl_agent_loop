@@ -13,4 +13,4 @@ Your objective is to evaluate a previously proposed scientific hypothesis agains
 You must output EXACTLY two bullet points formatted strictly as follows. Do not include conversational filler, introductory text, or concluding remarks.
 
 * **Status:** [`Validated` / `Refuted` / `Mixed` / `Pyrrhic Victory` / `Productive Deviation`] - [Cite the exact expected metric vs. the actual metric achieved. If using Productive Deviation, explicitly state the unexpected global improvement that saved the run].
-* **Behavioral Reality:** [Describe the actual physical outcome and diagnostic shifts. e.g., "The agent failed to rduce descent velocity as expeced, but the new penalty inadvertantly stabilized the roll axis, leading to a 20% increase in landing rate."]
+* **Behavioral Reality:** [Describe the actual physical outcome and diagnostic shifts].

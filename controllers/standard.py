@@ -46,7 +46,7 @@ model_overrides = {
         "research_lead":"deepseek-r1:32b",
         "organizer": "deepseek-r1:14b",
         "dispatcher":"deepseek-r1:14b",
-        "validator":"deepseek-r1:14b",
+        "validator":"deepseek-r1:32b",
         "coder": "qwen3-coder:30b"
     }
 
@@ -81,8 +81,9 @@ def run_agentic_improvement(iteration: int):
     # Load the code that generated these metrics
     prev_code_path = ws.get_path("code", iteration - 1, "reward.py")
     with open(prev_code_path, "r") as f:
-        current_code = f.read()
-
+        prev_code = f.read()
+    # Removing metadata added when saving the code last iteration, to reduce token cost
+    current_code = "import" + prev_code.split('import',1)[1:]
     # =========================================================
     # PHASE 1: HYPOTHESIS VALIDATION (The Causal Check)
     # =========================================================
@@ -105,7 +106,7 @@ def run_agentic_improvement(iteration: int):
         print(f"ℹ️ Iteration {iteration}: No history in Ledger to validate.")
 
     # Extract historical context for the reasoning nodes
-    ledger_context = ledger.get_context_for_llm(limit=10)
+    ledger_context = ledger.get_context_for_llm(limit=20)
 
     # =========================================================
     # PHASE 2: RESEARCH & DECISION PIPELINE
@@ -130,6 +131,7 @@ def run_agentic_improvement(iteration: int):
     chosen_proposal = choose_proposal(
         brain=brain, 
         iteration=iteration,
+        diagnostic_report=diagnostic_report, 
         proposal_report=proposal_report, 
         expt_ledger=ledger_context,
         model_override = lead_override if lead_override else MODEL_NAME
