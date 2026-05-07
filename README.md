@@ -10,7 +10,7 @@ Instead, it improves the *reward function* that defines the task.
 
 By iteratively analyzing behavior and refining incentives, the system transforms unstable or misaligned objectives into ones that reliably produce successful outcomes.
 
-Under the hood, a closed-loop pipeline translates raw training telemetry into a structure diagnostic report, which a multi-agent LLM system uses to iteratively write, test, and debug reward functions.
+Under the hood, a closed-loop pipeline translates raw training telemetry into a structured diagnostic report, which a multi-agent LLM system uses to iteratively write, test, and debug reward functions.
 
 **High-level System Overview**
 ![ARD Pipeline Architecture](assets/ard_pipeline_overview.png)
@@ -22,17 +22,23 @@ Under the hood, a closed-loop pipeline translates raw training telemetry into a 
 
 ## Technical Highlights
 
-* **The Deterministic Translation Layer:** 
-LLMs hallucinate when fed raw neural network weights or unstructured logs. To solve this, a Python layer intercepts the PPO telemetry and translates it into pure, objective statistics (e.g., Critic Saturation Index, Actuator Chatter Rates). It converts an opaque RL environment into a structured tabular data problem.
+* **The Deterministic Translation Layer:**
+LLMs hallucinate when fed raw neural network weights or unstructured logs. To solve this, a Python layer intercepts the PPO telemetry and translates it into pure, objective statistics (e.g., Critic Saturation Index, Actuator Chatter Rates, Trajectory Isomorphism). It converts an opaque RL environment into a structured tabular data problem that an LLM can reason about without distortion.
+
+* **Dual-Channel Algorithmic Credit Assignment (ρ + MI):**
+The system goes beyond simple reward curves by computing both Pearson correlation ($\rho$) and Mutual Information (MI) between individual reward components and task outcomes. Pearson captures linear alignment; MI surfaces non-linear dependencies—threshold bonuses, quadratic attractors, and saturating terms—that $\rho$ is mathematically blind to. This dual-channel approach produces four diagnostic flags: 🟢 Optimal, 🔴 Negatively Aligned ($\rho < -0.2$), 🟣 Hidden Dependency (low $|\rho|$ but non-trivial MI), and 🟡 Low Magnitude (dead weight with confirmed low MI).
+
+* **Dynamic Target Metric Ladder:**
+A naive system would always correlate reward components against binary success—but at 0% success rate, that signal is uninformative. This system implements a three-rung fallback: **Task Success** (when the agent is landing some of the time) → **Impact Softness** (when the agent lands consistently but crashes hard) → **Composite Viability** (at 0% success, a failure-mode-weighted composite of spatial proximity, kinematic stability, and attitude control, with weights dynamically assigned based on the dominant failure: `out_of_bounds`, `crashed`, `hover_timeout`, or `landed_but_slid_into_valley`).
 
 * **Decoupled Agentic Workflow:**
-To prevent context-window saturation and syntax collapse, reasoning is strictly isolated from execution. The system uses a 6-stage routing protocol where specialized agents (Strategist, Research Lead, Coder, Validator) are restricted to single, distinct objectives.
+To prevent context-window saturation and syntax collapse, reasoning is strictly isolated from execution. The system uses a 6-stage routing protocol where specialized agents (Strategist, Organizer, Research Lead, Dispatcher, Coder, Validator) are each restricted to a single, distinct objective with independently tuned temperature and context window parameters.
 
-* **Algorithmic Credit Assignment:**
-The system actively computes Pearson correlations ($\rho$) between individual reward components and dynamic physical proxies (like Euclidean speed or spatial proximity). This allows the LLM to mathematically identify which parts of its generated code are helping, and which are actively causing crashes.
+* **Closed-Loop Read/Write/Delete Architecture:**
+The pipeline is a true autonomous loop. On each iteration, the Validator reads the prior hypothesis from the Experiment Ledger, the new diagnostic report is written to the shared filesystem, the Coder overwrites the reward function, and the prior iteration's intermediate artifacts are pruned. No human intervention is required between iterations.
 
 * **Local Orchestration:**
-Designed to run completely unsupervised on local hardware. The pipeline utilizes distributed compute (a Linux server handling PPO training, and a MacBook Pro M4 Max handling LLM inference) to dynamically rewrite physics, train, and validate using a highly-quantized 8B reasoning model in under 8 minutes per iteration.
+Designed to run completely unsupervised on local hardware. The pipeline utilizes distributed compute (a Linux server handling PPO training, and a MacBook Pro M4 Max handling LLM inference) to dynamically rewrite physics, train, and validate using highly-quantized 8B/14B reasoning models in under 8 minutes per iteration.
 
 
 ## System Architecture: The Decoupled Loop
@@ -41,17 +47,17 @@ Passing raw RL telemetry into an LLM's context window leads to immediate halluci
 
 **Phase 1: Deterministic Translation (The Physics Engine)**
 
-Before the LLM sees any data, a Python layer intercepts the PPO training logs and translates them into semantic physical states. It dynamically computes Pearson correlations ($\rho$) between individual reward terms and physical proxies (like Euclidean speed or spatial proximity). This converts an opaque RL black-box into a clear tabular data problem.
+Before the LLM sees any data, a Python layer intercepts the PPO training logs and translates them into semantic physical states. It dynamically computes Pearson correlations ($\rho$) and Mutual Information (MI) between individual reward terms and physical proxies (like Euclidean speed, spatial proximity, or impact softness), using a dynamic target ladder that adapts to the agent's current success rate. This converts an opaque RL black-box into a clear, interpretable diagnostic problem.
 
 **Phase 2: Multi-Agent Meta-Reasoning (The Brain)**
 
 To prevent syntax collapse, reasoning is isolated from execution using 6 highly restricted agents:
-1. **Strategist:** Reads the translated physics report and generates 3 distinct mathematical hypotheses.
-2. **Organizer:** A strict parser that sanitizes the Strategist's output into a pristine Markdown schema.
-3. **Research Lead:** The executive filter that applies Occam's Razor and selects the best equation.
-4. **Dispatcher:** Routes the decision, splitting the raw math from the scientific hypothesis.
-5. **Coder:** Operates in a strict syntax-only sandbox to inject the Python logic into the Gymnasium wrapper.
-6. **Validator:** Evaluates the *next* iteration's diagnostic report against the original hypothesis, specifically hunting for reward hacking, and compresses the failure into an immutable lesson.
+1. **Strategist:** Reads the translated diagnostic report and generates 3 distinct mathematical hypotheses, guided by both $\rho$ and MI signals to distinguish negatively aligned components from non-linear hidden dependencies.
+2. **Organizer:** A strict parser that sanitizes the Strategist's output into a pristine Markdown schema ("Mathematical Contract") with zero data loss.
+3. **Research Lead:** The executive filter that cross-references proposals against the full Experiment Ledger to avoid cyclical failures and selects the single best hypothesis.
+4. **Dispatcher:** Routes the decision, splitting the raw mathematical formulation from the scientific hypothesis into separate payloads.
+5. **Coder:** Operates in a strict syntax-only sandbox to translate the math spec into a `calculate_reward(obs, info)` Python function, which is then validated by a deterministic AST compiler before deployment.
+6. **Validator:** Evaluates the *next* iteration's diagnostic report against the original hypothesis, specifically hunting for Goodhart's Law (reward hacking), and compresses the outcome into an immutable post-mortem appended to the Experiment Ledger.
 
 **Detailed Data Flow**
 ```mermaid
@@ -67,7 +73,7 @@ graph TD
     subgraph "Node 1: Linux Training Server (Execution & Physics)"
         A[PPO Agent Training<br/>Stable-Baselines3]:::linux
         B[Gymnasium Env<br/>LunarLander-v3]:::linux
-        C[Deterministic Translation Layer<br/>Pandas/NumPy]:::linux
+        C[Deterministic Translation Layer<br/>Pandas/NumPy/sklearn]:::linux
         
         A <-->|Actions / Obs| B
         B -->|Raw Telemetry CSVs| C
@@ -75,7 +81,7 @@ graph TD
 
     subgraph "Shared File System"
         D[(Diagnostic Report.md)]:::file
-        E[(Experiment Ledger.txt)]:::file
+        E[(Experiment Ledger.json)]:::file
         F[(reward_function.py)]:::file
     end
 
@@ -95,30 +101,36 @@ graph TD
     end
 
     %% Cross-Node Connections
-    C -->|Aggregates Physics & Kinematics| D
+    C -->|ρ + MI Credit Assignment<br/>Dynamic Target Ladder| D
     D -->|Context| G
     E -->|History| G
     E -->|History| I
     K -->|Overwrites| F
     F -->|Imports| B
-    L -->|Appends| E
+    L -->|Appends Post-Mortem| E
 ```
 ## What Makes This Approach Different
 
-- **Closed-loop reward optimization** instead of manual tuning  
-- **Structured diagnostics** replacing opaque reward curves  
-- **Role-specialized LLM system (mixture-of-agents)** for reasoning, coding, and validation  
-- **Behavior-first analysis** using semantic terminal states (e.g., crash, stable landing)  
+- **Closed-loop read/write/delete reward optimization** instead of manual tuning
+- **Structured deterministic diagnostics** replacing opaque reward curves
+- **Dual-channel credit assignment** using both Pearson ρ and Mutual Information to distinguish linear misalignment from non-linear hidden dependencies
+- **Dynamic target metric ladder** that adapts correlation targets to the agent's current failure regime
+- **Role-specialized LLM system (mixture-of-agents)** for reasoning, coding, and validation, with per-agent temperature and context window tuning
+- **Behavior-first analysis** using semantic terminal states (e.g., `crashed`, `hover_timeout`, `landed_but_slid_into_valley`, `landed_centered`)
 
 ## The Methodology: Translating Physics to Context
 
 The core problem this project solves is simple: standard Reinforcement Learning telemetry isn't descriptive enough for an LLM to act on. If an agent gets a low score, the LLM doesn't know if it plummeted into the ground, hovered until it ran out of time, or landed perfectly but slid off the pad.
 
-To give the LLM the context it needs to rewrite the reward function, this system relies on a **Deterministic Translation Layer**.
+To give the LLM the context it needs to rewrite the reward function, this system relies on a **Deterministic Translation Layer** with dual-channel component analysis.
 
-* **Semantic Tagging:** The Gymnasium environment wrapper tracks the physical state at the terminal step and tags the episode (e.g., `crashed`, `hover_timeout`, `landed_but_slid_into_valley`).
-* **Dynamic Proxy Metrics:** If the agent fails to land across all seeds, the translation layer dynamically shifts its correlation target. It calculates the Pearson correlation ($\rho$) between individual reward components and physical proxies like *Kinematic Stability* (Euclidean norm of velocities) or *Spatial Proximity* to the pad.
-* **Algorithmic Credit Assignment:** This allows the LLM to "see" exactly which term in its mathematical equation is helping the agent descend safely, and which term is inadvertently causing a crash.
+* **Semantic Tagging:** The Gymnasium environment wrapper tracks the physical state at the terminal step and tags the episode (e.g., `crashed`, `hover_timeout`, `landed_but_slid_into_valley`, `landed_centered`).
+
+* **Dynamic Proxy Ladder:** The translation layer dynamically selects its correlation target based on the agent's current success rate. At 0% success, it shifts to a composite physical viability score weighted by the dominant failure mode. At 100% success, it shifts to impact softness. Only when the agent is partially succeeding does it correlate against binary task success—when that signal is actually discriminating.
+
+* **Dual-Channel Credit Assignment:** For each LLM-generated reward component, the system computes:
+  - **Pearson ρ** against the active target metric — captures the linear, signed direction of alignment.
+  - **Mutual Information (MI)** against binary task success — captures any statistical dependence, including non-linear ones. A component with low |ρ| but high MI is flagged as a 🟣 **Hidden Dependency**: it has real influence on outcomes that linear correlation cannot see (e.g., a threshold bonus, a quadratic attractor, or a saturating `tanh` term). The dead-weight flag (🟡) requires *both* low magnitude *and* low MI, preventing misclassification of small-coefficient gating terms as inert.
 
 ## Failure → Recovery Case Study
 ![Failure to Recovery](assets/gemma3-27b__SpinCrash_poster_graph.svg)
@@ -132,7 +144,7 @@ To evaluate the system, experiments were initialized with deliberately flawed re
 Across iterations, the system:
 
 1. Diagnoses behavioral failure modes from structured telemetry  
-2. Identifies misaligned reward components  
+2. Identifies misaligned and non-linearly acting reward components  
 3. Proposes and implements refined reward functions  
 4. Retrains and reevaluates the policy  
 
@@ -159,8 +171,7 @@ To handle continuous iteration loops and separate LLM inference from PPO trainin
 
 ## Future Work (Phase 2)
 
-The next phase of this project will extend the reward decomposition concept to utilize traditional machine learning for algorithmic credit assignment.
-Instead of relying on the LLM to guess scalar coefficients, the LLM will generate purely structural reward proposals. We will then use **Optuna** to tune the coefficients across parallel mini-runs. Finally, by training an **XGBoost** model on the resulting tabular telemetry, we will compute **SHAP values** to determine the exact, non-linear feature importance of each mathematical reward component.
+The next phase extends algorithmic credit assignment beyond statistical correlation. Rather than having the LLM guess scalar coefficients, it will generate purely structural reward proposals. **Optuna** will then tune the coefficients across parallel mini-runs. An **XGBoost** model trained on the resulting tabular telemetry will compute **SHAP values** to determine exact, non-linear feature importance for each reward component—completing the transition from statistical diagnostics to causal attribution.
 
 ## Installation & Quick Start
 
@@ -172,7 +183,6 @@ This pipeline requires a dual-node setup (or a single machine running both the L
 git clone https://github.com/Cheerful-Nebula/rl_agent_loop.git
 cd rl_agent_loop
 pip install -r requirements.txt
-
 ```
 
 **2. Local LLM Setup**
@@ -180,17 +190,15 @@ Ensure you have [Ollama](https://ollama.ai/) installed and the reasoning model p
 
 ```bash
 ollama pull deepseek-r1:8b
-
 ```
 
 **3. Execute the Pipeline**
 
 * Start the orchestration loop using the `outer_loop.sh` script.
 * Followed by desired number of iterations (integer), then the number of timesteps each PPO agent will be trained on the newly generated reward function (integer).
-* Using the word `remote` triggers a distributed compute cycle, don't include `remote` to have entire loop run on a single computer.
+* Using the word `remote` triggers a distributed compute cycle; omit it to run the entire loop on a single machine.
 * The Workspace Manager will automatically generate your experiment directories.
 
 ```bash
 ./outer_loop.sh 10 1000000 remote
-
 ```

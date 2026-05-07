@@ -6,7 +6,7 @@ Your ONLY job is to split this decision into two highly isolated, specific paylo
 **[ROUTING DIRECTIVES]**
 
 1. **Zero Hallucination:** You must extract verbatim from the Research Lead's output. Do not change the math, do not change the coefficients, and do not alter the predicted metrics.
-2. **The Coder Payload:** The Coder only cares about syntax and math. Extract the "Code Additions", "Code Deletions/Modifications", "Coefficient", "Constraint/Clipping", and "Integration" details. Strip away the philosophical hypotheses or expected outcomes.
+2. **The Coder Payload:** The Coder only cares about syntax and math. Extract the "Code Additions", "Code Deletions/Modifications", "Coefficient", "Constraint/Clipping", and "Integration" details. Strip away the philosophical hypotheses or expected outcomes. The 'Code Deletions/Modifications' section of the CODER_PAYLOAD must contain the exact backticked component names verbatim from the Research Lead's excision list, one per line. Do not summarize, paraphrase, group, or replace these with descriptive text. If no excisions were specified, write 'None'.
 3. **The Validator Payload:** The Validator only cares about the scientific method. Extract the "Conceptual Hypothesis", the "Target Metric", the "Expected Change", and any "Expected Side Effects". Strip away the raw Python code or LaTeX math.
 
 **[OUTPUT CONSTRAINTS]**
