@@ -29,7 +29,7 @@ LLMs hallucinate when fed raw neural network weights or unstructured logs. To so
 The system goes beyond simple reward curves by computing both Pearson correlation ($\rho$) and Mutual Information (MI) between individual reward components and task outcomes. Pearson captures linear alignment; MI surfaces non-linear dependencies—threshold bonuses, quadratic attractors, and saturating terms—that $\rho$ is mathematically blind to. This dual-channel approach produces four diagnostic flags: 🟢 Optimal, 🔴 Negatively Aligned ($\rho < -0.2$), 🟣 Hidden Dependency (low $|\rho|$ but non-trivial MI), and 🟡 Low Magnitude (dead weight with confirmed low MI).
 
 * **Dynamic Target Metric Ladder:**
-A naive system would always correlate reward components against binary success—but at 0% success rate, that signal is uninformative. This system implements a three-rung fallback: **Task Success** (when the agent is landing some of the time) → **Impact Softness** (when the agent lands consistently but crashes hard) → **Composite Viability** (at 0% success, a failure-mode-weighted composite of spatial proximity, kinematic stability, and attitude control, with weights dynamically assigned based on the dominant failure: `out_of_bounds`, `crashed`, `hover_timeout`, or `landed_but_slid_into_valley`).
+The translation layer dynamically selects its correlation target based on the agent's current success rate — because at 0% success, binary task success is an uninformative signal with no variance to correlate against. This system implements a three-rung fallback: **Task Success** (when the agent is landing some of the time) → **Impact Softness** (when the agent lands consistently but crashes hard) → **Composite Viability** (at 0% success, a failure-mode-weighted composite of spatial proximity, kinematic stability, and attitude control, with weights dynamically assigned based on the dominant failure: `out_of_bounds`, `crashed`, `hover_timeout`, or `landed_but_slid_into_valley`).
 
 * **Decoupled Agentic Workflow:**
 To prevent context-window saturation and syntax collapse, reasoning is strictly isolated from execution. The system uses a 6-stage routing protocol where specialized agents (Strategist, Organizer, Research Lead, Dispatcher, Coder, Validator) are each restricted to a single, distinct objective with independently tuned temperature and context window parameters.
@@ -38,7 +38,7 @@ To prevent context-window saturation and syntax collapse, reasoning is strictly 
 The pipeline is a true autonomous loop. On each iteration, the Validator reads the prior hypothesis from the Experiment Ledger, the new diagnostic report is written to the shared filesystem, the Coder overwrites the reward function, and the prior iteration's intermediate artifacts are pruned. No human intervention is required between iterations.
 
 * **Local Orchestration:**
-Designed to run completely unsupervised on local hardware. The pipeline utilizes distributed compute (a Linux server handling PPO training, and a MacBook Pro M4 Max handling LLM inference) to dynamically rewrite physics, train, and validate using highly-quantized 8B/14B reasoning models in under 8 minutes per iteration.
+Designed to run completely unsupervised on local hardware. The pipeline utilizes distributed compute (a Linux server handling PPO training, and a MacBook Pro M4 Max handling LLM inference) with quantized local models ranging from 8B to 30B parameters, the practical upper bound on consumer hardware, to dynamically rewrite physics, train, and validate with no human intervention required between iterations.
 
 
 ## System Architecture: The Decoupled Loop
@@ -126,11 +126,11 @@ To give the LLM the context it needs to rewrite the reward function, this system
 
 * **Semantic Tagging:** The Gymnasium environment wrapper tracks the physical state at the terminal step and tags the episode (e.g., `crashed`, `hover_timeout`, `landed_but_slid_into_valley`, `landed_centered`).
 
-* **Dynamic Proxy Ladder:** The translation layer dynamically selects its correlation target based on the agent's current success rate. At 0% success, it shifts to a composite physical viability score weighted by the dominant failure mode. At 100% success, it shifts to impact softness. Only when the agent is partially succeeding does it correlate against binary task success—when that signal is actually discriminating.
+* **Dynamic Proxy Ladder:** The translation layer dynamically selects its correlation target based on the agent's current success rate. At 0% success, it shifts to a composite physical viability score weighted by the dominant failure mode. At 100% success, it shifts to impact softness. Only when the agent is partially succeeding does it correlate against binary task success, when that signal is actually discriminating.
 
 * **Dual-Channel Credit Assignment:** For each LLM-generated reward component, the system computes:
   - **Pearson ρ** against the active target metric — captures the linear, signed direction of alignment.
-  - **Mutual Information (MI)** against binary task success — captures any statistical dependence, including non-linear ones. A component with low |ρ| but high MI is flagged as a 🟣 **Hidden Dependency**: it has real influence on outcomes that linear correlation cannot see (e.g., a threshold bonus, a quadratic attractor, or a saturating `tanh` term). The dead-weight flag (🟡) requires *both* low magnitude *and* low MI, preventing misclassification of small-coefficient gating terms as inert.
+  - **Mutual Information (MI)** against binary task success, captures any statistical dependence, including non-linear ones. A component with low |ρ| but high MI is flagged as a 🟣 **Hidden Dependency**: it has real influence on outcomes that linear correlation cannot see (e.g., a threshold bonus, a quadratic attractor, or a saturating `tanh` term). The dead-weight flag (🟡) requires *both* low magnitude *and* low MI, preventing misclassification of small-coefficient gating terms as inert.
 
 ## Failure → Recovery Case Study
 ![Failure to Recovery](assets/gemma3-27b__SpinCrash_poster_graph.svg)
@@ -156,7 +156,7 @@ The system consistently transforms unstable behaviors into controlled, task-alig
 To handle continuous iteration loops and separate LLM inference from PPO training, the project relies on a `workspace_manager.py` that dynamically generates mirrored file systems for every experiment run.
 
 ```text
-├── controllers/          # Main loop orchestration and bash scripts (inner_loop.sh, outer_loop.sh)
+├── controllers/          # LLM orchestration scripts
 ├── experiments/          # Dynamically generated by Workspace Manager
 │   └── [Campaign_Tag]/
 │       └── [Model_Name]/ # (e.g., deepseek-r1-8b)
@@ -166,6 +166,8 @@ To handle continuous iteration loops and separate LLM inference from PPO trainin
 ├── prompts/              # System prompt templates for the multi-agent architecture
 ├── src/                  # Core Python modules (evaluation, callbacks, wrappers, ledger)
 ├── train.py              # PPO execution script
+├── outer_loop.sh         # Main orchestration bash script 1
+├── inner_loop.sh         # Main orchestration bash script 2
 └── requirements.txt      
 ```
 
@@ -191,14 +193,17 @@ Ensure you have [Ollama](https://ollama.ai/) installed and the reasoning model p
 ```bash
 ollama pull deepseek-r1:8b
 ```
+Note on model selection: A single model assigned to every role underperforms significantly compared to role-matched selection. The Strategist benefits from a larger, higher-temperature model (e.g., gemma3:27b, deepseek-r1:14b) while the Coder and Organizer perform better with smaller, near-deterministic models. Empirically, mixing model sizes by role produces substantially better reward proposals than any single model used uniformly. See config.py for per-role temperature and context window settings.
 
 **3. Execute the Pipeline**
 
 * Start the orchestration loop using the `outer_loop.sh` script.
-* Followed by desired number of iterations (integer), then the number of timesteps each PPO agent will be trained on the newly generated reward function (integer).
-* Using the word `remote` triggers a distributed compute cycle; omit it to run the entire loop on a single machine.
 * The Workspace Manager will automatically generate your experiment directories.
+* -i : flag for desired number of iterations (integer)
+* -s : flag for the number of timesteps each PPO agent will be trained on the newly generated reward function (integer)
+* -t : flag for optional tag appended to campaign's filename 
+    * Using the word `remote` triggers a distributed compute cycle; omit it to run the entire loop on a single machine.
 
 ```bash
-./outer_loop.sh 10 1000000 remote
+./outer_loop.sh -i 10 -s 1000000 -t remote
 ```
