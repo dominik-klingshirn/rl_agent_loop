@@ -27,8 +27,8 @@ class ExperimentWorkspace:
 
         # 2. SANITIZE MODEL NAME
         # Filesystems hate colons (llama3.1:8b -> llama3.1-8b)
-        self.model_dir_name = self.raw_model_name.replace(":", "-")
-
+        self.model_dir_name = self.raw_model_name.rsplit("/", 1)[-1].replace(":", "-")
+        
         # 3. CONSTRUCT THE HIERARCHY
         # Structure: experiments / {Campaign_Tag} / {Model_Name} / {Category}
         self.campaign_path = Path(base_dir) / self.campaign_tag
@@ -44,6 +44,7 @@ class ExperimentWorkspace:
             "failed_code": self.model_root_path / "generated_code" / "failed_attempts",
             "telemetry_iteration": self.model_root_path / "telemetry" / f"iteration_{int(iteration):02d}",
             "telemetry_payloads": self.model_root_path / "telemetry"/ "metric_payloads",
+            "telemetry_reports": self.model_root_path / "telemetry"/ "diagnostic_reports",
             "plots": self.model_root_path / "artifacts" / f"iteration{int(iteration):02d}"/ "plots",
             "models": self.model_root_path / "artifacts" / f"iteration{int(iteration):02d}" / "models",
             "videos": self.model_root_path / "artifacts" / f"iteration{int(iteration):02d}"/ "videos"
@@ -117,3 +118,10 @@ class ExperimentWorkspace:
         with open(filepath, "r") as f:
             return json.load(f)
         print(f"Load Iteration {iteration} Metric Payload From {filepath}")
+
+    def save_report(self, iteration, report):
+        """Saves the generated Diagnostic Report"""
+        filepath = self.get_path("telemetry_reports", iteration, "report.md")
+        with open(filepath, "w") as f:
+            f.write(report)
+        print(f"Iteration {iteration} Diagnostic Report Saved To {filepath}")

@@ -172,7 +172,14 @@ def generate_code(brain: CognitiveNode, coder_payload: str, current_code: str, m
     
     return generated_code
 
-def generate_ledger_entry(brain: CognitiveNode, iteration: int, val_payload: str, diagnostic_report: str, model_override:str=None) -> str:
+def generate_ledger_entry(
+        brain: CognitiveNode, 
+        iteration: int, 
+        val_payload: str, 
+        diagnostic_report: str, 
+        baseline_diagnostic_report: str, 
+        model_override:str=None
+        ) -> str:
     """Validator: Peer Reviews Hypothesis against Diagnostic Report to create a ledger entry."""
     start_time = time.perf_counter()
 
@@ -180,7 +187,8 @@ def generate_ledger_entry(brain: CognitiveNode, iteration: int, val_payload: str
         template=Config.validator_template,
         previous_iteration_number=iteration,
         validator_payload_from_dispatcher=val_payload,
-        new_diagnostic_report=diagnostic_report
+        new_diagnostic_report=diagnostic_report,
+        baseline_diagnostic_report=baseline_diagnostic_report
     )
     
     print("Generating Ledger Entry (Peer Review)")

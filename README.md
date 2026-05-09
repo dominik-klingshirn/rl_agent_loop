@@ -182,7 +182,7 @@ This pipeline requires a dual-node setup (or a single machine running both the L
 **1. Install Dependencies**
 
 ```bash
-git clone https://github.com/Cheerful-Nebula/rl_agent_loop.git
+git clone https://github.com/dominik-klingshirn/rl_agent_loop.git
 cd rl_agent_loop
 pip install -r requirements.txt
 ```
@@ -191,9 +191,17 @@ pip install -r requirements.txt
 Ensure you have [Ollama](https://ollama.ai/) installed and the reasoning model pulled:
 
 ```bash
-ollama pull deepseek-r1:8b
+ollama pull deepseek-r1:32b
 ```
-Note on model selection: A single model assigned to every role underperforms significantly compared to role-matched selection. The Strategist benefits from a larger, higher-temperature model (e.g., gemma3:27b, deepseek-r1:14b) while the Coder and Organizer perform better with smaller, near-deterministic models. Empirically, mixing model sizes by role produces substantially better reward proposals than any single model used uniformly. See config.py for per-role temperature and context window settings.
+Note on model selection: A single model assigned to every role underperforms significantly compared to role-matched selection. Empirically, having role-specific model choices can substantially better reward proposals than any single model used uniformly. See config.py for per-role temperature and context window settings. 
+
+The model 'team' used for the Case Study plot above was following:
+Strategist    : `gemma3:27b`
+Organizer     : `deepseek-r1:14b`
+Research Lead : `deepseek-r1:32b`
+Dispatcher    : `deepseek-r1:14b`
+Coder         : `qwen3-coder:30b`
+Validator     : `deepseek-r1:14b`
 
 **3. Execute the Pipeline**
 

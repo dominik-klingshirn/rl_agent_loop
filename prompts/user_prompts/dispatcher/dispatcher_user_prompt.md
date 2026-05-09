@@ -8,4 +8,4 @@ Parse the following Executive Decision from the Research Lead and route the data
 {research_lead_decision}
 
 **ACTION REQUIRED:**
-Extract and route the mathematical instructions to the `<CODER_PAYLOAD>` and the scientific experiment parameters to the `<VALIDATOR_PAYLOAD>`. Output nothing else.
+Extract and route the mathematical instructions to the `<CODER_PAYLOAD>` and the intervention parameters and predicted effects to the `<VALIDATOR_PAYLOAD>`. Output nothing else.

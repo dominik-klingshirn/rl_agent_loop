@@ -79,12 +79,12 @@ class ExperimentLedger:
         recent = completed[-limit:]
         
         if not recent:
-            return "First Iteration: No Past Experiments Yet"
+            return "First Iteration: No Past Intervention Records Yet"
 
         history_blocks = []
         for exp in recent:
             block = f"### Iteration {exp['id']} Historical Record\n"
-            block += "**The Tested Hypothesis:**\n"
+            block += "**The Proposed Intervention:**\n"
             block += f"{exp['hypothesis_payload']}\n\n"
             block += "**The Physical Outcome & Lesson:**\n"
             block += f"{exp['validation_post_mortem']}\n"

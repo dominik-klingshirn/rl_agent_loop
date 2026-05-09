@@ -10,7 +10,7 @@ from src.ledger import ExperimentLedger
 from src.cognitive_node import CognitiveNode
 from src.config import Config
 from src import utils
-from src.analysis import generate_diagnostic_report
+from src.analysis import generate_diagnostic_report, translate_behavior_kinematics
 from src.pipeline_nodes import (
     generate_proposals,
     organize_proposals,
@@ -22,33 +22,24 @@ from src.pipeline_nodes import (
 
 MODEL_NAME = Config.LLM_MODEL
 
-"""if MODEL_NAME == 'qwen3:8b':
+if MODEL_NAME == "gemma4:e4b":
     model_overrides = {
-        "research_lead":"deepseek-r1:8b",
-        "organizer": "deepseek-r1:8b",
-        "dispatcher":"deepseek-r1:8b",
-        "validator":"deepseek-r1:8b",
-        "coder": "qwen3-coder:30b"
-    }"""
-"""
-if MODEL_NAME == 'gemma3:27b':
-    model_overrides = {
-        "research_lead":"qwen3:30b",
+        "research_lead":"deepseek-r1:14b",
         "organizer": "deepseek-r1:14b",
         "dispatcher":"deepseek-r1:14b",
         "validator":"deepseek-r1:14b",
         "coder": "qwen3-coder:30b"
-    }"""
-
-
-
-model_overrides = {
-        "research_lead":"deepseek-r1:32b",
-        "organizer": "deepseek-r1:14b",
-        "dispatcher":"deepseek-r1:14b",
-        "validator":"deepseek-r1:32b",
-        "coder": "qwen3-coder:30b"
     }
+
+
+else:
+    model_overrides = {
+            "research_lead":"deepseek-r1:32b",
+            "organizer": "deepseek-r1:32b",
+            "dispatcher":"deepseek-r1:32b",
+            "validator":"deepseek-r1:32b",
+            "coder": "qwen3-coder:30b"
+        }
 
 def run_agentic_improvement(iteration: int):
     start_time = time.perf_counter()
@@ -76,14 +67,24 @@ def run_agentic_improvement(iteration: int):
         print(f"❌ No metrics found for Iteration {iteration-1}. Cannot proceed.")
         return
     print(f"    Iteration {iteration-1} Metrics Loaded ")
+    # Generate the new Diagnostic Report, Save it, Load in kinematic section of previous iteration's report
     diagnostic_report = generate_diagnostic_report(metrics) 
+    ws.save_report(iteration, diagnostic_report)
 
+    if iteration > 2: 
+        prev_metrics = ws.load_metrics(iteration-2) 
+        prev_report = translate_behavior_kinematics(prev_metrics)
+        baseline_report = "".join(prev_report.split("Robustness",1)[1:])
+    else:
+        baseline_report = "No prior baseline available."
+    
     # Load the code that generated these metrics
     prev_code_path = ws.get_path("code", iteration - 1, "reward.py")
     with open(prev_code_path, "r") as f:
         prev_code = f.read()
     # Removing metadata added when saving the code last iteration, to reduce token cost
     current_code = "import" + "".join(prev_code.split('import',1)[1:])
+
     # =========================================================
     # PHASE 1: HYPOTHESIS VALIDATION (The Causal Check)
     # =========================================================
@@ -97,6 +98,7 @@ def run_agentic_improvement(iteration: int):
             iteration=iteration, 
             val_payload=val_payload, 
             diagnostic_report=diagnostic_report,
+            baseline_diagnostic_report=baseline_report,
             model_override = val_override if val_override else MODEL_NAME
         )
         
