@@ -133,7 +133,7 @@ To give the LLM the context it needs to rewrite the reward function, this system
   - **Mutual Information (MI)** against binary task success, captures any statistical dependence, including non-linear ones. A component with low |ρ| but high MI is flagged as a 🟣 **Hidden Dependency**: it has real influence on outcomes that linear correlation cannot see (e.g., a threshold bonus, a quadratic attractor, or a saturating `tanh` term). The dead-weight flag (🟡) requires *both* low magnitude *and* low MI, preventing misclassification of small-coefficient gating terms as inert.
 
 ## Failure → Recovery Case Study
-![Failure to Recovery](assets/gemma3-27b__SpinCrash_poster_graph.svg)
+![Failure to Recovery](assets/all_iterations_gemma4-26b.png)
 
 To evaluate the system, experiments were initialized with deliberately flawed reward functions designed to induce specific failure behaviors:
 
@@ -197,11 +197,11 @@ Note on model selection: A single model assigned to every role underperforms sig
 
 The model 'team' used for the Case Study plot above was following:
 Strategist    : `gemma3:27b`
-Organizer     : `deepseek-r1:14b`
+Organizer     : `deepseek-r1:32b`
 Research Lead : `deepseek-r1:32b`
-Dispatcher    : `deepseek-r1:14b`
+Dispatcher    : `deepseek-r1:32b`
 Coder         : `qwen3-coder:30b`
-Validator     : `deepseek-r1:14b`
+Validator     : `deepseek-r1:32b`
 
 **3. Execute the Pipeline**
 

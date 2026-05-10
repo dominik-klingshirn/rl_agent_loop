@@ -1,8 +1,8 @@
 # Cognition prompts and calls: Iteration:1
 
 
-# Phase: strategist [System] gemma3:27b
-
+# Phase: strategist [System] gemma4:26b
+<|think|>
 **[ROLE AND OBJECTIVE]**
 You are the Lead Algorithmic Reward Designer (Strategist) for an autonomous Reinforcement Learning pipeline solving the LunarLander-v3 environment (an underactuated, continuous/discrete control task).
 Your objective is to design dense reward functions that enforce stable, efficient, and robust physical flight dynamics.
@@ -12,11 +12,27 @@ You are part of a multi-agent system. Do not worry about formatting your output 
 **[DIAGNOSTIC GLOSSARY & ANCHORS]**
 You will receive a deterministic Diagnostic Report. Use these strict definitions to interpret the physical reality of the agent:
 
-* **Critic Saturation Index (CSI):** A value $>10.0$ indicates the Value network has diverged. The reward function is injecting non-Markovian noise or contradictory gradients. You must simplify or reduce the magnitude of dense penalties.
-* **Objective Alignment ($\rho$):** The Pearson correlation between your reward components and actual task success (landing). Components with negative alignment are "Traitor Components" actively punishing the agent for succeeding.
+* **Critic Saturation Index (CSI):** A value $>10.0$ indicates the Value network has diverged. The reward function is injecting non-Markovian noise or contradictory gradients.
+
+* **Objective Alignment ($\rho$):** The Pearson correlation between your reward components and actual task success (landing). Components with negative alignment are adversarial to the agent's success.
+
+* **Mutual Information w/ Success (MI):** When the Component-Level Contribution table includes an MI column, MI captures *any* statistical dependence between a component and success — including non-linear ones that $\rho$ is mathematically blind to: thresholds (`if x > k: bonus`), quadratics around an optimum (`-(angle)²`), and saturating shapes (`tanh`, `clip`). Use the relationship between $\rho$ and MI to diagnose component structure:
+
+  - **High |ρ| AND high MI** → linear/monotonic relationship; trust ρ's sign.
+  - **Low |ρ| AND high MI** → flagged as 🟣 **HIDDEN DEPENDENCY**. The component has real influence on success that linear correlation cannot see. Do NOT infer the component is neutral or dead. Inspect the component's functional form in the code — it is likely a threshold, quadratic, or saturating term. The sign of effect cannot be read from ρ here; you must reason from the math itself.
+  - **Low |ρ| AND low MI** → genuinely irrelevant; safe to excise.
+  - **High |ρ| AND low MI** → rare; usually a small-sample artifact. Discount.
+
+* **🔴 Negatively Aligned ($\rho < -0.2$):** The component's linear correlation with success is adversarial. The functional form may need sign inversion, rescaling, or replacement — but a negative ρ alone does not specify *which*. Reason from the term's mathematical form before acting. The 🟣 HIDDEN DEPENDENCY flag is **not** a negative-alignment flag; it indicates non-linearity, not adversarial direction.
+
+* **🟡 Low Magnitude ($<1\%$ of gradient):** The component contributes negligibly to the total reward signal. This may indicate (a) a coefficient that is too small, (b) a sparse gating term that fires rarely but informatively, or (c) a genuinely irrelevant term. Cross-reference MI: low magnitude with non-trivial MI is often a gating term that should be preserved or strengthened, not excised.
+
+* **⚪ Neutral/Noisy:** The component shows weak linear correlation and low MI. This is a finding, not a verdict — the component may be miscalibrated, mistimed, or operating in a regime the agent has not yet reached. Investigate before acting; weak signal is not the same as zero contribution.
+
 * **Actuator Chatter Rate:** A value $>0.2$ means the agent is rapidly vibrating opposing thrusters. The reward gradient near the decision boundary is jagged. Smooth the penalties near zero-states.
+
 * **Intra-Rollout Reward CV:** High values ($>0.5$) indicate extreme sensitivity to random seed initialization. The policy is mathematically fragile.
-* **Relative Magnitude:** If a component contributes $<1\%$ to the total magnitude, it is mathematically "Dead Weight."
+
 
 **[ENVIRONMENT & API CONSTRAINTS]**
 **State Space & Variables Available:**
@@ -26,25 +42,38 @@ You must formulate your math using ONLY these available variables:
 * `info['prev_obs']`: The observation array from the previous step.
 * `info['action']`: The discrete action taken by the agent.
 
-
 **[DIRECTIVES & OUTPUT REQUIREMENTS]**
-Analyze the current Python reward implementation against the Diagnostic Report and the Experiment Ledger. Identify the mathematical root cause of the physical failures.
+Analyze the current Python reward implementation against the Diagnostic Report. Identify the mathematical root cause of the physical failures.
 
-You must output exactly **3 distinct, novel proposals** to fix the reward topology. For each proposal, you must clearly provide:
+You must structure your output in two distinct parts:
+
+**PART 1: SURGICAL EXCISION**
+
+Most components are salvageable through rescaling, sign inversion, or gating — and salvaging preserves shaping information the next iteration cannot recover. Excise only when the *functional form itself* is incoherent with the task. **No flag in the diagnostic table is by itself grounds for excision** — flags describe statistical findings, not actions. The decision to delete versus modify is yours, and must be reasoned from the component's mathematical form against the observed physical failure.
+
+List components you are excising, with one sentence of justification per component stating why no transformation rescues the form.
+
+**PART 2: 3 PROPOSALS (Additions, Modifications, or Synergistic Clusters)**
+
+Output exactly **3 distinct proposals**. A proposal may:
+- **Add** a novel term encoding a new physical insight
+- **Modify** an existing term (rescale, invert sign, gate by state, change functional form)
+- Comprise a **synergistic cluster** of cooperating terms when they are mathematically inseparable
+
+Modification proposals are not lesser proposals. A well-reasoned sign inversion or gating condition often outperforms a novel addition. Do not artificially atomize a hypothesis into single-term proposals; do not pad a single-term hypothesis into a cluster.
+
+For each proposal, you must clearly provide:
 
 1. **The Conceptual Hypothesis:** Explain the physical or optimization failure and *why* your proposed math fixes it. Think about gravity, momentum, and state-space boundaries.
-2. **The Mathematical Formulation:** Define the exact algorithmic change. You can use LaTeX (e.g., $R_{new} = -\alpha \cdot (\dot{\theta})^2$) or isolated Python snippets. Specify the scale/coefficient and any clipping boundaries.
+
+2. **The Mathematical Formulation:** Define the exact change in LaTeX or Python. For modifications, show the old form and the new form. For clusters, label each term's role (shaping, gating, saturation, etc.) and state what the synergy produces that no single term can. Specify coefficients and clipping boundaries.
+
 3. **The Falsifiable Expected Outcome:** State the exact metric from the Diagnostic Report (e.g., `Mean Descent Efficiency`, `Chatter Rate`, `Population Success Rate`) that will improve, and the numerical shift you expect to see in the next iteration.
 
 Explore the state space deeply. Do not propose the same idea three times with slightly different coefficients.
 
 
-
-
-# Phase: strategist [User] gemma3:27b
-
-
-
+# Phase: strategist [User] gemma4:26b
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT ITERATION:** `1`
 
@@ -55,19 +84,6 @@ Analyze the following execution data and generate your 3 distinct reward design 
 This is the mathematical logic the agent just trained on.
 
 ```python
-"""
-spin_crash_reward.py
-
-Reward function for classic PPO failure mode: SPINNING → CRASH.
-- Rewards high angular velocity at ALL costs
-- Ignores position/legs entirely  
-- Small survival bonus
-- Produces uncontrollable spinning → inevitable crash
-
-Result: Agent learns to spin wildly, then crashes spectacularly.
-Perfect test for terminal_status='crashed' + high spin_rate detection.
-"""
-
 import numpy as np
 from typing import Dict, Tuple
 
@@ -141,7 +157,7 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
 ### [2. EXPERIMENT LEDGER (HISTORY)]
 
 Review these past iterations to avoid repeating failed hypotheses.
-First Iteration: No Past Experiments Yet
+First Iteration: No Past Intervention Records Yet
 
 ### [3. DIAGNOSTIC REPORT]
 
@@ -150,15 +166,28 @@ This is the deterministic, mathematically extracted performance data from the mo
 **Status:** 🟢 **CONVERGED**
 
 #### A. Cross-Seed Robustness
-- **Signal-to-Noise Ratio (SNR):** `42.27`
+- **Signal-to-Noise Ratio (SNR):** `173.50`
   - *Diagnosis:* Strong cross-seed consistency. The reward landscape is learnable.
 
 #### B. Value Network (Critic) Integrity
-- **Critic Saturation Index (CSI):** `0.00`
-  - *Diagnosis:* Healthy. The Critic is accurately mapping the advantage landscape.
+- **Critic Saturation Index (CSI):** `45.74`
+  - *Diagnosis:* **CRITICAL FAILURE.** The Critic has systemically diverged across all seeds (CSI > 10). The value network is entirely saturated by noise.
+  - *Action Required:* You must simplify the dense reward terms. The current shaping is introducing severe non-Markovian variance or contradictory gradients.
 
 #### C. Optimization Landscape
-- **Trajectory Isomorphism (Pairwise $\rho$):** `-0.109`
+- **Trajectory Isomorphism (Pairwise $\rho$):** `-0.159`
+### 2. Kinematic Behavior & Physical Robustness
+
+#### A. Universal Policy Robustness
+- **Population Success Rate:** `0.0%`
+  - *Diagnosis:* The policy is highly stable but mathematically wrong. It consistently executes the same failure mode across all seeds.
+
+#### B. Thermodynamic & Actuator Efficiency
+- **Mean Descent Efficiency:** `0.022`
+- **Actuator Chatter Rate:** `0.030`
+
+#### C. Population Terminal Distribution
+- `crashed`: 100.0%
 ### 3. Reward Topology & Algorithmic Credit Assignment
 
 #### A. Global Objective Alignment (Oracle Test)
@@ -170,120 +199,263 @@ This is the deterministic, mathematically extracted performance data from the mo
 This table isolates the exact mathematical impact of each component you generated.
 | Reward Component | Correlation w/ Composite Viability (crashed) ($\rho$) | Relative Magnitude | Diagnostic Flag |
 |:---|:---:|:---:|:---|
-| `reward_spin_speed` | -0.205 | 20.8% | 🔴 **TRAITOR COMPONENT** (Invert/Remove) |
-| `reward_spin_angle` | -0.196 | 76.1% | ⚪ Neutral/Noisy |
-| `reward_spin_accel` | -0.205 | 0.2% | 🔴 **TRAITOR COMPONENT** (Invert/Remove) |
-| `reward_spin_direction_flip` | 0.080 | 0.1% | 🟡 **DEAD WEIGHT** (Scale Too Low) |
-| `reward_action_spin_bonus` | -0.209 | 1.6% | 🔴 **TRAITOR COMPONENT** (Invert/Remove) |
-| `reward_legs_interrupt_penalty` | -0.074 | 0.1% | 🟡 **DEAD WEIGHT** (Scale Too Low) |
-| `reward_survival` | -0.196 | 0.3% | 🟡 **DEAD WEIGHT** (Scale Too Low) |
-| `reward_vertical_tolerance` | 0.202 | 1.0% | 🟡 **DEAD WEIGHT** (Scale Too Low) |
+| `spin_speed` | -0.360 | 34.6% | 🔴 **NEGATIVELY ALIGNED** (ρ < -0.2) |
+| `spin_angle` | -0.182 | 57.3% | ⚪ Neutral/Noisy |
+| `spin_accel` | -0.352 | 0.3% | 🔴 **NEGATIVELY ALIGNED** (ρ < -0.2) |
+| `spin_direction_flip` | -0.005 | 0.3% | 🟡 **LOW MAGNITUDE** (<1% of gradient) |
+| `action_spin_bonus` | -0.157 | 3.7% | ⚪ Neutral/Noisy |
+| `legs_interrupt_penalty` | -0.006 | 0.6% | 🟡 **LOW MAGNITUDE** (<1% of gradient) |
+| `survival` | -0.103 | 0.8% | 🟡 **LOW MAGNITUDE** (<1% of gradient) |
+| `vertical_tolerance` | 0.241 | 2.4% | 🟢 Optimal |
 
 #### C. Stochastic Policy Fragility
-- **Intra-Rollout Reward CV:** `0.707` (Variance across seeds with *frozen* weights)
-- **Terminal Mode Entropy:** `0.256`
-  - *Diagnosis:* The policy is highly fragile. Even with fixed network weights, the agent's performance swings wildly depending on environment initialization.
-### 2. Kinematic Behavior & Physical Robustness
-
-#### A. Universal Policy Robustness
-- **Population Success Rate:** `0.0%`
-  - *Diagnosis:* The policy is highly stable but mathematically wrong. It consistently executes the same failure mode across all seeds.
-
-#### B. Thermodynamic & Actuator Efficiency
-- **Mean Descent Efficiency:** `0.017`
-- **Actuator Chatter Rate:** `0.060`
-  - *Diagnosis:* **High Kinematic Sensitivity.** The physical descent strategy (efficiency/chattering) changes wildly depending on the random seed.
-
-#### C. Population Terminal Distribution
-- `crashed`: 70.0%
-- `out_of_bounds`: 30.0%
+- **Intra-Rollout Reward CV:** `0.585` (Variance across seeds with *frozen* weights)
+- **Terminal Mode Entropy:** `0.040`
+  - *Diagnosis:* The stochastic policy has completely collapsed into a single pathological failure mode. The KL penalty likely prevented escape from a severe local minimum.
 
 **ACTION REQUIRED:**
 Generate your 3 distinct proposals (Hypothesis, Mathematical Formulation, and Falsifiable Expected Outcome).
 
 
+# Phase: strategist [Thinking Trace] gemma4:26b
+Lead Algorithmic Reward Designer.
+LunarLander-v3 (underactuated, continuous/discrete control).
+Design dense reward functions for stable, efficient, robust flight.
+A reward function that rewards high angular velocity, high angle, and spin direction flips (essentially rewarding "spinning like a top").
+
+        *   `CSI: 45.74` (CRITICAL FAILURE - Critic diverged).
+        *   `Population Success Rate: 0.0%` (Agent crashes 100% of the time).
+        *   `Objective Alignment (ρ): 0.000` (No correlation with success).
+        *   `spin_speed`: $\rho = -0.360$ (Negatively aligned - spinning fast causes crashes).
+        *   `spin_accel`: $\rho = -0.352$ (Negatively aligned).
+        *   `vertical_tolerance`: $\rho = 0.241$ (The only positive component).
+        *   `Actuator Chatter Rate: 0.030` (Low, so no vibration issue yet, but the policy is "stuck").
+        *   `Intra-Rollout Reward CV: 0.585` (High variance/fragility).
+
+    *   The current reward function is *explicitly* designed to reward spinning, not landing.
+    *   The "Spinning" reward is the primary driver of the agent's behavior, but the diagnostic shows `spin_speed` and `spin_accel` are negatively correlated with success. This means the agent is "farming" spin rewards, which leads to uncontrolled rotation and inevitable crashing.
+    *   The Critic is saturated ($CSI \gg 10$), meaning the rewards are so large and chaotic that the Value network cannot estimate the expected return.
+    *   The `vertical_tolerance` component is the only one with positive alignment, suggesting that minimizing vertical velocity is the only useful signal present.
+    *   The agent is "survival hacking" (though `survival` magnitude is low, the `spin_speed` is high).
+
+    *   The goal of LunarLander is to land at $(0,0)$ with low velocity and upright angle.
+    *   The current reward is essentially a "centrifuge" simulator.
+    *   I need to pivot from *Rotation* to *Stabilization*.
+    *   *Constraints Check:* No time-based penalties allowed. Must use `obs`.
+
+    *   **Proposal 1: The "Stabilization Anchor" (Replacing the Spin with Orientation/Velocity Control).**
+        *   *Problem:* `spin_speed` and `spin_angle` are incentivizing chaos.
+        *   *Solution:* Replace the spin-centric terms with a quadratic penalty on angular velocity and tilt angle.
+        *   *Math:* $-k_1(\text{angle})^2 - k_2(\text{v\_ang})^2$.
+        *   *Goal:* Minimize tilt and rotation.
+
+    *   **Proposal 2: The "Descent Control" (Refining the Vertical Signal).**
+        *   *Problem:* `vertical_tolerance` is the only good signal, but it's too weak and lacks spatial context.
+        *   *Solution:* We need to reward being near the landing pad and having low velocity *specifically* when $y$ is low.
+        *   *Math:* A term that penalizes $v_y$ and $x$ error, but is gated by $y$ (height). Or, more simply, a reward for low $v_y$ and low $v_x$ as $y \to 0$.
+        *   *Refinement:* Let's use a "Landing Precision" term: $- (v_x^2 + v_y^2 + \text{angle}^2)$.
+
+    *   **Proposal 3: The "Landing Integrity" (The Terminal/Contact logic).**
+        *   *Problem:* The agent doesn't care about the legs until they touch, and even then, the penalty is small.
+        *   *Solution:* A "Smooth Touchdown" term. We need to reward the state where legs are in contact AND velocity is low.
+        *   *Math:* If `leg1_contact` or `leg2_contact`, reward $- (\text{velocity magnitude})$.
+
+    *   *Wait, I need to be surgical.*
+    *   *Excision:* I must excise `spin_speed`, `spin_angle`, `spin_accel`, and `spin_direction_flip`. These are fundamentally adversarial to the task. They are not just miscalibrated; their functional form (rewarding high magnitude) is the opposite of the task (minimizing magnitude).
+
+    *   *Proposal 1 (The Core):* Replace the "Spin" cluster with a "Stabilization" cluster.
+        *   Old: $10 \cdot \text{spin\_speed} + 4 \cdot \text{angle} + \dots$
+        *   New: $-k_1 \cdot \text{angle}^2 - k_2 \cdot \text{v\_ang}^2$.
+        *   Hypothesis: The agent is currently incentivized to maximize kinetic energy in rotation. We must invert the gradient to penalize deviations from the upright vertical.
+
+    *   *Proposal 2 (The Descent):* Enhance `vertical_tolerance` into a "Kinematic Precision" term.
+        *   Old: $-0.3 \cdot |v_y|$.
+        *   New: $- (v_y^2 + v_x^2)$ weighted by a proximity to the ground.
+        *   Hypothesis: The agent needs to minimize total kinetic energy relative to the landing site.
+
+    *   *Proposal 3 (The Gating/Landing):* Introduce a "Landing Success" signal using the leg contacts.
+        *   New: A bonus/penalty structure that triggers when `leg1_contact` or `leg2_contact` is true, rewarding low velocity.
+        *   Hypothesis: The agent currently ignores the landing. We need a high-magnitude signal that fires only upon contact to provide the "terminal reward" signal.
+
+    *   `CSI` is 45.74. This is huge. The new rewards must be small-magnitude and smooth.
+    *   `spin_speed` is the biggest contributor (34.6%) and is negative ($\rho = -0.36$).
+    *   I will remove all spin-related terms.
+
+    *   *Proposal 1: The "Attitude Stabilization" Cluster.* (Replaces the spin cluster).
+        *   Terms: $R_{angle} = -w_1 \cdot \text{angle}^2$, $R_{v\_ang} = -w_2 \cdot \text{v\_ang}^2$.
+        *   This addresses the $\rho < -0.2$ for `spin_speed` and `spin_accel`.
+
+    *   *Proposal 2: The "Landing Velocity" Gating.* (Modifies `vertical_tolerance`).
+        *   Term: $R_{v\_landing} = -w_3 \cdot \sqrt{v_x^2 + v_y^2}$ if $y < \text{threshold}$.
+        *   This addresses the `0.0%` success rate.
+
+    *   *Proposal 3: The "Landing Precision" (The XY target).*
+        *   Term: $R_{pos} = -w_4 \cdot (x^2 + y_{target}^2)$. Wait, $y$ is decreasing. Let's use $R_{pos} = -w_4 \cdot x^2$.
+        *   Actually, let's do a "Contact Stability" term. If legs are touching, penalize $v_y$ and $v_{ang}$ even more heavily.
+
+    *   *Final Polish of Proposals:*
+        1.  **Cluster: Attitude Stabilization (Replaces Spin Cluster).** Targets: $v_{ang}, \text{angle}$.
+        2.  **Modification: Kinetic Energy Dissipation (Modifies `vertical_tolerance`).** Targets: $v_x, v_y$.
+        3.  **Addition: Landing Contact Precision (New).** Targets: $v_y, \text{angle}$ specifically when `leg_contact == True`.
+
+    *   *Check Constraints:* No time-based penalties. Using `obs`. All good.
+
+    *   *Check Math:*
+        *   $R_{att} = -2.0 \cdot (\text{angle}^2 + \text{v\_ang}^2)$
+        *   $R_{kin} = -0.5 \cdot (v_x^2 + v_y^2)$
+        *   $R_{contact} = \text{if contact: } -5.0 \cdot (|v_y| + |\text{angle}|)$
+
+    *   *Wait, let's refine Proposal 2.* The agent needs to know it's getting closer to the ground. But I can't use time. I can use $y$.
+    *   If $y$ is small, the penalty for $v_y$ should increase. This creates the "urgency" without a timer.
+
+    *   *Final Plan:*
+        1.  **Excision:** `spin_speed`, `spin_angle`, `spin_accel`, `spin_direction_flip`, `action_spin_bonus`.
+        2.  **Proposal 1 (The Stabilizer):** A quadratic penalty on rotation/tilt.
+        3.  **Proposal 2 (The Descent Smoother):** A $v_x, v_y$ penalty gated by altitude.
+        4.  **Proposal 3 (The Landing Anchor):** A high-magnitude penalty on velocity/angle *specifically* triggered by leg contact.
+
+    *   *Self-Correction on Proposal 2:* The prompt says "Time-based penalties are forbidden." I cannot use `current_step`. I must use `y`.
+    *   *Self-Correction on CSI:* I must ensure the coefficients are small to avoid $CSI > 10$.
+
+    *   *Proposal 1:* $\text{Attitude} = -1.0 \cdot (\text{angle}^2 + \text{v\_ang}^2)$.
+    *   *Proposal 2:* $\text{Velocity} = -0.5 \cdot (v_x^2 + v_y^2)$.
+    *   *Proposal 3:* $\text{Contact} = \text{if contact: } -2.0 \cdot (|v_y| + |\text{angle}|)$.
+
+    *   *Wait, I need to be more "Algorithmic Designer" style.*
+    *   Let's make Proposal 2 a "Proximity-Gated Velocity" term.
+    *   $R_{v\_proximity} = -0.5 \cdot \exp(-y) \cdot (v_x^2 + v_y^2)$. This scales the importance of velocity as $y \to 0$.
+
+    *   *Let's re-verify the "Excision" logic.*
+    *   `spin_speed`, `spin_angle`, `spin_accel`, `spin_direction_flip`, `action_spin_bonus`.
+    *   Why? Because their functional form (rewarding magnitude) is mathematically adversarial to the task of landing (which requires minimizing magnitude). No sign inversion can fix the fact that they encourage unbounded energy gain.
+
+    *   *Final structure check:*
+        *   Part 1: Surgical Excision.
+        *   Part 2: 3 Proposals (Hypothesis, Math, Outcome).
+
+    *   *Final Polish of the "Synergistic Cluster" idea:* I'll combine the "Attitude" and "Velocity" into one "Kinematic Stability" cluster to ensure the Critic doesn't diverge from competing gradients.
+
+    *   *Wait, I'll do:*
+        1.  **Excision:** All spin-related terms.
+        2.  **Proposal 1 (The Attitude Stabilizer):** Quadratic penalty on $\text{angle}$ and $\text{v\_ang}$.
+        3.  **Proposal 2 (The Altitude-Gated Velocity):** $v_x, v_y$ penalty that scales as $y \to 0$.
+        4.  **Proposal 3 (The Terminal Integrity Gate):** A massive penalty for high-velocity contact.
+
+    *   *Wait, let's look at the `vertical_tolerance` in the diagnostic:* It is the only positive alignment ($\rho = 0.241$). I should keep its essence but fix the magnitude.
+
+    *   *Let's check the `action_spin_bonus`*: $\rho = -0.157$. It's not heavily negative, but it's useless. I'll excise it.
+
+    *   *Finalizing the mathematical expressions for the proposals.*
+        *   Proposal 1: $R_{\text{att}} = -1.5 \cdot (\text{angle}^2 + \text{v\_ang}^2)$
+        *   Proposal 2: $R_{\text{descent}} = -0.5 \cdot \frac{1}{1 + y} \cdot (v_x^2 + v_y^2)$ (As $y$ decreases, penalty increases).
+        *   Proposal 3: $R_{\text{contact}} = \mathbb{1}_{\text{contact}} \cdot (-5.0 \cdot (|v_y| + |\text{angle}|))$
+
+    *   *Checking the "Excision" justification:* "The functional form (rewarding high magnitude) is fundamentally adversarial to the stabilization required for landing."
+
+    *   *Checking the "Expected Outcome" metrics:*
+        *   P1: `Population Success Rate` $\uparrow$, `CSI` $\downarrow$.
+        *   P2: `Mean Descent Efficiency` $\uparrow$, `Vertical Tolerance` $\rho$ $\uparrow$.
+        *   P3: `Population Success Rate` $\uparrow$, `Crashed` % $\downarrow$.
+
+    *   *Wait, I must not use `current_step`.* I'm using `y`. Good.
+    *   *Wait, I must not use `time`.* Good.
+
+    *   *Final check of the "Excision" list:*
+        - `spin_speed`
+        - `spin_angle`
+        - `spin_accel`
+        - `spin_direction_flip`
+        - `action_spin_bonus`
+
+    *   *Final check of the "Proposals" list:*
+        1.  **The Attitudinal Stabilizer (Modification/Replacement)**
+        2.  **The Altitude-Gated Kinetic Dissipation (Modification/Gating)**
+        3.  **The Landing Integrity Anchor (Addition/Gating)**
+
+    *   *Wait, Proposal 1 should be a "Replacement" of the spin cluster.*
+    *   *Proposal 2 should be a "Modification" of vertical_tolerance.*
+    *   *Proposal 3 should be an "Addition".*
+
+    *   *Double check the `CSI`.* The current `CSI` is 45.74. My new rewards are much smaller and quadratic (smooth). This should drop the `CSI` significantly.
+
+    *   *Double check the `action_spin_bonus`.* It's 3.7% of the gradient. It's small, but it's part of the "Spin" logic. I'll excise it.
+
+    *   *Final Polish of the math for P2:* $R = -0.5 \cdot (v_x^2 + v_y^2) \cdot (1.0 - \text{clip}(y/10, 0, 1))$. This means as $y$ goes from 10 to 0, the penalty grows from 0 to 100% of the value. This is a great way to encode "urgency" via spatial state.
+
+    *   *Final Polish of the math for P3:* $R = \text{if (leg1 or leg2): } -10.0 \cdot (|v_y| + |\text{angle}|)$. This is a massive signal at the moment of truth.
+
+    *   *Final check on the "Excision" requirement:* "List components you are excising, with one sentence of justification per component stating why no transformation rescues the form."
+
+    *   *Excision List:*
+        - `spin_speed`: The reward for high magnitude is fundamentally adversarial to the stability required for landing.
+        - `spin_angle`: Rewarding large angular deviations prevents the agent from achieving a vertical orientation.
+        - `spin_accel`: Incentivizing angular acceleration promotes uncontrolled kinetic energy gain.
+        - `spin_direction_flip`: The discrete reward for sign-flipping creates high-variance, non-Markovian spikes in the gradient.
+        - `action_spin_bonus`: This component incentivizes torque-inducing actions that directly contribute to the observed failure mode.
+
+    *   *All looks solid.*
 
 
-# Phase: strategist [Output] gemma3:27b
+# Phase: strategist [Output] gemma4:26b
+**PART 1: SURGICAL EXCISION**
 
+*   **`spin_speed`**: The functional form (rewarding high magnitude) is fundamentally adversarial to the stability required for landing.
+*   **`spin_angle`**: Rewarding large angular deviations prevents the agent from achieving the required vertical orientation.
+*   **`spin_accel`**: Incentivizing angular acceleration promotes uncontrolled kinetic energy gain and prevents state convergence.
+*   **`spin_direction_flip`**: The discrete, high-magnitude reward for sign-flipping introduces severe non-Markovian variance and spikes the Critic's $CSI$.
+*   **`action_spin_bonus`**: This component incentivizes torque-inducing actions that directly drive the observed failure mode of uncontrolled rotation.
 
+***
 
-## Reward Design Proposals for LunarLander-v3
+**PART 2: 3 PROPOSALS**
 
-Here are three distinct proposals to address the identified issues in the current reward function, focusing on aligning incentives with successful landing, improving robustness, and reducing exploitable behaviors.
+### Proposal 1: The Attitudinal Stabilizer (Replacement Cluster)
+**The Conceptual Hypothesis:** 
+The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. I will replace the entire spin-centric cluster with a quadratic penalty cluster. Quadratic penalties provide a smooth, vanishing gradient near the target (zero angle/zero angular velocity), which is essential to reduce the **Critic Saturation Index (C15)** and prevent the policy from oscillating wildly around the vertical axis.
+
+**The Mathematical Formulation:**
+Replace `r_spin_speed`, `r_spin_angle`, `r_spin_accel`, and `r_spin_flip` with:
+$$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$
+Where $w_{att} = 1.5$. 
+*Note: We use the square of the terms to ensure the gradient $\frac{\partial R}{\partial \theta}$ approaches $0$ as $\theta \to 0$, preventing "chatter" near the upright state.*
+
+**The Falsifiable Expected Outcome:**
+A significant reduction in **Critic Saturation Index (CSI)** (from $45.74 \to < 10.0$) and a decrease in **Intra-Rollout Reward CV** (from $0.585 \to < 0.2$).
 
 ---
 
-### Proposal 1: Velocity-Aligned Descent Incentive
+### Proposal 2: Altitude-Gated Kinetic Dissipation (Modification)
+**The Conceptual Hypothesis:** 
+The current `vertical_tolerance` is too weak to guide the descent. While the agent needs to descend, it must specifically dissipate kinetic energy ($v_x, v_y$) as it approaches the landing site. I will modify this component to be spatially gated by altitude ($y$). By scaling the penalty by a function of $y$, we encode "urgency" through spatial state: the penalty for high velocity is negligible at high altitudes but becomes massive as $y \to 0$, forcing the agent to prioritize braking during the final descent phase.
 
-**1. Conceptual Hypothesis:** The current reward heavily incentivizes *spinning*, a behavior that actively prevents landing. The agent is optimizing for angular velocity, not for a controlled descent. We need to directly reward vertical velocity *towards* the landing zone, while penalizing deviations. This will shift the optimization focus from spinning to a stable, downward trajectory. We also need to introduce a terminal reward for landing, which is currently absent.
+**The Mathematical Formulation:**
+**Old Form:** `r_vertical = -0.3 * abs(vy)`
+**New Form:** 
+$$R_{kin} = -0.5 \cdot \left(1.0 - \text{clip}\left(\frac{y}{10.0}, 0, 1\right)\right) \cdot (v_x^2 + v_y^2)$$
+*This term effectively vanishes at $y=10$ and reaches its maximum penalty at $y=0$, specifically targeting the $v_x, v_y$ error.*
 
-**2. Mathematical Formulation:**
-
-```
-R_descent =  α * vy  # Reward for downward velocity
-R_x_penalty = β * abs(x) # Penalty for horizontal deviation
-R_landing = 10.0  # Large reward for successful landing (terminal)
-```
-
-Where:
-* `α = 1.0`:  Scaling factor for vertical velocity.
-* `β = 0.1`: Scaling factor for horizontal position penalty.
-* The total reward becomes: `R_total = R_descent + R_x_penalty`.  A terminal reward of `R_landing` is added when the lander successfully lands.
-
-**3. Falsifiable Expected Outcome:** I expect the **Objective Alignment ($\rho$)** to increase from 0.000 to at least 0.6.  Furthermore, the **Population Success Rate** should increase from 0.0% to at least 10.0% in the next iteration, demonstrating that the agent is now learning to achieve the primary goal.  The **Mean Descent Efficiency** should also increase, indicating a more direct and efficient descent path.
-
-
+**The Falsifiable Expected Outcome:**
+An increase in **Mean Descent Efficiency** (from $0.022 \to > 0.5$) and a shift in **Objective Alignment ($\rho$)** from $0.000$ to a positive value.
 
 ---
 
-### Proposal 2: Angular Momentum Dampening & Stability
+### Proposal 3: The Landing Integrity Anchor (Addition)
+**The Conceptual Hypothesis:** 
+The agent currently has no incentive to utilize the landing legs; it only cares about not crashing. We need a high-magnitude "terminal signal" that triggers upon leg contact. This term will act as an anchor, providing a massive penalty if the velocity or angle is non-zero at the moment of contact. This creates a strong gradient towards the "landing" manifold, transforming the task from "avoiding spinning" to "achieving contact stability."
 
-**1. Conceptual Hypothesis:** The agent is trapped in a local optimum of high angular velocity. This is exacerbated by the current reward structure, which *rewards* spinning. We need to penalize angular momentum directly, forcing the agent to stabilize its orientation. This requires a penalty that scales with both angular velocity *and* the moment of inertia (implicitly represented by the lander's mass and distribution). We must also reduce the magnitude of any reward components that encourage spinning.
+**The Mathematical Formulation:**
+**New Term (Gated by leg contact):**
+$$R_{contact} = \begin{cases} 
+-5.0 \cdot (|v_y| + |\text{angle}|) & \text{if } (\text{leg1\_contact} \lor \text{leg2\_contact}) \\
+0 & \text{otherwise}
+\end{cases}$$
+*This is a sparse, high-magnitude penalty that only activates during the terminal phase of the trajectory.*
 
-**2. Mathematical Formulation:**
-
-```
-R_angular_momentum = -γ * (v_ang)**2
-R_angle_penalty = -δ * abs(angle) #Small penalty for large angles.
-```
-
-Where:
-* `γ = 0.5`: Scaling factor for angular velocity penalty.
-* `δ = 0.05`: Scaling factor for angle penalty.
-
-The current `reward_spin_speed`, `reward_spin_angle`, `reward_spin_accel`, and `reward_action_spin_bonus` components should be *removed* entirely. The total reward is now `R_total = R_angular_momentum + R_angle_penalty + [other relevant rewards from Proposal 1]`.
-
-**3. Falsifiable Expected Outcome:** I predict a significant reduction in **Actuator Chatter Rate** from 0.060 to below 0.15. This indicates a smoother, more stable control strategy. I also anticipate a decrease in **Intra-Rollout Reward CV** from 0.707 to below 0.5, signifying a more robust policy less sensitive to random initialization.  We should also see a reduction in the contribution of the original traitor components (now removed) to 0%.
-
----
-
-### Proposal 3: Leg Contact Reward Shaping & Landing Assistance
-
-**1. Conceptual Hypothesis:** The agent is not properly incentivized to use the landing legs. The current minimal leg penalty isn’t strong enough to encourage proper landing behavior. We need to reward leg contact *during the final descent*, creating a positive feedback loop for successful landings. This is coupled with a height-based scaling of the reward to ensure it's only active when the lander is close to the ground.
-
-**2. Mathematical Formulation:**
-
-```
-R_leg_contact =  λ * (leg1 + leg2) * np.exp(-μ * y)
-```
-
-Where:
-* `λ = 2.0`: Scaling factor for leg contact reward.
-* `μ = 0.2`:  Scaling factor for the exponential decay based on height (`y`).  This ensures the reward is only significant when `y` is small (close to the ground).
-
-The total reward becomes: `R_total = R_leg_contact + [other relevant rewards from Proposals 1 & 2]`.
-
-**3. Falsifiable Expected Outcome:** I expect the **Population Success Rate** to increase from 0.0% to at least 20.0%.  The **Objective Alignment ($\rho$)** should also increase, indicating that the leg contact reward is reinforcing the desired landing behavior. We should observe that the `reward_leg_contact` component becomes a significant contributor (at least 5%) to the total reward magnitude, demonstrating its effectiveness.
+**The Falsifiable Expected Outcome:**
+A dramatic increase in **Population Success Rate** (from $0.0\% \to > 20.0\%$) and a reduction in the **`crashed`** terminal distribution percentage.
 
 
-
-
-
-# Phase: organizer [System] deepseek-r1:14b
-
-
-
+# Phase: organizer [System] deepseek-r1:32b
 **[ROLE AND OBJECTIVE]**
 You are the Technical Organizer for an autonomous Reinforcement Learning pipeline. Your role is data extraction and formatting.
 You sit between the "Strategist" (who generates raw mathematical proposals for reward functions) and the "Research Lead" (who evaluates them).
@@ -294,7 +466,8 @@ Your objective is to take the Strategist's raw, unformatted, or loosely formatte
 1. **Zero Data Loss:** You must preserve the exact mathematical formulas, Python snippets, coefficients, and physical reasoning provided by the Strategist. Do not alter the underlying logic.
 2. **No Hallucination:** Do not invent new proposals. If the Strategist provided 3 proposals, you output exactly 3 formatted proposals.
 3. **Extraction & Mapping:** The Strategist might blend its scaling constraints into its math formulation, or its hypothesis into its expected outcome. You must meticulously extract the information and place it into the correct sections of the template.
-4. **Formatting:** You must strictly use the exact Markdown headers and sub-bullets provided in the template below.
+4. **Global Excision Routing:** The Strategist will output a "Global Excision Manifesto" at the top of its response. You must extract this list of deletions and insert it verbatim into the `Code Deletions/Modifications` bullet point for ALL THREE formatted proposals.
+5. **Formatting:** You must strictly use the exact Markdown headers and sub-bullets provided in the template below.
 
 **[TARGET OUTPUT TEMPLATE]**
 For each proposal found in the Strategist's output, generate the following exact structure:
@@ -304,7 +477,8 @@ For each proposal found in the Strategist's output, generate the following exact
 **1. Conceptual Hypothesis:** [The physical or optimization reasoning behind the change.]
 
 **2. Mathematical Formulation:**
-[The exact LaTeX math or Python snippet proposed.]
+* **Code Additions:** [The exact LaTeX math or Python snippet proposed to be added.]
+* **Code Deletions/Modifications:** [INSERT THE GLOBAL EXCISION MANIFESTO LIST HERE. You must explicitly list the manifesto items in this bullet point for every proposal. Do not write "None explicitly stated" if a manifesto exists.]
 
 **3. Reward Scaling & Constraints:**
 
@@ -318,12 +492,7 @@ For each proposal found in the Strategist's output, generate the following exact
 * **Expected Change:** [The numerical shift expected]
 
 
-
-
-# Phase: organizer [User] deepseek-r1:14b
-
-
-
+# Phase: organizer [User] deepseek-r1:32b
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT TASK:** Format Strategist Output
 
@@ -331,224 +500,175 @@ Parse the following raw output from the Strategist and convert it strictly into 
 
 ### [RAW STRATEGIST OUTPUT]
 
-## Reward Design Proposals for LunarLander-v3
+**PART 1: SURGICAL EXCISION**
 
-Here are three distinct proposals to address the identified issues in the current reward function, focusing on aligning incentives with successful landing, improving robustness, and reducing exploitable behaviors.
+*   **`spin_speed`**: The functional form (rewarding high magnitude) is fundamentally adversarial to the stability required for landing.
+*   **`spin_angle`**: Rewarding large angular deviations prevents the agent from achieving the required vertical orientation.
+*   **`spin_accel`**: Incentivizing angular acceleration promotes uncontrolled kinetic energy gain and prevents state convergence.
+*   **`spin_direction_flip`**: The discrete, high-magnitude reward for sign-flipping introduces severe non-Markovian variance and spikes the Critic's $CSI$.
+*   **`action_spin_bonus`**: This component incentivizes torque-inducing actions that directly drive the observed failure mode of uncontrolled rotation.
 
----
+***
 
-### Proposal 1: Velocity-Aligned Descent Incentive
+**PART 2: 3 PROPOSALS**
 
-**1. Conceptual Hypothesis:** The current reward heavily incentivizes *spinning*, a behavior that actively prevents landing. The agent is optimizing for angular velocity, not for a controlled descent. We need to directly reward vertical velocity *towards* the landing zone, while penalizing deviations. This will shift the optimization focus from spinning to a stable, downward trajectory. We also need to introduce a terminal reward for landing, which is currently absent.
+### Proposal 1: The Attitudinal Stabilizer (Replacement Cluster)
+**The Conceptual Hypothesis:** 
+The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. I will replace the entire spin-centric cluster with a quadratic penalty cluster. Quadratic penalties provide a smooth, vanishing gradient near the target (zero angle/zero angular velocity), which is essential to reduce the **Critic Saturation Index (C15)** and prevent the policy from oscillating wildly around the vertical axis.
 
-**2. Mathematical Formulation:**
+**The Mathematical Formulation:**
+Replace `r_spin_speed`, `r_spin_angle`, `r_spin_accel`, and `r_spin_flip` with:
+$$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$
+Where $w_{att} = 1.5$. 
+*Note: We use the square of the terms to ensure the gradient $\frac{\partial R}{\partial \theta}$ approaches $0$ as $\theta \to 0$, preventing "chatter" near the upright state.*
 
-```
-R_descent =  α * vy  # Reward for downward velocity
-R_x_penalty = β * abs(x) # Penalty for horizontal deviation
-R_landing = 10.0  # Large reward for successful landing (terminal)
-```
-
-Where:
-* `α = 1.0`:  Scaling factor for vertical velocity.
-* `β = 0.1`: Scaling factor for horizontal position penalty.
-* The total reward becomes: `R_total = R_descent + R_x_penalty`.  A terminal reward of `R_landing` is added when the lander successfully lands.
-
-**3. Falsifiable Expected Outcome:** I expect the **Objective Alignment ($\rho$)** to increase from 0.000 to at least 0.6.  Furthermore, the **Population Success Rate** should increase from 0.0% to at least 10.0% in the next iteration, demonstrating that the agent is now learning to achieve the primary goal.  The **Mean Descent Efficiency** should also increase, indicating a more direct and efficient descent path.
-
-
+**The Falsifiable Expected Outcome:**
+A significant reduction in **Critic Saturation Index (CSI)** (from $45.74 \to < 10.0$) and a decrease in **Intra-Rollout Reward CV** (from $0.585 \to < 0.2$).
 
 ---
 
-### Proposal 2: Angular Momentum Dampening & Stability
+### Proposal 2: Altitude-Gated Kinetic Dissipation (Modification)
+**The Conceptual Hypothesis:** 
+The current `vertical_tolerance` is too weak to guide the descent. While the agent needs to descend, it must specifically dissipate kinetic energy ($v_x, v_y$) as it approaches the landing site. I will modify this component to be spatially gated by altitude ($y$). By scaling the penalty by a function of $y$, we encode "urgency" through spatial state: the penalty for high velocity is negligible at high altitudes but becomes massive as $y \to 0$, forcing the agent to prioritize braking during the final descent phase.
 
-**1. Conceptual Hypothesis:** The agent is trapped in a local optimum of high angular velocity. This is exacerbated by the current reward structure, which *rewards* spinning. We need to penalize angular momentum directly, forcing the agent to stabilize its orientation. This requires a penalty that scales with both angular velocity *and* the moment of inertia (implicitly represented by the lander's mass and distribution). We must also reduce the magnitude of any reward components that encourage spinning.
+**The Mathematical Formulation:**
+**Old Form:** `r_vertical = -0.3 * abs(vy)`
+**New Form:** 
+$$R_{kin} = -0.5 \cdot \left(1.0 - \text{clip}\left(\frac{y}{10.0}, 0, 1\right)\right) \cdot (v_x^2 + v_y^2)$$
+*This term effectively vanishes at $y=10$ and reaches its maximum penalty at $y=0$, specifically targeting the $v_x, v_y$ error.*
 
-**2. Mathematical Formulation:**
-
-```
-R_angular_momentum = -γ * (v_ang)**2
-R_angle_penalty = -δ * abs(angle) #Small penalty for large angles.
-```
-
-Where:
-* `γ = 0.5`: Scaling factor for angular velocity penalty.
-* `δ = 0.05`: Scaling factor for angle penalty.
-
-The current `reward_spin_speed`, `reward_spin_angle`, `reward_spin_accel`, and `reward_action_spin_bonus` components should be *removed* entirely. The total reward is now `R_total = R_angular_momentum + R_angle_penalty + [other relevant rewards from Proposal 1]`.
-
-**3. Falsifiable Expected Outcome:** I predict a significant reduction in **Actuator Chatter Rate** from 0.060 to below 0.15. This indicates a smoother, more stable control strategy. I also anticipate a decrease in **Intra-Rollout Reward CV** from 0.707 to below 0.5, signifying a more robust policy less sensitive to random initialization.  We should also see a reduction in the contribution of the original traitor components (now removed) to 0%.
+**The Falsifiable Expected Outcome:**
+An increase in **Mean Descent Efficiency** (from $0.022 \to > 0.5$) and a shift in **Objective Alignment ($\rho$)** from $0.000$ to a positive value.
 
 ---
 
-### Proposal 3: Leg Contact Reward Shaping & Landing Assistance
+### Proposal 3: The Landing Integrity Anchor (Addition)
+**The Conceptual Hypothesis:** 
+The agent currently has no incentive to utilize the landing legs; it only cares about not crashing. We need a high-magnitude "terminal signal" that triggers upon leg contact. This term will act as an anchor, providing a massive penalty if the velocity or angle is non-zero at the moment of contact. This creates a strong gradient towards the "landing" manifold, transforming the task from "avoiding spinning" to "achieving contact stability."
 
-**1. Conceptual Hypothesis:** The agent is not properly incentivized to use the landing legs. The current minimal leg penalty isn’t strong enough to encourage proper landing behavior. We need to reward leg contact *during the final descent*, creating a positive feedback loop for successful landings. This is coupled with a height-based scaling of the reward to ensure it's only active when the lander is close to the ground.
+**The Mathematical Formulation:**
+**New Term (Gated by leg contact):**
+$$R_{contact} = \begin{cases} 
+-5.0 \cdot (|v_y| + |\text{angle}|) & \text{if } (\text{leg1\_contact} \lor \text{leg2\_contact}) \\
+0 & \text{otherwise}
+\end{cases}$$
+*This is a sparse, high-magnitude penalty that only activates during the terminal phase of the trajectory.*
 
-**2. Mathematical Formulation:**
-
-```
-R_leg_contact =  λ * (leg1 + leg2) * np.exp(-μ * y)
-```
-
-Where:
-* `λ = 2.0`: Scaling factor for leg contact reward.
-* `μ = 0.2`:  Scaling factor for the exponential decay based on height (`y`).  This ensures the reward is only significant when `y` is small (close to the ground).
-
-The total reward becomes: `R_total = R_leg_contact + [other relevant rewards from Proposals 1 & 2]`.
-
-**3. Falsifiable Expected Outcome:** I expect the **Population Success Rate** to increase from 0.0% to at least 20.0%.  The **Objective Alignment ($\rho$)** should also increase, indicating that the leg contact reward is reinforcing the desired landing behavior. We should observe that the `reward_leg_contact` component becomes a significant contributor (at least 5%) to the total reward magnitude, demonstrating its effectiveness.
-
+**The Falsifiable Expected Outcome:**
+A dramatic increase in **Population Success Rate** (from $0.0\% \to > 20.0\%$) and a reduction in the **`crashed`** terminal distribution percentage.
 
 **ACTION REQUIRED:**
 Extract the core reasoning, math, and expected outcomes from the raw text above. Output the completely sanitized and formatted proposals using your system template. Do not include any introductory or concluding conversational text.
 
 
+# Phase: organizer [Thinking Trace] deepseek-r1:32b
+Okay, so I need to format the Strategist's raw output into a Mathematical Contract. Let me go through the process step by step.
 
+First, I see that the Strategist's output is divided into two parts: Part 1 is the Global Excision Manifesto, which lists variables to be deleted or modified. Part 2 contains three proposals with their own sections.
 
-# Phase: organizer [Thinking Trace] deepseek-r1:14b
+I remember the directives: I must extract the Global Excision Manifesto and include it verbatim in each proposal's Code Deletions/Modifications section. Also, I need to ensure that each proposal follows the exact structure provided in the template.
 
+Looking at Proposal 1, the title is "The Attitudinal Stabilizer (Replacement Cluster)". The Conceptual Hypothesis talks about replacing the spin cluster with a quadratic penalty. The Mathematical Formulation includes replacing certain reward terms with a new equation. I need to extract the code additions and insert the Global Excision list into the deletions section.
 
+For Proposal 2, titled "Altitude-Gated Kinetic Dissipation (Modification)", the hypothesis is about modifying the vertical tolerance. The math shows an old and new form, so I'll note the old code as a deletion and the new as an addition. Again, include the Global Excision list.
 
-Okay, so I need to figure out how to format the Strategist's raw output into a Mathematical Contract using the given template. Let me start by understanding the problem.
+Proposal 3 is "The Landing Integrity Anchor (Addition)". Here, a new term is added when legs contact the ground. The math is a piecewise function, so I'll extract that as a code addition. The deletions section will include the Global Excision list as well.
 
-The Strategist provided three proposals for improving the reward function in LunarLander-v3. Each proposal has a conceptual hypothesis, mathematical formulation, reward scaling and constraints, and falsifiable expected outcomes. My job is to extract each part and fit it into the specific sections of the template without losing any data.
+I also need to handle the scaling and constraints. For each proposal, I extract the coefficient, any constraints, and which variables they target. If there's no constraint, I note that explicitly.
 
-First, I'll look at Proposal 1. The hypothesis is about changing the reward structure to penalize spinning and reward vertical descent and landing. The math includes R_descent, R_x_penalty, and R_landing. I need to extract the coefficients α and β, and note the constraints. The expected outcome is about increasing objective alignment and success rate.
+Finally, the expected outcomes are falsifiable metrics. I need to extract the target metric and the expected change for each proposal.
 
-Moving to Proposal 2, the focus is on penalizing angular momentum. The math has R_angular_momentum and R_angle_penalty. The coefficients γ and δ are given. The reward scaling mentions removing some existing components. The expected outcomes are about reducing actuator chatter and reward CV.
+I must ensure that all mathematical formulas and Python snippets are preserved exactly, without any changes. Also, no new proposals should be invented; only the three provided are formatted.
 
-Proposal 3 introduces a leg contact reward. The math uses R_leg_contact with λ and μ. The constraints involve the exponential decay based on height. The expected outcomes are about increasing success rate and objective alignment, with the leg reward becoming significant.
+Let me make sure I'm not missing anything. Each proposal has four sections, and each section's content is accurately extracted from the raw output. The Global Excision is included in each proposal's deletions, as per the instructions.
 
-I need to make sure each section is correctly labeled and that all coefficients and constraints are properly extracted. I'll structure each proposal with the exact headers and bullet points as specified, ensuring no information is lost and everything is clearly presented.
-
-I should also check if all parts are covered: Conceptual Hypothesis, Mathematical Formulation, Reward Scaling & Constraints, and Falsifiable Expected Outcome. Each bullet under these sections must be accurately extracted and placed.
-
-Finally, I'll compile all three proposals into the target format, making sure it's clean and adheres strictly to the provided template.
-
-
-
-
-
-# Phase: organizer [Output] deepseek-r1:14b
+I think I've covered all the points. Now, I'll structure each proposal according to the template, ensuring that all sections are correctly filled with the extracted information.
 
 
 
-### Proposal 1: Velocity-Aligned Descent Incentive
+# Phase: organizer [Output] deepseek-r1:32b
+### Proposal 1: The Attitudinal Stabilizer (Replacement Cluster)
 
 **1. Conceptual Hypothesis:**  
-The current reward heavily incentivizes *spinning*, a behavior that actively prevents landing. The agent is optimizing for angular velocity, not for a controlled descent. We need to directly reward vertical velocity *towards* the landing zone, while penalizing deviations. This will shift the optimization focus from spinning to a stable, downward trajectory. We also need to introduce a terminal reward for landing, which is currently absent.
+The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. Replacing the spin-centric cluster with a quadratic penalty cluster will provide a smooth gradient near the target state, reducing oscillations and critic saturation.
 
 **2. Mathematical Formulation:**
-
-```
-R_descent =  α * vy  # Reward for downward velocity
-R_x_penalty = β * abs(x) # Penalty for horizontal deviation
-R_landing = 10.0  # Large reward for successful landing (terminal)
-```
-
-Where:
-* `α = 1.0`: Scaling factor for vertical velocity.
-* `β = 0.1`: Scaling factor for horizontal position penalty.
-* The total reward becomes: `R_total = R_descent + R_x_penalty`. A terminal reward of `R_landing` is added when the lander successfully lands.
+* **Code Additions:**  
+$$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$  
+Where $w_{att} = 1.5$.
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
 
 **3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `α = 1.0`, `β = 0.1`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets `vy` (vertical velocity), `x` (horizontal position), and terminal landing condition.
+* **Coefficient:** 1.5
+* **Constraint/Clipping:** None explicitly stated
+* **Integration:** Targets `angle` and `v_ang` variables
 
 **4. Falsifiable Expected Outcome:**
+* **Target Metric:** Critic Saturation Index (CSI)
+* **Expected Change:** Reduction from $45.74 \to < 10.0$
 
-* **Target Metric:** Objective Alignment ($\rho$)
-* **Expected Change:** Increase from 0.000 to at least 0.6.
+---
 
-* **Target Metric:** Population Success Rate
-* **Expected Change:** Increase from 0.0% to at least 10.0%.
+### Proposal 2: Altitude-Gated Kinetic Dissipation (Modification)
 
+**1. Conceptual Hypothesis:**  
+The current `vertical_tolerance` is too weak to guide the descent. Modifying this component to be gated by altitude will encode urgency through spatial state, forcing the agent to dissipate kinetic energy as it approaches the landing site.
+
+**2. Mathematical Formulation:**
+* **Code Additions:**  
+$$R_{kin} = -0.5 \cdot \left(1.0 - \text{clip}\left(\frac{y}{10.0}, 0, 1\right)\right) \cdot (v_x^2 + v_y^2)$$
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
+
+**3. Reward Scaling & Constraints:**
+* **Coefficient:** 0.5
+* **Constraint/Clipping:** $\text{clip}\left(\frac{y}{10.0}, 0, 1\right)$
+* **Integration:** Targets $v_x$ and $v_y$ variables
+
+**4. Falsifiable Expected Outcome:**
 * **Target Metric:** Mean Descent Efficiency
-* **Expected Change:** Increase, indicating a more direct and efficient descent path.
+* **Expected Change:** Increase from $0.022 \to > 0.5$
 
 ---
 
-### Proposal 2: Angular Momentum Dampening & Stability
+### Proposal 3: The Landing Integrity Anchor (Addition)
 
 **1. Conceptual Hypothesis:**  
-The agent is trapped in a local optimum of high angular velocity. This is exacerbated by the current reward structure, which *rewards* spinning. We need to penalize angular momentum directly, forcing the agent to stabilize its orientation. This requires a penalty that scales with both angular velocity *and* the moment of inertia (implicitly represented by the lander's mass and distribution). We must also reduce the magnitude of any reward components that encourage spinning.
+The agent currently lacks an incentive to utilize landing legs. Introducing a high-magnitude penalty upon contact will create a strong gradient towards achieving contact stability.
 
 **2. Mathematical Formulation:**
-
-```
-R_angular_momentum = -γ * (v_ang)**2
-R_angle_penalty = -δ * abs(angle) #Small penalty for large angles.
-```
-
-Where:
-* `γ = 0.5`: Scaling factor for angular velocity penalty.
-* `δ = 0.05`: Scaling factor for angle penalty.
-
-The current `reward_spin_speed`, `reward_spin_angle`, `reward_spin_accel`, and `reward_action_spin_bonus` components should be *removed* entirely. The total reward is now `R_total = R_angular_momentum + R_angle_penalty + [other relevant rewards from Proposal 1]`.
-
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `γ = 0.5`, `δ = 0.05`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets angular velocity (`v_ang`) and orientation angle.
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** Actuator Chatter Rate
-* **Expected Change:** Reduce from 0.060 to below 0.15.
-
-* **Target Metric:** Intra-Rollout Reward CV
-* **Expected Change:** Reduce from 0.707 to below 0.5.
-
-* **Target Metric:** Contribution of Removed Components
-* **Expected Change:** Reduce to 0%.
-
----
-
-### Proposal 3: Leg Contact Reward Shaping & Landing Assistance
-
-**1. Conceptual Hypothesis:**  
-The agent is not properly incentivized to use the landing legs. The current minimal leg penalty isn’t strong enough to encourage proper landing behavior. We need to reward leg contact *during the final descent*, creating a positive feedback loop for successful landings. This is coupled with a height-based scaling of the reward to ensure it's only active when the lander is close to the ground.
-
-**2. Mathematical Formulation:**
-
-```
-R_leg_contact =  λ * (leg1 + leg2) * np.exp(-μ * y)
-```
-
-Where:
-* `λ = 2.0`: Scaling factor for leg contact reward.
-* `μ = 0.2`: Scaling factor for the exponential decay based on height (`y`). This ensures the reward is only significant when `y` is small (close to the ground).
-
-The total reward becomes: `R_total = R_leg_contact + [other relevant rewards from Proposals 1 & 2]`.
+* **Code Additions:**  
+$$R_{contact} = \begin{cases} 
+-5.0 \cdot (|v_y| + |\text{angle}|) & \text{if } (\text{leg1\_contact} \lor \text{leg2\_contact}) \\
+0 & \text{otherwise}
+\end{cases}$$
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
 
 **3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `λ = 2.0`, `μ = 0.2`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets leg contact and height (`y`).
+* **Coefficient:** 5.0
+* **Constraint/Clipping:** None explicitly stated
+* **Integration:** Targets $v_y$ and `angle` variables upon leg contact
 
 **4. Falsifiable Expected Outcome:**
-
 * **Target Metric:** Population Success Rate
-* **Expected Change:** Increase from 0.0% to at least 20.0%.
-
-* **Target Metric:** Objective Alignment ($\rho$)
-* **Expected Change:** Increase, indicating that the leg contact reward is reinforcing the desired landing behavior.
-
-* **Target Metric:** Contribution of Leg Contact Reward
-* **Expected Change:** Become a significant contributor (at least 5%) to the total reward magnitude.
-
-
+* **Expected Change:** Increase from $0.0\% \to > 20.0\%$
 
 
 # Phase: research_lead [System] deepseek-r1:32b
-
-
-
 **[ROLE AND OBJECTIVE]**
 You are the Principal Research Lead for an autonomous Reinforcement Learning project. Your role is executive decision-making.
 You will receive a set of Mathematical Contracts (Proposals) generated by your Strategist, alongside the Experiment Ledger (the historical log of past hypotheses and their physical outcomes).
@@ -579,12 +699,7 @@ You must output your decision strictly formatted as follows:
 [Output the exact, verbatim text of the chosen Proposal (Hypothesis, Formulation, and Outcome) so the downstream pipeline can parse it without data loss.]
 
 
-
-
 # Phase: research_lead [User] deepseek-r1:32b
-
-
-
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT ITERATION:** `1`
 
@@ -593,213 +708,238 @@ Review the following proposals against our historical data and make an executive
 ### [1. EXPERIMENT LEDGER (HISTORY)]
 
 This is the immutable record of past iterations. Do not repeat previous failed hypotheses.
-First Iteration: No Past Experiments Yet
+First Iteration: No Past Intervention Records Yet
 
 ### [2. STRATEGIST PROPOSALS]
 
-### Proposal 1: Velocity-Aligned Descent Incentive
+### Proposal 1: The Attitudinal Stabilizer (Replacement Cluster)
 
 **1. Conceptual Hypothesis:**  
-The current reward heavily incentivizes *spinning*, a behavior that actively prevents landing. The agent is optimizing for angular velocity, not for a controlled descent. We need to directly reward vertical velocity *towards* the landing zone, while penalizing deviations. This will shift the optimization focus from spinning to a stable, downward trajectory. We also need to introduce a terminal reward for landing, which is currently absent.
+The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. Replacing the spin-centric cluster with a quadratic penalty cluster will provide a smooth gradient near the target state, reducing oscillations and critic saturation.
 
 **2. Mathematical Formulation:**
-
-```
-R_descent =  α * vy  # Reward for downward velocity
-R_x_penalty = β * abs(x) # Penalty for horizontal deviation
-R_landing = 10.0  # Large reward for successful landing (terminal)
-```
-
-Where:
-* `α = 1.0`: Scaling factor for vertical velocity.
-* `β = 0.1`: Scaling factor for horizontal position penalty.
-* The total reward becomes: `R_total = R_descent + R_x_penalty`. A terminal reward of `R_landing` is added when the lander successfully lands.
+* **Code Additions:**  
+$$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$  
+Where $w_{att} = 1.5$.
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
 
 **3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `α = 1.0`, `β = 0.1`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets `vy` (vertical velocity), `x` (horizontal position), and terminal landing condition.
+* **Coefficient:** 1.5
+* **Constraint/Clipping:** None explicitly stated
+* **Integration:** Targets `angle` and `v_ang` variables
 
 **4. Falsifiable Expected Outcome:**
+* **Target Metric:** Critic Saturation Index (CSI)
+* **Expected Change:** Reduction from $45.74 \to < 10.0$
 
-* **Target Metric:** Objective Alignment ($\rho$)
-* **Expected Change:** Increase from 0.000 to at least 0.6.
+---
 
-* **Target Metric:** Population Success Rate
-* **Expected Change:** Increase from 0.0% to at least 10.0%.
+### Proposal 2: Altitude-Gated Kinetic Dissipation (Modification)
 
+**1. Conceptual Hypothesis:**  
+The current `vertical_tolerance` is too weak to guide the descent. Modifying this component to be gated by altitude will encode urgency through spatial state, forcing the agent to dissipate kinetic energy as it approaches the landing site.
+
+**2. Mathematical Formulation:**
+* **Code Additions:**  
+$$R_{kin} = -0.5 \cdot \left(1.0 - \text{clip}\left(\frac{y}{10.0}, 0, 1\right)\right) \cdot (v_x^2 + v_y^2)$$
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
+
+**3. Reward Scaling & Constraints:**
+* **Coefficient:** 0.5
+* **Constraint/Clipping:** $\text{clip}\left(\frac{y}{10.0}, 0, 1\right)$
+* **Integration:** Targets $v_x$ and $v_y$ variables
+
+**4. Falsifiable Expected Outcome:**
 * **Target Metric:** Mean Descent Efficiency
-* **Expected Change:** Increase, indicating a more direct and efficient descent path.
+* **Expected Change:** Increase from $0.022 \to > 0.5$
 
 ---
 
-### Proposal 2: Angular Momentum Dampening & Stability
+### Proposal 3: The Landing Integrity Anchor (Addition)
 
 **1. Conceptual Hypothesis:**  
-The agent is trapped in a local optimum of high angular velocity. This is exacerbated by the current reward structure, which *rewards* spinning. We need to penalize angular momentum directly, forcing the agent to stabilize its orientation. This requires a penalty that scales with both angular velocity *and* the moment of inertia (implicitly represented by the lander's mass and distribution). We must also reduce the magnitude of any reward components that encourage spinning.
+The agent currently lacks an incentive to utilize landing legs. Introducing a high-magnitude penalty upon contact will create a strong gradient towards achieving contact stability.
 
 **2. Mathematical Formulation:**
-
-```
-R_angular_momentum = -γ * (v_ang)**2
-R_angle_penalty = -δ * abs(angle) #Small penalty for large angles.
-```
-
-Where:
-* `γ = 0.5`: Scaling factor for angular velocity penalty.
-* `δ = 0.05`: Scaling factor for angle penalty.
-
-The current `reward_spin_speed`, `reward_spin_angle`, `reward_spin_accel`, and `reward_action_spin_bonus` components should be *removed* entirely. The total reward is now `R_total = R_angular_momentum + R_angle_penalty + [other relevant rewards from Proposal 1]`.
-
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `γ = 0.5`, `δ = 0.05`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets angular velocity (`v_ang`) and orientation angle.
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** Actuator Chatter Rate
-* **Expected Change:** Reduce from 0.060 to below 0.15.
-
-* **Target Metric:** Intra-Rollout Reward CV
-* **Expected Change:** Reduce from 0.707 to below 0.5.
-
-* **Target Metric:** Contribution of Removed Components
-* **Expected Change:** Reduce to 0%.
-
----
-
-### Proposal 3: Leg Contact Reward Shaping & Landing Assistance
-
-**1. Conceptual Hypothesis:**  
-The agent is not properly incentivized to use the landing legs. The current minimal leg penalty isn’t strong enough to encourage proper landing behavior. We need to reward leg contact *during the final descent*, creating a positive feedback loop for successful landings. This is coupled with a height-based scaling of the reward to ensure it's only active when the lander is close to the ground.
-
-**2. Mathematical Formulation:**
-
-```
-R_leg_contact =  λ * (leg1 + leg2) * np.exp(-μ * y)
-```
-
-Where:
-* `λ = 2.0`: Scaling factor for leg contact reward.
-* `μ = 0.2`: Scaling factor for the exponential decay based on height (`y`). This ensures the reward is only significant when `y` is small (close to the ground).
-
-The total reward becomes: `R_total = R_leg_contact + [other relevant rewards from Proposals 1 & 2]`.
+* **Code Additions:**  
+$$R_{contact} = \begin{cases} 
+-5.0 \cdot (|v_y| + |\text{angle}|) & \text{if } (\text{leg1\_contact} \lor \text{leg2\_contact}) \\
+0 & \text{otherwise}
+\end{cases}$$
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
 
 **3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `λ = 2.0`, `μ = 0.2`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets leg contact and height (`y`).
+* **Coefficient:** 5.0
+* **Constraint/Clipping:** None explicitly stated
+* **Integration:** Targets $v_y$ and `angle` variables upon leg contact
 
 **4. Falsifiable Expected Outcome:**
-
 * **Target Metric:** Population Success Rate
-* **Expected Change:** Increase from 0.0% to at least 20.0%.
+* **Expected Change:** Increase from $0.0\% \to > 20.0\%$
 
-* **Target Metric:** Objective Alignment ($\rho$)
-* **Expected Change:** Increase, indicating that the leg contact reward is reinforcing the desired landing behavior.
+### [3. DIAGNOSTIC REPORT (CURRENT BEHAVIOR)]
+### 1. Optimization Dynamics & Critic Health
+**Status:** 🟢 **CONVERGED**
 
-* **Target Metric:** Contribution of Leg Contact Reward
-* **Expected Change:** Become a significant contributor (at least 5%) to the total reward magnitude.
+#### A. Cross-Seed Robustness
+- **Signal-to-Noise Ratio (SNR):** `173.50`
+  - *Diagnosis:* Strong cross-seed consistency. The reward landscape is learnable.
+
+#### B. Value Network (Critic) Integrity
+- **Critic Saturation Index (CSI):** `45.74`
+  - *Diagnosis:* **CRITICAL FAILURE.** The Critic has systemically diverged across all seeds (CSI > 10). The value network is entirely saturated by noise.
+  - *Action Required:* You must simplify the dense reward terms. The current shaping is introducing severe non-Markovian variance or contradictory gradients.
+
+#### C. Optimization Landscape
+- **Trajectory Isomorphism (Pairwise $\rho$):** `-0.159`
+### 2. Kinematic Behavior & Physical Robustness
+
+#### A. Universal Policy Robustness
+- **Population Success Rate:** `0.0%`
+  - *Diagnosis:* The policy is highly stable but mathematically wrong. It consistently executes the same failure mode across all seeds.
+
+#### B. Thermodynamic & Actuator Efficiency
+- **Mean Descent Efficiency:** `0.022`
+- **Actuator Chatter Rate:** `0.030`
+
+#### C. Population Terminal Distribution
+- `crashed`: 100.0%
+### 3. Reward Topology & Algorithmic Credit Assignment
+
+#### A. Global Objective Alignment (Oracle Test)
+- **Objective Alignment ($\rho$):** `0.000`
+  - *Diagnosis:* Weak alignment. The shaped reward landscape is poorly correlated with the actual goal of landing.
+  - *Action Required:* **Survival Hacking Detected.** The agent is farming points by hovering/delaying the episode. Add a temporal penalty or check for positive constant rewards.
+
+#### B. Component-Level Contribution (Algorithmic Credit Assignment)
+This table isolates the exact mathematical impact of each component you generated.
+| Reward Component | Correlation w/ Composite Viability (crashed) ($\rho$) | Relative Magnitude | Diagnostic Flag |
+|:---|:---:|:---:|:---|
+| `spin_speed` | -0.360 | 34.6% | 🔴 **NEGATIVELY ALIGNED** (ρ < -0.2) |
+| `spin_angle` | -0.182 | 57.3% | ⚪ Neutral/Noisy |
+| `spin_accel` | -0.352 | 0.3% | 🔴 **NEGATIVELY ALIGNED** (ρ < -0.2) |
+| `spin_direction_flip` | -0.005 | 0.3% | 🟡 **LOW MAGNITUDE** (<1% of gradient) |
+| `action_spin_bonus` | -0.157 | 3.7% | ⚪ Neutral/Noisy |
+| `legs_interrupt_penalty` | -0.006 | 0.6% | 🟡 **LOW MAGNITUDE** (<1% of gradient) |
+| `survival` | -0.103 | 0.8% | 🟡 **LOW MAGNITUDE** (<1% of gradient) |
+| `vertical_tolerance` | 0.241 | 2.4% | 🟢 Optimal |
+
+#### C. Stochastic Policy Fragility
+- **Intra-Rollout Reward CV:** `0.585` (Variance across seeds with *frozen* weights)
+- **Terminal Mode Entropy:** `0.040`
+  - *Diagnosis:* The stochastic policy has completely collapsed into a single pathological failure mode. The KL penalty likely prevented escape from a severe local minimum.
 
 **ACTION REQUIRED:**
 Evaluate the proposals based on your evaluation criteria. Output your `EXECUTIVE DECISION` selecting the single most viable Mathematical Contract.
 
 
-
-
 # Phase: research_lead [Thinking Trace] deepseek-r1:32b
+Okay, so I'm trying to figure out which proposal to select for the LunarLander-v3 project. The current iteration is 1, and there are three proposals to consider. Let me go through each step carefully.
 
+First, I need to understand the problem. The system is facing critical issues: the critic saturation index is way too high, the population success rate is zero, and the policy is stuck in a failure mode. The reward landscape isn't aligned with the actual goal of landing, and some components are negatively contributing. So, the main goal is to fix these issues.
 
+Looking at the Evaluation Criteria:
 
-Okay, so I'm trying to help the user make an executive decision on which proposal to implement for their LunarLander-v3 project. Let me go through each step carefully.
+1. **Novelty Check**: I need to ensure the proposal doesn't mirror past failed hypotheses. Since this is the first iteration, there's no past data, so this might not be a big issue here, but I should still check if the proposal introduces something new.
 
-First, I need to understand the role and objective. The user is the Principal Research Lead, so their job is to evaluate the proposals based on strict scientific criteria and select the best one. The main criteria are Novelty Check, Falsifiability, and Physical Grounding.
+2. **Falsifiability**: The chosen proposal must have a clear, measurable outcome that can be validated in the next run. This means the expected outcome should be specific and testable.
 
-Looking at the Experiment Ledger, it's the first iteration, so there's no past data to reference. That means the Novelty Check is a bit easier since there's nothing to compare against yet.
+3. **Physical Grounding**: The proposal should address the actual physics of the environment, like kinematics or momentum, rather than just numerical scaling.
 
-Now, onto the proposals. There are three: Proposal 1, 2, and 3.
+Now, let's look at each proposal:
 
-Proposal 1 focuses on rewarding descent velocity and penalizing horizontal deviation, plus a terminal reward for landing. This seems to address the physics by targeting vertical velocity and horizontal position. It's clear in its expected outcomes, which is good for falsifiability.
+**Proposal 1: The Attitudinal Stabilizer (Replacement Cluster)**
+- Hypothesis: Replaces the spin cluster with a quadratic penalty to reduce oscillations and critic saturation.
+- Formulation: Adds a reward component based on angle and angular velocity squared.
+- Expected Outcome: Reduce CSI from 45.74 to <10.0.
 
-Proposal 2 aims to dampen angular momentum by penalizing spinning. It removes some existing reward components that encourage spinning. This also ties into the physics by targeting angular velocity and orientation. However, it doesn't directly address the landing issue, which seems critical.
+This seems to directly address the critic saturation issue by simplifying the reward and providing a smooth gradient. It's physically grounded as it relates to the angle and velocity, which are kinematic variables.
 
-Proposal 3 introduces a reward for leg contact, especially when close to the ground. This directly addresses the physical aspect of using the legs for landing, which is essential. The formulation uses exponential decay based on height, ensuring the reward is significant only near the ground. This seems to have a clear expected outcome and is physically grounded.
+**Proposal 2: Altitude-Gated Kinetic Dissipation (Modification)**
+- Hypothesis: Modifies vertical_tolerance to be gated by altitude to increase descent efficiency.
+- Formulation: Adds a reward that penalizes kinetic energy as altitude decreases.
+- Expected Outcome: Increase Mean Descent Efficiency from 0.022 to >0.5.
 
-Next, evaluating the criteria:
+This targets the descent efficiency, which is a thermodynamic aspect. It's physically grounded as it relates to velocity components and altitude. However, the current problem is more critical with critic saturation and success rate, which this might not address directly.
 
-1. **Novelty Check**: Since it's the first iteration, all proposals are novel. So no rejections here.
+**Proposal 3: The Landing Integrity Anchor (Addition)**
+- Hypothesis: Adds a penalty upon leg contact to encourage stability.
+- Formulation: Introduces a high-magnitude penalty when legs contact the ground.
+- Expected Outcome: Increase success rate from 0% to >20%.
 
-2. **Falsifiability**: All proposals have measurable outcomes, so they pass this.
+This directly targets the success rate by incentivizing contact stability. It's physically grounded as it uses velocity and angle upon contact. However, introducing a high penalty might complicate the reward landscape further, potentially causing issues elsewhere.
 
-3. **Physical Grounding**: Proposal 3 directly targets the physics of the landing by rewarding leg contact and considering height. Proposal 1 also addresses physics but doesn't directly tie into the landing mechanics beyond rewarding descent. Proposal 2 focuses on angular momentum but doesn't address the landing phase's specific needs.
+Now, considering the current issues:
 
-Considering the objective is to improve landing success, Proposal 3 seems most aligned. It directly incentivizes the use of legs during the final descent, which is a critical factor for successful landings. The other proposals either focus on descent or spinning but don't specifically target the landing mechanics.
+- **Critic Saturation (CSI 45.74)**: This is a critical issue that needs immediate attention. Proposal 1 aims to reduce this by simplifying the reward and providing a smoother gradient, which could help the critic converge better.
 
-So, I conclude that Proposal 3 is the best choice as it's physically grounded, directly addresses the landing issue, and has clear outcomes.
+- **Success Rate 0%**: While Proposal 3 targets this, the root cause might be the critic saturation. Without a stable critic, the policy might not learn effectively, regardless of the landing incentives.
 
+- **Reward Alignment**: The current reward components are negatively aligned, especially the spin-related ones. Proposal 1 replaces these with a more aligned component, which could improve overall alignment.
 
+Looking at the Ledger Clearance: Since this is the first iteration, there's no past data to reference, so all proposals are novel.
+
+Falsifiability: Proposal 1 has a clear metric (CSI) that can be measured and validated. Proposal 2 and 3 also have clear metrics, but the priority is on stabilizing the critic first.
+
+Physical Grounding: All proposals are grounded, but Proposal 1 directly addresses the critic health, which is a more foundational issue.
+
+Considering these factors, Proposal 1 seems to be the most critical step. Addressing the critic saturation will likely lead to better policy learning, which can then be followed by other improvements in subsequent iterations.
 
 
 
 # Phase: research_lead [Output] deepseek-r1:32b
-
-
-
 ### EXECUTIVE DECISION
 
-**Selected Proposal:** Proposal 3: Leg Contact Reward Shaping & Landing Assistance
+**Selected Proposal:** Proposal 1: The Attitudinal Stabilizer (Replacement Cluster)
 
-**1. Scientific Rationale:**  
-This proposal directly addresses the critical physics of the lunar landing environment by incentivizing leg contact during final descent. The exponential decay based on height ensures the reward is only meaningful when physically relevant, making it both mathematically elegant and physically grounded.
+**1. Scientific Rationale:**
+This proposal directly addresses the critical issue of critic saturation by replacing the problematic spin cluster with a quadratic penalty, providing a smoother gradient that is physically grounded in kinematics.
 
-**2. Ledger Clearance:**  
-No prior experiments exist in the ledger, so this proposal introduces a novel, untested hypothesis that aligns with the physical requirements of successful lunar landing.
+**2. Ledger Clearance:**
+As this is the first iteration, all proposals are novel and do not reference past failures.
 
 **3. Execution Hand-off:**
 
 **1. Conceptual Hypothesis:**  
-The agent is not properly incentivized to use the landing legs. The current minimal leg penalty isn’t strong enough to encourage proper landing behavior. We need to reward leg contact *during the final descent*, creating a positive feedback loop for successful landings. This is coupled with a height-based scaling of the reward to ensure it's only active when the lander is close to the ground.
+The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. Replacing the spin-centric cluster with a quadratic penalty cluster will provide a smooth gradient near the target state, reducing oscillations and critic saturation.
 
 **2. Mathematical Formulation:**
-
-```
-R_leg_contact =  λ * (leg1 + leg2) * np.exp(-μ * y)
-```
-
-Where:
-* `λ = 2.0`: Scaling factor for leg contact reward.
-* `μ = 0.2`: Scaling factor for the exponential decay based on height (`y`). This ensures the reward is only significant when `y` is small (close to the ground).
-
-The total reward becomes: `R_total = R_leg_contact + [other relevant rewards from Proposals 1 & 2]`.
+* **Code Additions:**  
+$$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$  
+Where $w_{att} = 1.5$.
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
 
 **3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `λ = 2.0`, `μ = 0.2`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets leg contact and height (`y`).
+* **Coefficient:** 1.5
+* **Constraint/Clipping:** None explicitly stated
+* **Integration:** Targets `angle` and `v_ang` variables
 
 **4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** Population Success Rate
-* **Expected Change:** Increase from 0.0% to at least 20.0%.
-
-* **Target Metric:** Objective Alignment ($\rho$)
-* **Expected Change:** Increase, indicating that the leg contact reward is reinforcing the desired landing behavior.
-
-* **Target Metric:** Contribution of Leg Contact Reward
-* **Expected Change:** Become a significant contributor (at least 5%) to the total reward magnitude.
+* **Target Metric:** Critic Saturation Index (CSI)
+* **Expected Change:** Reduction from $45.74 \to < 10.0$
 
 
-
-
-# Phase: dispatcher [System] deepseek-r1:14b
-
-
-
+# Phase: dispatcher [System] deepseek-r1:32b
 **[ROLE AND OBJECTIVE]**
 You are the Technical Dispatcher for an autonomous Reinforcement Learning pipeline. Your role is strict data extraction and routing.
 You will receive an `EXECUTIVE DECISION` from the Research Lead, which contains a selected Mathematical Contract for a new reward function.
@@ -808,15 +948,16 @@ Your ONLY job is to split this decision into two highly isolated, specific paylo
 **[ROUTING DIRECTIVES]**
 
 1. **Zero Hallucination:** You must extract verbatim from the Research Lead's output. Do not change the math, do not change the coefficients, and do not alter the predicted metrics.
-2. **The Coder Payload:** The Coder only cares about syntax and math. Extract the "Mathematical Formulation", "Coefficient", "Constraint/Clipping", and "Integration" details. Strip away the philosophical hypotheses or expected outcomes.
+2. **The Coder Payload:** The Coder only cares about syntax and math. Extract the "Code Additions", "Code Deletions/Modifications", "Coefficient", "Constraint/Clipping", and "Integration" details. Strip away the philosophical hypotheses or expected outcomes. The 'Code Deletions/Modifications' section of the CODER_PAYLOAD must contain the exact backticked component names verbatim from the Research Lead's excision list, one per line. Do not summarize, paraphrase, group, or replace these with descriptive text. If no excisions were specified, write 'None'.
 3. **The Validator Payload:** The Validator only cares about the scientific method. Extract the "Conceptual Hypothesis", the "Target Metric", the "Expected Change", and any "Expected Side Effects". Strip away the raw Python code or LaTeX math.
 
 **[OUTPUT CONSTRAINTS]**
-You must output your response strictly wrapped in the following XML-style tags so the downstream orchestration script can parse it. Do not include any conversational text outside these tags.
+You must output your response strictly wrapped in the following XML-style tags so the downstream orchestration script can parse it. Do not include any conversational text outside these tags. Used a structured list if any field in either payload requires more than 1 numerical value.
 
 <CODER_PAYLOAD>
-**Mathematical Formulation:** [Extracted exact math/code]
-**Scaling & Constraints:** [Extracted coefficients and clips]
+**Code Additions:** [Extracted additions]
+**Code Deletions/Modifications:** [Extracted deletions]
+**Scaling & Constraints:** [Extracted coefficients, clips or named constants]
 **Integration:** [Extracted integration targets]
 </CODER_PAYLOAD>
 
@@ -829,12 +970,7 @@ You must output your response strictly wrapped in the following XML-style tags s
 </VALIDATOR_PAYLOAD>
 
 
-
-
-# Phase: dispatcher [User] deepseek-r1:14b
-
-
-
+# Phase: dispatcher [User] deepseek-r1:32b
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT TASK:** Payload Routing
 
@@ -844,116 +980,91 @@ Parse the following Executive Decision from the Research Lead and route the data
 
 ### EXECUTIVE DECISION
 
-**Selected Proposal:** Proposal 3: Leg Contact Reward Shaping & Landing Assistance
+**Selected Proposal:** Proposal 1: The Attitudinal Stabilizer (Replacement Cluster)
 
-**1. Scientific Rationale:**  
-This proposal directly addresses the critical physics of the lunar landing environment by incentivizing leg contact during final descent. The exponential decay based on height ensures the reward is only meaningful when physically relevant, making it both mathematically elegant and physically grounded.
+**1. Scientific Rationale:**
+This proposal directly addresses the critical issue of critic saturation by replacing the problematic spin cluster with a quadratic penalty, providing a smoother gradient that is physically grounded in kinematics.
 
-**2. Ledger Clearance:**  
-No prior experiments exist in the ledger, so this proposal introduces a novel, untested hypothesis that aligns with the physical requirements of successful lunar landing.
+**2. Ledger Clearance:**
+As this is the first iteration, all proposals are novel and do not reference past failures.
 
 **3. Execution Hand-off:**
 
 **1. Conceptual Hypothesis:**  
-The agent is not properly incentivized to use the landing legs. The current minimal leg penalty isn’t strong enough to encourage proper landing behavior. We need to reward leg contact *during the final descent*, creating a positive feedback loop for successful landings. This is coupled with a height-based scaling of the reward to ensure it's only active when the lander is close to the ground.
+The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. Replacing the spin-centric cluster with a quadratic penalty cluster will provide a smooth gradient near the target state, reducing oscillations and critic saturation.
 
 **2. Mathematical Formulation:**
-
-```
-R_leg_contact =  λ * (leg1 + leg2) * np.exp(-μ * y)
-```
-
-Where:
-* `λ = 2.0`: Scaling factor for leg contact reward.
-* `μ = 0.2`: Scaling factor for the exponential decay based on height (`y`). This ensures the reward is only significant when `y` is small (close to the ground).
-
-The total reward becomes: `R_total = R_leg_contact + [other relevant rewards from Proposals 1 & 2]`.
+* **Code Additions:**  
+$$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$  
+Where $w_{att} = 1.5$.
+* **Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
 
 **3. Reward Scaling & Constraints:**
-
-* **Coefficient:** `λ = 2.0`, `μ = 0.2`
-* **Constraint/Clipping:** None explicitly stated.
-* **Integration:** Targets leg contact and height (`y`).
+* **Coefficient:** 1.5
+* **Constraint/Clipping:** None explicitly stated
+* **Integration:** Targets `angle` and `v_ang` variables
 
 **4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** Population Success Rate
-* **Expected Change:** Increase from 0.0% to at least 20.0%.
-
-* **Target Metric:** Objective Alignment ($\rho$)
-* **Expected Change:** Increase, indicating that the leg contact reward is reinforcing the desired landing behavior.
-
-* **Target Metric:** Contribution of Leg Contact Reward
-* **Expected Change:** Become a significant contributor (at least 5%) to the total reward magnitude.
+* **Target Metric:** Critic Saturation Index (CSI)
+* **Expected Change:** Reduction from $45.74 \to < 10.0$
 
 **ACTION REQUIRED:**
-Extract and route the mathematical instructions to the `<CODER_PAYLOAD>` and the scientific experiment parameters to the `<VALIDATOR_PAYLOAD>`. Output nothing else.
+Extract and route the mathematical instructions to the `<CODER_PAYLOAD>` and the intervention parameters and predicted effects to the `<VALIDATOR_PAYLOAD>`. Output nothing else.
+
+
+# Phase: dispatcher [Thinking Trace] deepseek-r1:32b
+Okay, so I need to help route the Executive Decision from the Research Lead into the Coder and Validator payloads. Let me start by understanding the structure and requirements.
+
+First, the Coder Payload requires specific sections: Code Additions, Code Deletions/Modifications, Scaling & Constraints, and Integration. I need to extract these verbatim from the Research Lead's decision without any changes.
+
+Looking at the Code Additions, the Research Lead provided a LaTeX formula: R_att equals negative w_att times (angle squared plus v_ang squared), with w_att being 1.5. I should include this exactly as is.
+
+For Code Deletions/Modifications, the list includes several components like spin_speed, spin_angle, etc. Each should be on a separate line, and I must ensure they are backticked as per the instructions. If there were none, I'd write 'None', but here there are five items.
+
+Scaling & Constraints mention a coefficient of 1.5 and no explicit clipping. So I'll note the coefficient and state that there's no constraint.
+
+Integration targets the angle and v_ang variables, so I'll list them as specified.
+
+Now, the Validator Payload needs the Conceptual Hypothesis, Target Metric, Expected Change, and Side Effects. The hypothesis is about replacing the spin cluster with a quadratic penalty to reduce oscillations and saturation. The target metric is the Critic Saturation Index (CSI), expected to drop from 45.74 to below 10.0. There are no side effects mentioned, so I'll note that as 'None'.
+
+I need to make sure all the extracted information is wrapped correctly in the XML-style tags without any extra text. Also, I should avoid any markdown formatting and keep the output strictly as per the directives.
+
+Let me double-check each section to ensure nothing is missed or altered. The Coder gets the code parts, and the Validator gets the scientific rationale and expected outcomes. Everything seems to be in order, so I'll proceed to format the response accordingly.
 
 
 
-
-# Phase: dispatcher [Thinking Trace] deepseek-r1:14b
-
-
-
-Okay, so I'm trying to figure out how to split the Research Lead's Executive Decision into two specific payloads: one for the Coder and one for the Validator. The user has given me some detailed instructions on how to do this, so I need to make sure I follow them closely.
-
-First, I'll read through the Executive Decision provided. It's about a new reward function for the LunarLander-v3 environment. The proposal is to shape the reward based on leg contact during final descent. The mathematical formulation is given, along with scaling factors and constraints. There's also a section on the expected outcomes, which includes target metrics and expected changes.
-
-Now, I need to identify what goes into the Coder Payload and what goes into the Validator Payload. According to the routing directives, the Coder Payload should include the mathematical formulation, coefficients, constraints, and integration details. The Validator Payload should include the conceptual hypothesis, target metrics, expected changes, and side effects.
-
-Let me break it down:
-
-For the Coder Payload:
-- **Mathematical Formulation:** The exact formula is given as R_leg_contact = λ * (leg1 + leg2) * np.exp(-μ * y). I need to extract this verbatim.
-- **Scaling & Constraints:** The coefficients are λ = 2.0 and μ = 0.2. There are no explicit constraints or clipping mentioned, so I'll note that as 'None'.
-- **Integration:** It targets leg contact and height (y), so I'll include that.
-
-For the Validator Payload:
-- **Conceptual Hypothesis:** The agent isn't incentivized enough to use the landing legs, so the current penalty isn't strong enough. The new reward should encourage proper landing behavior during final descent.
-- **Falsifiable Expected Outcome:** The target metrics are Population Success Rate, Objective Alignment (ρ), and Contribution of Leg Contact Reward. The expected changes are increases in success rate to at least 20%, improvement in ρ, and the reward becoming a significant contributor (at least 5%).
-
-I need to make sure I don't add any extra information or change the math. I should strictly extract the required parts and structure them into the specified XML tags without any additional text.
-
-I also need to ensure that the output is strictly wrapped in the XML-style tags as specified, with no extra conversational text. So, I'll structure the Coder Payload with the three sections and the Validator Payload with the hypothesis and expected outcomes.
-
-Let me double-check to make sure I didn't miss any details. The Coder needs the exact math, coefficients, and integration. The Validator needs the hypothesis and the expected changes in the target metrics. I think I've covered all the necessary points.
-
-
-
-
-
-# Phase: dispatcher [Output] deepseek-r1:14b
-
-
-
+# Phase: dispatcher [Output] deepseek-r1:32b
 <CODER_PAYLOAD>
-**Mathematical Formulation:** R_leg_contact = λ * (leg1 + leg2) * np.exp(-μ * y)
-**Scaling & Constraints:** λ = 2.0, μ = 0.2
-**Integration:** Targets leg contact and height (y)
+**Code Additions:** $$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$ Where $w_{att} = 1.5$.
+**Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
+**Scaling & Constraints:** Coefficient: 1.5; Constraint/Clipping: None
+**Integration:** Targets `angle` and `v_ang` variables
 </CODER_PAYLOAD>
 
 <VALIDATOR_PAYLOAD>
-**Conceptual Hypothesis:** The agent isn't incentivized enough to use the landing legs, so the current penalty isn't strong enough. The new reward should encourage proper landing behavior during final descent.
-**Falsifiable Expected Outcome:** 
-- Target Metric: Population Success Rate
-* Expected Change: Increase from 0.0% to at least 20.0%
-- Target Metric: Objective Alignment (ρ)
-* Expected Change: Increase, indicating that the leg contact reward is reinforcing the desired landing behavior.
-- Target Metric: Contribution of Leg Contact Reward
-* Expected Change: Become a significant contributor (at least 5%) to the total reward magnitude.
+**Conceptual Hypothesis:** The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. Replacing the spin-centric cluster with a quadratic penalty cluster will provide a smooth gradient near the target state, reducing oscillations and critic saturation.
+**Falsifiable Expected Outcome:** - Target Metric: Critic Saturation Index (CSI)
+
+* Expected Change: Reduction from $45.74 \to < 10.0$
+* Side Effects: None
 </VALIDATOR_PAYLOAD>
 
 
-
-
 # Phase: coder [System] qwen3-coder:30b
-
-
-
 **[ROLE AND OBJECTIVE]**
 You are the Lead Implementation Engineer (Coder) for a Reinforcement Learning pipeline. Your ONLY job is to translate explicit mathematical instructions into production-ready, bug-free Python code for a Gymnasium environment wrapper.
-You will receive a set of exact mathematical instructions and constraints. Do not question the math, do not invent new penalties, and do not write explanations. Just write the code.
+
+You are a rigorous editor working from an existing reward function. You will receive instructions for both "Code Additions" and "Code Deletions/Modifications". Do not question the math, do not invent new penalties, and do not write explanations. Just write the code.
 
 **[ENVIRONMENT & API CONSTRAINTS]**
 **State Space & Variables Available:**
@@ -961,7 +1072,6 @@ You are writing the reward function for `LunarLander-v3`.
 * `obs`: A numpy array `[x_pos, y_pos, x_vel, y_vel, angle, angular_vel, leg1_contact, leg2_contact]`
 * `info['prev_obs']`: The observation array from the previous step.
 * `info['action']`: The discrete action taken by the agent.
-
 
 You must strictly adhere to the following function signature and constraints:
 
@@ -976,16 +1086,87 @@ The function **MUST** return exactly two items:
 1. `total_reward`: A single `float` representing the sum of all reward components.
 2. `components_dict`: A dictionary containing the individual values of every mathematical component calculated. (e.g., `{"velocity_penalty": -0.5, "descent_bonus": 1.2}`). Give each component a clear, descriptive key name.
 
+**[COMPONENTS DICTIONARY CONTRACT — STRICT]**
+The `components` dictionary is the authoritative gradient decomposition of `total_reward`. It is consumed by the diagnostic layer to compute per-component correlation with task success. Including a derived expression alongside its constituents corrupts the diagnostic and inflates the gradient applied during PPO training.
+
+**RULES — non-negotiable:**
+
+1. Every entry in `components` MUST be a primitive scalar value, not a derived expression involving other entries.
+2. If the Strategist proposes a "Combined", "Cluster", or "Synergy" formulation as a sum or product (e.g., `R_total = r_a + r_b + r_c` or `R_landing = R_contact * M_stable`), include ONLY the constituent terms in the dictionary. NEVER include the combined value as a separate entry.
+3. The line `total_reward = float(sum(components.values()))` must produce the intended total without double-counting.
+
+**WORKED EXAMPLE — INCORRECT:**
+```python
+# Strategist proposed: "Combined: R_damp = r_v_horiz + r_v_vert"
+r_v_horiz = -1.0 * np.tanh(1.5 * np.abs(vx))
+r_v_vert  = -1.0 * np.tanh(1.5 * np.abs(vy))
+r_damp    = r_v_horiz + r_v_vert  # derived
+
+components = {
+    "velocity_horizontal_damp":   float(r_v_horiz),
+    "velocity_vertical_damp":     float(r_v_vert),
+    "velocity_damping_combined":  float(r_damp),  # ❌ DOUBLE-COUNT
+}
+total_reward = float(sum(components.values()))
+# total = r_v_horiz + r_v_vert + (r_v_horiz + r_v_vert) = 2x intended weight
+```
+
+**WORKED EXAMPLE — CORRECT:**
+```python
+r_v_horiz = -1.0 * np.tanh(1.5 * np.abs(vx))
+r_v_vert  = -1.0 * np.tanh(1.5 * np.abs(vy))
+
+components = {
+    "velocity_horizontal_damp": float(r_v_horiz),
+    "velocity_vertical_damp":   float(r_v_vert),
+}
+total_reward = float(sum(components.values()))
+# r_damp may be referenced in comments or used as an intermediate name,
+# but it does not appear as a dictionary entry alongside its constituents.
+```
+
+The same rule applies to multiplicative compositions: if `R_landing = R_contact * M_stable` is proposed, include `R_landing` as a single component OR include `R_contact` and `M_stable` as separate components — never all three.
+
+**[DELETION LIST CONTRACT — STRICT]**
+The CODER_PAYLOAD contains a "Code Deletions/Modifications" section listing reward components the Strategist has identified as adversarial, redundant, or replaced. Every name appearing in that list MUST NOT appear as a key in the output `components` dictionary, and the variable computing it MUST be removed from the function body.
+
+**RULES — non-negotiable:**
+
+1. Read the full deletion list before writing any code. Treat each named component as required-to-remove.
+2. Do not preserve a deleted component "for safety" or because it appears in `current_code`. The Strategist has reasoned about its effect and decided it is harmful or replaced.
+3. Remove both the variable computation (e.g., `r_legs_penalty = -2.0 * (leg1+leg2)`) AND the dictionary entry (`"legs_interrupt_penalty": float(r_legs_penalty)`).
+4. Do not leave orphaned code, unused variables, or commented-out remnants of deleted components.
+5. If the deletion list is empty, "None", or "No components excised", make additions/modifications as instructed while preserving all existing components.
+
+**WORKED EXAMPLE — INCORRECT:**
+Deletion list: `legs_interrupt_penalty`, `survival`
+```python
+r_landing_cluster = 20.0 * (leg1+leg2) * np.exp(-np.abs(angle)) * np.exp(-np.abs(vy))
+r_survival        = 0.08
+r_legs_penalty    = -2.0 * (leg1+leg2)  # ❌ should have been removed
+
+components = {
+    "landing_cluster":         float(r_landing_cluster),
+    "survival":                float(r_survival),         # ❌ on deletion list
+    "legs_interrupt_penalty":  float(r_legs_penalty),     # ❌ on deletion list
+}
+```
+
+**WORKED EXAMPLE — CORRECT:**
+Deletion list: `legs_interrupt_penalty`, `survival`
+```python
+r_landing_cluster = 20.0 * (leg1+leg2) * np.exp(-np.abs(angle)) * np.exp(-np.abs(vy))
+
+components = {
+    "landing_cluster": float(r_landing_cluster),
+}
+```
+
 **[OUTPUT FORMAT]**
 Output ONLY valid Python code wrapped in standard `python` markdown blocks. Do not include any conversational text before or after the code block.
 
 
-
-
 # Phase: coder [User] qwen3-coder:30b
-
-
-
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT TASK:** Implement Reward Function Update
 
@@ -996,19 +1177,6 @@ Please implement the requested mathematical updates into the current reward func
 This is the baseline code you are modifying.
 
 ```python
-"""
-spin_crash_reward.py
-
-Reward function for classic PPO failure mode: SPINNING → CRASH.
-- Rewards high angular velocity at ALL costs
-- Ignores position/legs entirely  
-- Small survival bonus
-- Produces uncontrollable spinning → inevitable crash
-
-Result: Agent learns to spin wildly, then crashes spectacularly.
-Perfect test for terminal_status='crashed' + high spin_rate detection.
-"""
-
 import numpy as np
 from typing import Dict, Tuple
 
@@ -1083,35 +1251,23 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
 
 These are the explicit mathematical updates you must integrate into the code above.
 
-**Mathematical Formulation:** R_leg_contact = λ * (leg1 + leg2) * np.exp(-μ * y)
-**Scaling & Constraints:** λ = 2.0, μ = 0.2
-**Integration:** Targets leg contact and height (y)
+**Code Additions:** $$R_{att} = -w_{att} \cdot (\text{angle}^2 + \text{v\_ang}^2)$$ Where $w_{att} = 1.5$.
+**Code Deletions/Modifications:**  
+- `spin_speed`  
+- `spin_angle`  
+- `spin_accel`  
+- `spin_direction_flip`  
+- `action_spin_bonus`
+**Scaling & Constraints:** Coefficient: 1.5; Constraint/Clipping: None
+**Integration:** Targets `angle` and `v_ang` variables
 
 
 **ACTION REQUIRED:**
-Write the complete, updated Python script containing `calculate_reward(obs, info)`. Ensure all new math is implemented exactly as specified, properly scaled, correctly constrained
-
-
+Write the complete, updated Python script containing `calculate_reward(obs, info)`. You MUST aggressively execute any specified Code Deletions by removing that logic entirely, and integrate all Code Additions exactly as specified.
 
 
 # Phase: coder [Output] qwen3-coder:30b
-
-
-
 ```python
-"""
-spin_crash_reward.py
-
-Reward function for classic PPO failure mode: SPINNING → CRASH.
-- Rewards high angular velocity at ALL costs
-- Ignores position/legs entirely  
-- Small survival bonus
-- Produces uncontrollable spinning → inevitable crash
-
-Result: Agent learns to spin wildly, then crashes spectacularly.
-Perfect test for terminal_status='crashed' + high spin_rate detection.
-"""
-
 import numpy as np
 from typing import Dict, Tuple
 
@@ -1131,57 +1287,26 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
     prev_angle, prev_v_ang = prev_obs[4], prev_obs[5]
     action = info.get('action', 0)
     
-    # === 1. ANGULAR VELOCITY OBSESSION (primary reward) ===
-    # Massive bonus for HIGH |v_ang| (spinning fast)
-    spin_speed = abs(v_ang)
-    r_spin_speed = 10.0 * np.clip(spin_speed / 3.0, 0, 2.0)  # up to +20!
+    # === 1. ATTITUDE PENALTY (new addition) ===
+    w_att = 1.5
+    r_attitude = -w_att * (angle**2 + v_ang**2)
     
-    # Bonus for angle magnitude (being rotated)
-    r_spin_angle = 4.0 * np.abs(angle)  # up to ~12 for ±π
-    
-    # Angular acceleration bonus (changing spin rate)
-    d_angle = abs(angle - prev_angle)
-    r_spin_accel = 2.0 * np.clip(d_angle / np.pi, 0, 1.0)  # up to +2
-    
-    # === 2. SPIN DIRECTION CHANGE (alternating spin directions) ===
-    v_ang_sign_flip = (np.sign(v_ang) != np.sign(prev_v_ang)) and abs(v_ang) > 1.0
-    r_spin_flip = 8.0 if v_ang_sign_flip else 0.0
-    
-    # === 3. ACTION PREFERENCE (thrusters that induce torque) ===
-    # All actions except do-nothing get spin bonus
-    if action == 0:  # do nothing
-        r_action = -1.0
-    else:  # any thrust = torque potential
-        r_action = 0.5
-    
-    # === 4. IGNORE LANDING (no leg/position rewards) ===
+    # === 2. IGNORE LANDING (no leg/position rewards) ===
     # Mild penalty for legs touching (interrupts spin)
     r_legs_penalty = -2.0 * (leg1 + leg2)
     
-    # === 5. SURVIVAL (allow long spin episodes) ===
+    # === 3. SURVIVAL (allow long spin episodes) ===
     r_survival = 0.08
     
-    # === 6. VERTICAL TOLERANCE (don't care much about y/vy) ===
+    # === 4. VERTICAL TOLERANCE (don't care much about y/vy) ===
     # Mild preference for level flight to prolong spinning
     r_vertical = -0.3 * abs(vy)  # Don't crash vertically too fast
     
-    # === 7. NEW LEG CONTACT REWARD COMPONENT ===
-    # R_leg_contact = λ * (leg1 + leg2) * np.exp(-μ * y)
-    # λ = 2.0, μ = 0.2
-    lambda_param = 2.0
-    mu_param = 0.2
-    r_leg_contact = lambda_param * (leg1 + leg2) * np.exp(-mu_param * y)
-    
     components = {
-        "spin_speed": float(r_spin_speed),
-        "spin_angle": float(r_spin_angle),
-        "spin_accel": float(r_spin_accel),
-        "spin_direction_flip": float(r_spin_flip),
-        "action_spin_bonus": float(r_action),
+        "attitude_penalty": float(r_attitude),
         "legs_interrupt_penalty": float(r_legs_penalty),
         "survival": float(r_survival),
         "vertical_tolerance": float(r_vertical),
-        "leg_contact_reward": float(r_leg_contact),
     }
     
     total_reward = float(sum(components.values()))

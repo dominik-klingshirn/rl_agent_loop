@@ -128,7 +128,7 @@ class Config:
                 options["top_p"] = 0.95
                 options["top_k"]=64
                 options["num_ctx"] = 24576      # Max safe for 36GB — ledger grows over iterations
-                options["num_predict"] = 8192   # 3 detailed mathematical proposals with rationale
+                options["num_predict"] = 16384   # 3 detailed mathematical proposals with rationale
 
             elif role == "organizer":
                 # Goal: Reformat the Strategist's output into a strict, machine-parseable schema.
@@ -137,8 +137,8 @@ class Config:
                 # Lower temp than any other role to prevent schema drift.
                 options["temperature"] = 0.4
                 options["top_p"] = 0.85
-                options["num_ctx"] = 12288      # Strategist output only — no history needed
-                options["num_predict"] = 8192   # Bounded by the schema structure itself
+                options["num_ctx"] =  16384     # Strategist output only — no history needed
+                options["num_predict"] = 12288   # Bounded by the schema structure itself
 
             elif role == "research_lead":
                 # Goal: Apply Occam's Razor and select the single most viable hypothesis.
