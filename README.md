@@ -201,7 +201,7 @@ Organizer     : `deepseek-r1:32b`
 Research Lead : `deepseek-r1:32b`
 Dispatcher    : `deepseek-r1:32b`
 Coder         : `qwen3-coder:30b`
-Validator     : `deepseek-r1:32b`
+Validator     : `deepseek-r1:32``b`
 
 **3. Execute the Pipeline**
 
