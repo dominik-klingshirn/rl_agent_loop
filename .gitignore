@@ -20,6 +20,8 @@ models/
 plots/
 showcase_videos/
 loop_videos.py
+cognitions_for_review/
+post_hoc_analysis/outputs/
 *.json
 
 # Unit tests/ experimental or temp scripts
@@ -29,15 +31,14 @@ loop_videos.py
 *_old.py
 *_old.md
 *_test*.md
-cognitions_for_review/
-prepare_cognition_for_review.py
 testing_*.ipynb
 testing_*.py
 testing_suite/
+prepare_cognition_for_review.py
 inspect_model.py
 sandbox.ipynb
-post-hoc_evaluation/get_campaign_summary.sh
+post_hoc_analysis/get_campaign_summary.sh
 documentation/notes/
 
 # Just a temporary file to use NotebookLM to generate infographic based on structure of project
-READ_ME.MD
+READ_ME.md

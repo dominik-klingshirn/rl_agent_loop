@@ -15,14 +15,16 @@ ITERATIONS=""
 TIMESTEPS=""
 TAG=""
 REWARD_FUNC="spin_crash" 
+RUN_NUM=""
 # Capture arguments
 # i: iterations, s: steps, t: tag, r: reward
-while getopts "i:s:t:r:" opt; do
+while getopts "i:s:t:r:n:" opt; do
   case $opt in
     i) ITERATIONS="$OPTARG" ;;       # Number of train / generate improved code cycles
     s) TIMESTEPS="$OPTARG" ;;        # number of timesteps each agent is trained on reward function
     t) TAG="$OPTARG" ;;              # optional experiment tag (e.g., testingPrompts, compareLLMs)
     r) REWARD_FUNC="$OPTARG" ;;      # the initial deliberately flawed reward function to start with
+    n) RUN_NUM="$OPTARG" ;;
     *) echo "Usage: $0 [-i iterations] [-s steps] [-t tag] [-r reward_name]"; exit 1 ;;
   esac
 done
@@ -138,9 +140,17 @@ for model in "${MODELS[@]}"; do
     TAG_PART=""
   fi
 
+  # Append _runN to the campaign tag if -n is provided
+  if [[ -n "$RUN_NUM" ]]; then
+    RUN_PART="_run${RUN_NUM}"
+  else
+    RUN_PART=""
+  fi
+
+
   # Example final pattern:
   # 2025-12-20_10cycles_500kSteps_LLMcomparison
-  CAMPAIGN_TAG="${TIMESTAMP}_${REWARD_FUNC}_${ITERATIONS}cycles_${STEP_STR}Steps${TAG_PART}"
+  CAMPAIGN_TAG="${TIMESTAMP}_${REWARD_FUNC}_${ITERATIONS}cycles_${STEP_STR}Steps${TAG_PART}${RUN_PART}"
 
   export CAMPAIGN_TAG
   export LLM_MODEL="$model"
@@ -155,6 +165,11 @@ for model in "${MODELS[@]}"; do
 
   # 4. GENERATE SUMMARY PLOT
   python3 "$PLOTTING_SCRIPT"
+
+  # 5. Generate Cognition report
+  echo -e "${BLUE}[Post-run] Cognition analysis${NC}"
+  python3 post_hoc_analysis/analyze_run.py --campaign "$CAMPAIGN_TAG" || \
+    echo "⚠️  analyze_run.py failed — check logs"
 
   echo "✅ Campaign Complete for $model."
 done
