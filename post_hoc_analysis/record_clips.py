@@ -81,9 +81,15 @@ def main():
     parser.add_argument("--num_seeds",    type=int, default=3)
     args = parser.parse_args()
 
+    # Strip any shell-quoting artifacts that can arrive when called over SSH.
+    # stream_command wraps the remote cmd in double quotes, which makes single
+    # quotes literal on the calling shell and can embed them in arg values.
+    campaign_tag = args.campaign_tag.strip("'\"")
+    model_name   = args.model_name.strip("'\"")
+
     # Mirror how train.py gets its campaign context — via env vars
-    os.environ["CAMPAIGN_TAG"] = args.campaign_tag
-    os.environ["LLM_MODEL"]    = args.model_name
+    os.environ["CAMPAIGN_TAG"] = campaign_tag
+    os.environ["LLM_MODEL"]    = model_name
 
     ws = ExperimentWorkspace(iteration=args.iteration)
     print(f"\n Recording clips | Iter {args.iteration:02d} | {args.num_seeds} seeds")
