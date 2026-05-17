@@ -31,7 +31,7 @@ def record_seed_clip(iteration: int, seed_id: int, ws: ExperimentWorkspace):
     Loads saved model for (iteration, seed_id), runs one deterministic episode
     with rendering, and saves it to artifacts/videos/iter{XX}_seed{X}.mp4.
     """
-    videos_dir = ws.dirs["artifacts"] / "videos"
+    videos_dir = ws.dirs["videos"]
     videos_dir.mkdir(parents=True, exist_ok=True)
 
     dest_path = videos_dir / f"iter{iteration:02d}_seed{seed_id}.mp4"
@@ -92,7 +92,7 @@ def main():
         print(f"\n  Seed {seed_id}:")
         record_seed_clip(args.iteration, seed_id, ws)
 
-    print(f"\nDone. Clips saved to: {ws.dirs['artifacts'] / 'videos'}")
+    print(f"\nDone. Clips saved to: {ws.dirs["videos"]}")
 
 
 if __name__ == "__main__":

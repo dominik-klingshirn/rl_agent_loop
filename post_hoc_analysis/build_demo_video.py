@@ -170,8 +170,8 @@ def build_iteration_composite(
     clips within one iteration sync to the longest natural duration among them),
     arranges them side-by-side, and composes with the diagnostic report panel.
     """
-    videos_dir  = ws.dirs["artifacts"] / "videos"
-    reports_dir = ws.dirs["telemetry"] / "diagnostic_reports"
+    videos_dir  = ws.dirs["videos"]
+    reports_dir = ws.dirs["telemetry_reports"]
 
     # --- Load seed clips ------------------------------------------------------
     clips = []
@@ -286,7 +286,7 @@ def build_full_demo(
 
     final = concatenate_videoclips(segments, method="compose")
 
-    output_path = ws.dirs["artifacts"] / "videos" / output_name
+    output_path = ws.dirs["videos"] / output_name
     print(f"\n  Exporting to: {output_path}")
     final.write_videofile(
         str(output_path),

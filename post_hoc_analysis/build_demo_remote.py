@@ -25,16 +25,11 @@ Edit the SSH_CONFIG block below to match your Linux PC.
 import argparse
 import sys
 from pathlib import Path
-
-# ---------------------------------------------------------------------------
-# SSH / PATH CONFIGURATION  — edit these to match your setup
-# ---------------------------------------------------------------------------
-SSH_CONFIG = {
-    "hostname":           "YOUR_LINUX_PC_HOSTNAME_OR_IP",
-    "username":           "YOUR_USERNAME",
-    "ssh_key_path":       "~/.ssh/id_rsa",
-    "remote_project_root": "/home/YOUR_USERNAME/rl_agent_loop",
-}
+# Import RemoteManager from the local src directory so this script can live
+# anywhere in the project tree.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+from src.remote_ops import RemoteManager
+from src.config import Config
 
 # Directory (relative to remote_project_root) where the analysis scripts live
 ANALYSIS_DIR = "post_hoc_analysis"
@@ -42,13 +37,6 @@ ANALYSIS_DIR = "post_hoc_analysis"
 # Python interpreter to use on the remote machine
 REMOTE_PYTHON = "python3"
 # ---------------------------------------------------------------------------
-
-
-# Import RemoteManager from the local src directory so this script can live
-# anywhere in the project tree.
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
-from src.remote_ops import RemoteManager
-
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -84,13 +72,13 @@ def parse_args():
 def derive_remote_video_path(campaign_tag: str, model_name: str, output_name: str) -> str:
     """
     Mirrors ExperimentWorkspace path logic:
-        experiments/{campaign_tag}/{model_dir_name}/artifacts/Videos/{output_name}
+        experiments/{campaign_tag}/{model_dir_name}/artifacts/iterationXX/{output_name}
     
     model_dir_name sanitises colons (gemma4:26b -> gemma4-26b) to match
     what ExperimentWorkspace does on the Linux side.
     """
     model_dir_name = model_name.replace(":", "-")
-    return f"experiments/{campaign_tag}/{model_dir_name}/artifacts/Videos/{output_name}"
+    return f"experiments/{campaign_tag}/{model_dir_name}/artifacts/videos/{output_name}"
 
 
 def main():
@@ -114,14 +102,14 @@ def main():
     # Connect
     # ------------------------------------------------------------------
     rm = RemoteManager(
-        hostname=SSH_CONFIG["hostname"],
-        username=SSH_CONFIG["username"],
-        ssh_key_path=SSH_CONFIG["ssh_key_path"],
-        remote_project_root=SSH_CONFIG["remote_project_root"],
+        hostname=Config.LINUX_IP,
+        username=Config.LINUX_USER,
+        ssh_key_path=Config.SSH_KEY_PATH,
+        remote_project_root=Config.REMOTE_PROJECT_ROOT,
     )
 
     # Quick connectivity check
-    print("🔌 Checking SSH connectivity...")
+    print("🔌 Checking SSH connectivity")
     code, out, err = rm.run_command("echo OK")
     if code != 0 or out != "OK":
         print(f"❌ SSH check failed (exit {code}): {err}")
@@ -180,7 +168,7 @@ def main():
     local_dir.mkdir(parents=True, exist_ok=True)
     local_video_path = str(local_dir / args.output_name)
 
-    print(f"  Remote : {SSH_CONFIG['remote_project_root']}/{remote_video_path}")
+    print(f"  Remote : {Config.REMOTE_PROJECT_ROOT}/{remote_video_path}")
     print(f"  Local  : {local_video_path}\n")
 
     ok = rm.retrieve_file(remote_video_path, local_video_path)
