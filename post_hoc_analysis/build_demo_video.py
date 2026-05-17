@@ -60,7 +60,7 @@ def freeze_to_duration(clip: VideoFileClip, max_dur: float) -> VideoFileClip:
     last frame for the remainder. If the clip is longer, hard-trim it.
     """
     if clip.duration >= max_dur:
-        return clip.subclip(0, max_dur)
+        return clip.subclipped(0, max_dur)
 
     last_frame  = clip.get_frame(clip.duration - 1 / FPS)
     freeze_dur  = max_dur - clip.duration
@@ -195,7 +195,7 @@ def build_iteration_composite(
     # Divide the left panel evenly among seeds; preserve ~3:2 aspect ratio
     clip_w = CLIP_AREA_W // num_seeds
     clip_h = int(clip_w * (400 / 600))  # LunarLander native res is 600x400
-    clips  = [c.resize((clip_w, clip_h)) for c in clips]
+    clips  = [c.resized((clip_w, clip_h)) for c in clips]
 
     # Horizontal strip of all seeds
     agent_strip = clips_array([clips])  # shape: [1 row, num_seeds cols]
