@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import (
+from moviepy import (
     VideoFileClip,
     ImageClip,
     concatenate_videoclips,
@@ -64,7 +64,7 @@ def freeze_to_duration(clip: VideoFileClip, max_dur: float) -> VideoFileClip:
 
     last_frame  = clip.get_frame(clip.duration - 1 / FPS)
     freeze_dur  = max_dur - clip.duration
-    freeze_clip = ImageClip(last_frame, duration=freeze_dur).set_fps(FPS)
+    freeze_clip = ImageClip(last_frame, duration=freeze_dur).with_fps(FPS)
     return concatenate_videoclips([clip, freeze_clip])
 
 
@@ -170,7 +170,7 @@ def build_iteration_composite(
     clips within one iteration sync to the longest natural duration among them),
     arranges them side-by-side, and composes with the diagnostic report panel.
     """
-    videos_dir  = ws.dirs["artifacts"] / "Videos"
+    videos_dir  = ws.dirs["artifacts"] / "videos"
     reports_dir = ws.dirs["telemetry"] / "diagnostic_reports"
 
     # --- Load seed clips ------------------------------------------------------
@@ -202,7 +202,7 @@ def build_iteration_composite(
 
     # Center the strip vertically in the canvas
     strip_y = (CANVAS_H - clip_h) // 2
-    agent_strip = agent_strip.set_position((0, strip_y))
+    agent_strip = agent_strip.with_position((0, strip_y))
 
     # --- Diagnostic report panel (right side) --------------------------------
     report_path = reports_dir / f"iter{iteration:02d}_report.md"
@@ -215,25 +215,25 @@ def build_iteration_composite(
 
     report_clip = (
         ImageClip(report_arr, duration=target_dur)
-        .set_position((CLIP_AREA_W, 0))
+        .with_position((CLIP_AREA_W, 0))
     )
 
     # --- Thin vertical divider between agent panel and report -----------------
     divider_arr = np.full((CANVAS_H, 2, 3), fill_value=(40, 50, 80), dtype=np.uint8)
-    divider     = ImageClip(divider_arr, duration=target_dur).set_position((CLIP_AREA_W - 1, 0))
+    divider     = ImageClip(divider_arr, duration=target_dur).with_position((CLIP_AREA_W - 1, 0))
 
     # --- Iteration label (top-left corner) ------------------------------------
     label = (
         TextClip(
-            f"Iteration {iteration:02d}",
-            fontsize=32,
+            text=f"Iteration {iteration:02d}",
+            font_size=32,
             color="white",
             font="DejaVu-Sans-Mono-Bold",
             stroke_color="black",
             stroke_width=1,
         )
-        .set_duration(target_dur)
-        .set_position((20, 18))
+        .with_duration(target_dur)
+        .with_position((20, 18))
     )
 
     # --- Background fill (handles letterbox areas above/below clip strip) ----
@@ -255,25 +255,25 @@ def build_full_demo(
 ):
     """
     Chains iteration composites (with a brief title card between each) and
-    exports the final demo video to artifacts/Videos/{output_name}.
+    exports the final demo video to artifacts/videos/{output_name}.
     """
     segments = []
 
     for i, iteration in enumerate(iterations):
-        print(f"\n  Building composite for iteration {iteration:02d} ...")
+        print(f"\n  Building composite for iteration {iteration:02d}")
 
         # Short title card between iterations (except before the first)
         if i > 0:
             card_txt = (
                 TextClip(
-                    f"Iteration {iteration:02d}",
-                    fontsize=52,
+                    text=f"Iteration {iteration:02d}",
+                    font_size=52,
                     color="white",
                     font="DejaVu-Sans-Mono-Bold",
                     bg_color="black",
                 )
-                .set_duration(TITLE_DUR)
-                .set_position("center")
+                .with_duration(TITLE_DUR)
+                .with_position("center")
             )
             card = CompositeVideoClip(
                 [ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0), duration=TITLE_DUR), card_txt],
@@ -286,7 +286,7 @@ def build_full_demo(
 
     final = concatenate_videoclips(segments, method="compose")
 
-    output_path = ws.dirs["artifacts"] / "Videos" / output_name
+    output_path = ws.dirs["artifacts"] / "videos" / output_name
     print(f"\n  Exporting to: {output_path}")
     final.write_videofile(
         str(output_path),
