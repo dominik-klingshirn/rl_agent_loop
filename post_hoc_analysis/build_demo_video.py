@@ -170,7 +170,7 @@ def build_iteration_composite(
     clips within one iteration sync to the longest natural duration among them),
     arranges them side-by-side, and composes with the diagnostic report panel.
     """
-    videos_dir  = ws.dirs["videos"]
+    videos_dir  = ws.dirs["root"] / "artifacts" / f"iteration{iteration:02d}" / "videos"
     reports_dir = ws.dirs["telemetry_reports"]
 
     # --- Load seed clips ------------------------------------------------------
@@ -228,7 +228,7 @@ def build_iteration_composite(
             text=f"Iteration {iteration:02d}",
             font_size=32,
             color="white",
-            font="DejaVu-Sans-Mono-Bold",
+            font="/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
             stroke_color="black",
             stroke_width=1,
         )
@@ -269,7 +269,7 @@ def build_full_demo(
                     text=f"Iteration {iteration:02d}",
                     font_size=52,
                     color="white",
-                    font="DejaVu-Sans-Mono-Bold",
+                    font="/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
                     bg_color="black",
                 )
                 .with_duration(TITLE_DUR)
