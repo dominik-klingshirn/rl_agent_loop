@@ -98,6 +98,16 @@ def _pick_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()  # last resort — no size control
 
+def _pick_font_path() -> str | None:
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            return path
+    return None  # MoviePy will use its own default
 
 def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
     """
@@ -216,11 +226,12 @@ def build_iteration_composite(
     report_clip = (
         ImageClip(report_arr, duration=target_dur)
         .with_position((CLIP_AREA_W, 0))
+        .with_fps(FPS)
     )
 
     # --- Thin vertical divider between agent panel and report -----------------
     divider_arr = np.full((CANVAS_H, 2, 3), fill_value=(40, 50, 80), dtype=np.uint8)
-    divider     = ImageClip(divider_arr, duration=target_dur).with_position((CLIP_AREA_W - 1, 0))
+    divider     = ImageClip(divider_arr, duration=target_dur).with_position((CLIP_AREA_W - 1, 0)).with_fps(FPS)
 
     # --- Iteration label (top-left corner) ------------------------------------
     label = (
@@ -228,7 +239,7 @@ def build_iteration_composite(
             text=f"Iteration {iteration:02d}",
             font_size=32,
             color="white",
-            font="/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            font=_pick_font_path(),
             stroke_color="black",
             stroke_width=1,
         )
@@ -269,7 +280,7 @@ def build_full_demo(
                     text=f"Iteration {iteration:02d}",
                     font_size=52,
                     color="white",
-                    font="/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+                    font=_pick_font_path(),
                     bg_color="black",
                 )
                 .with_duration(TITLE_DUR)
@@ -286,7 +297,7 @@ def build_full_demo(
 
     final = concatenate_videoclips(segments, method="compose")
 
-    output_path = ws.dirs["videos"] / output_name
+    output_path = ws.dirs["root"] / "artifacts" / f"{output_name}.mp4"
     print(f"\n  Exporting to: {output_path}")
     final.write_videofile(
         str(output_path),
@@ -307,7 +318,7 @@ def main():
     parser.add_argument("--iterations",   type=int, nargs="+", required=True,
                         help="e.g. --iterations 1 2 3 4 5")
     parser.add_argument("--num_seeds",    type=int, default=3)
-    parser.add_argument("--output_name",  type=str, default="demo.mp4")
+    parser.add_argument("--output_name",  type=str, default="demo")
     args = parser.parse_args()
 
     os.environ["CAMPAIGN_TAG"] = args.campaign_tag

@@ -97,9 +97,8 @@ def main():
     for seed_id in range(args.num_seeds):
         print(f"\n  Seed {seed_id}:")
         record_seed_clip(args.iteration, seed_id, ws)
-
-    print(f"\nDone. Clips saved to: {ws.dirs["videos"]}")
-
+    videos_path = ws.dirs["videos"]
+    print(f"\nDone. Clips saved to: {videos_path}")
 
 if __name__ == "__main__":
     main()
