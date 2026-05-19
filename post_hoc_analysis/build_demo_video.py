@@ -3,11 +3,17 @@
 # Composites per-seed clips + diagnostic report panel into a full demo video.
 #
 # Layout (1920x1080):
-#   ┌─────────────────────────────┬──────────────────┐
-#   │  seed 0 | seed 1 | seed 2   │  Diagnostic      │
-#   │  (agent clips, side-by-side)│  Report          │
-#   │                             │  (rendered .md)  │
-#   └─────────────────────────────┴──────────────────┘
+#   ┌──────────┬───────────────────────────────┐
+#   │  seed 0  │                               │
+#   │ (short)  │  Diagnostic                   │
+#   ├──────────┤  Report                       │
+#   │  seed 1  │  (syntax-coloured .md)        │
+#   │          │                               │
+#   ├──────────┤                               │
+#   │  seed 2  │                               │
+#   │ (long)   │                               │
+#   └──────────┴───────────────────────────────┘
+#   Seeds sorted by clip duration (shortest top → longest bottom).
 #   Iteration label overlaid at top-left.
 #
 # Usage:
@@ -25,6 +31,7 @@ import argparse
 import textwrap
 from pathlib import Path
 
+import re
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from moviepy import (
@@ -44,8 +51,8 @@ from src.workspace_manager import ExperimentWorkspace
 # --- Layout Constants (tweak to taste) ----------------------------------------
 CANVAS_W      = 1920
 CANVAS_H      = 1080
-REPORT_W      = 580     # Width of the diagnostic report panel (right side)
-CLIP_AREA_W   = CANVAS_W - REPORT_W   # 1340px for the agent clips
+# Clip column width is derived inside build_iteration_composite from num_seeds
+# (vertical layout: per-clip height = CANVAS_H // num_seeds, width preserves 3:2).
 MAX_CLIP_DUR  = 20.0    # Hard cap per episode clip (seconds)
 FPS           = 30
 TITLE_DUR     = 2.5     # Seconds each iteration title card is shown
@@ -109,6 +116,17 @@ def _pick_font_path() -> str | None:
             return path
     return None  # MoviePy will use its own default
 
+def _strip_inline_md(text: str) -> str:
+    """
+    Remove inline markdown syntax so the rendered panel shows clean text.
+    Handles: **bold**, *italic*, `code spans`, and leading bullet markers.
+    """
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)   # **bold**
+    text = re.sub(r'\*(.+?)\*',     r'\1', text)    # *italic*
+    text = re.sub(r'`(.+?)`',       r'\1', text)    # `code`
+    return text
+
+
 def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
     """
     Renders a diagnostic report .md file into a numpy RGB image.
@@ -137,23 +155,35 @@ def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
 
         # Determine color + font + strip markdown syntax
         if line.startswith("# "):
-            color, font, text = MD_HEADER1, font_h1, line[2:]
+            color, font, text = MD_HEADER1, font_h1, _strip_inline_md(line[2:])
         elif line.startswith("## "):
-            color, font, text = MD_HEADER2, font_h2, line[3:]
+            color, font, text = MD_HEADER2, font_h2, _strip_inline_md(line[3:])
         elif line.startswith("### "):
-            color, font, text = MD_HEADER3, font_h3, line[4:]
+            color, font, text = MD_HEADER3, font_h3, _strip_inline_md(line[4:])
         elif line.startswith("---") or set(line.strip()) <= {"-", "=", "_"}:
             color, font, text = MD_DIM, font_normal, "─" * (WRAP_CHARS - 2)
+        elif line.startswith("- ") or line.startswith("* "):
+            # Bullet list item — swap marker for a clean bullet, then check flags
+            inner = _strip_inline_md(line[2:])
+            if "🔴" in inner or "CRITICAL" in inner.upper() or "TRAITOR" in inner.upper():
+                color, font = MD_RED, font_bold
+            elif "🟡" in inner or "DEAD WEIGHT" in inner.upper():
+                color, font = MD_YELLOW, font_normal
+            elif "🟢" in inner or "USEFUL" in inner.upper():
+                color, font = MD_GREEN, font_normal
+            else:
+                color, font = MD_TEXT, font_normal
+            text = "• " + inner
         elif "🔴" in line or "CRITICAL" in line.upper() or "TRAITOR" in line.upper():
-            color, font, text = MD_RED, font_bold, line
+            color, font, text = MD_RED, font_bold, _strip_inline_md(line)
         elif "🟡" in line or "DEAD WEIGHT" in line.upper():
-            color, font, text = MD_YELLOW, font_normal, line
+            color, font, text = MD_YELLOW, font_normal, _strip_inline_md(line)
         elif "🟢" in line or "USEFUL" in line.upper():
-            color, font, text = MD_GREEN, font_normal, line
+            color, font, text = MD_GREEN, font_normal, _strip_inline_md(line)
         elif line.startswith("**") and line.endswith("**"):
             color, font, text = MD_HEADER3, font_bold, line.strip("*")
         else:
-            color, font, text = MD_TEXT, font_normal, line
+            color, font, text = MD_TEXT, font_normal, _strip_inline_md(line)
 
         # Word-wrap long lines
         wrapped = textwrap.wrap(text, width=WRAP_CHARS) or [""]
@@ -198,40 +228,44 @@ def build_iteration_composite(
     natural_durations = [c.duration for c in clips]
     target_dur = min(max(natural_durations), MAX_CLIP_DUR)
 
+    # Sort by natural duration ascending — shortest clip goes on top
+    order  = sorted(range(len(clips)), key=lambda i: natural_durations[i])
+    clips  = [clips[i] for i in order]
+
     # Freeze short clips so all seeds end at the same time
     clips = [freeze_to_duration(c, target_dur) for c in clips]
 
-    # --- Resize clips to fill the agent panel ---------------------------------
-    # Divide the left panel evenly among seeds; preserve ~3:2 aspect ratio
-    clip_w = CLIP_AREA_W // num_seeds
-    clip_h = int(clip_w * (400 / 600))  # LunarLander native res is 600x400
-    clips  = [c.resized((clip_w, clip_h)) for c in clips]
+    # --- Resize clips for vertical stacking -----------------------------------
+    # Each seed gets an equal horizontal slice of CANVAS_H; width preserves 3:2.
+    clip_h       = CANVAS_H // num_seeds
+    clip_w       = int(clip_h * (600 / 400))   # LunarLander native res is 600×400
+    clip_area_w  = clip_w                       # clip column width
+    report_w     = CANVAS_W - clip_area_w
 
-    # Horizontal strip of all seeds
-    agent_strip = clips_array([clips])  # shape: [1 row, num_seeds cols]
+    clips = [c.resized((clip_w, clip_h)) for c in clips]
 
-    # Center the strip vertically in the canvas
-    strip_y = (CANVAS_H - clip_h) // 2
-    agent_strip = agent_strip.with_position((0, strip_y))
+    # Vertical column of seeds (shortest top → longest bottom)
+    agent_strip = clips_array([[c] for c in clips])   # shape: [num_seeds rows, 1 col]
+    agent_strip = agent_strip.with_position((0, 0))
 
     # --- Diagnostic report panel (right side) --------------------------------
     report_path = reports_dir / f"iter{iteration:02d}_report.md"
     if report_path.exists():
-        report_arr = markdown_to_image(report_path, width=REPORT_W, height=CANVAS_H)
+        report_arr = markdown_to_image(report_path, width=report_w, height=CANVAS_H)
     else:
         # Blank placeholder if report is missing
         print(f"  WARNING: Report not found at {report_path}. Using blank panel.")
-        report_arr = np.full((CANVAS_H, REPORT_W, 3), fill_value=MD_BG, dtype=np.uint8)
+        report_arr = np.full((CANVAS_H, report_w, 3), fill_value=MD_BG, dtype=np.uint8)
 
     report_clip = (
         ImageClip(report_arr, duration=target_dur)
-        .with_position((CLIP_AREA_W, 0))
+        .with_position((clip_area_w, 0))
         .with_fps(FPS)
     )
 
-    # --- Thin vertical divider between agent panel and report -----------------
+    # --- Thin vertical divider between clip column and report -----------------
     divider_arr = np.full((CANVAS_H, 2, 3), fill_value=(40, 50, 80), dtype=np.uint8)
-    divider     = ImageClip(divider_arr, duration=target_dur).with_position((CLIP_AREA_W - 1, 0)).with_fps(FPS)
+    divider     = ImageClip(divider_arr, duration=target_dur).with_position((clip_area_w - 1, 0)).with_fps(FPS)
 
     # --- Iteration label (top-left corner) ------------------------------------
     label = (
@@ -318,8 +352,14 @@ def main():
     parser.add_argument("--iterations",   type=int, nargs="+", required=True,
                         help="e.g. --iterations 1 2 3 4 5")
     parser.add_argument("--num_seeds",    type=int, default=3)
-    parser.add_argument("--output_name",  type=str, default="demo")
+    parser.add_argument("--output_name",  type=str, default=None,
+                        help="Output filename stem (no .mp4). Defaults to "
+                             "{campaign_tag}_{model_name} with ':' and '/' replaced by '-'.")
     args = parser.parse_args()
+
+    if args.output_name is None:
+        safe_model       = args.model_name.replace(":", "-").replace("/", "-")
+        args.output_name = f"{args.campaign_tag}_{safe_model}"
 
     os.environ["CAMPAIGN_TAG"] = args.campaign_tag
     os.environ["LLM_MODEL"]    = args.model_name
