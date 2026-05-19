@@ -339,7 +339,7 @@ def build_full_demo(
         codec="libx264",
         audio=False,          # no audio yet — voiceover added in CapCut
         threads=4,
-        preset="slow",        # better compression; use "fast" if you're impatient
+        preset="fast",        # better compression; use "fast" if you're impatient
         ffmpeg_params=["-crf", "18"],  # visually lossless for a portfolio piece
     )
     print("\nDone.")
