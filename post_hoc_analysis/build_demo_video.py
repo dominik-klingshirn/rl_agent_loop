@@ -86,6 +86,7 @@ MD_HEADER3  = (80,  165, 225)   # ### headers
 MD_RED      = (255,  90,  90)   # 🔴 traitor components / CRITICAL
 MD_YELLOW   = (255, 210,  80)   # 🟡 dead weight
 MD_GREEN    = (90,  220, 130)   # 🟢 useful signal
+MD_PURPLE   = (190, 130, 240)   # 🟣 hidden dependency (non-linear, MI-detected)
 MD_DIM      = (120, 120, 140)   # separator lines / dashes
 
 
@@ -127,34 +128,63 @@ def _strip_inline_md(text: str) -> str:
     return text
 
 
-def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
+# Supersample factor — render at SS× the panel size, then LANCZOS-downsample.
+# Critical for crisp small text under h264 compression at 1080p.
+SS       = 2
+RESAMPLE = getattr(Image, "Resampling", Image).LANCZOS
+
+
+def markdown_to_image(
+    md_path: Path,
+    width: int,
+    height: int,
+    save_path: Path | None = None,
+) -> np.ndarray:
     """
     Renders a diagnostic report .md file into a numpy RGB image.
     Applies syntax-aware coloring (headers, emoji flags, separators).
-    Text that overflows the bottom is clipped — report fits within the panel.
+
+    Renders at SS× the requested size and downsamples with LANCZOS so text
+    stays crisp after h264 compression. Optionally writes the rendered PNG
+    to save_path for inspection / debugging (no re-render side effect — the
+    same array is returned regardless).
     """
     with open(md_path, "r") as f:
         raw_lines = f.readlines()
 
-    img  = Image.new("RGB", (width, height), color=MD_BG)
-    draw = ImageDraw.Draw(img)
+    # Render at supersample resolution; downsample at the end.
+    rw, rh = width * SS, height * SS
+    img    = Image.new("RGB", (rw, rh), color=MD_BG)
+    draw   = ImageDraw.Draw(img)
 
-    font_normal = _pick_font(11)
-    font_bold   = _pick_font(11, bold=True)
-    font_h1     = _pick_font(14, bold=True)
-    font_h2     = _pick_font(13, bold=True)
-    font_h3     = _pick_font(12, bold=True)
+    # Font sizes tuned for the wider vertical-layout report panel (~1380px @ 3 seeds).
+    font_normal = _pick_font(18 * SS)
+    font_bold   = _pick_font(18 * SS, bold=True)
+    font_h1     = _pick_font(28 * SS, bold=True)
+    font_h2     = _pick_font(24 * SS, bold=True)
+    font_h3     = _pick_font(20 * SS, bold=True)
 
-    PAD         = 14
-    LINE_H      = 16
-    WRAP_CHARS  = (width - 2 * PAD) // 7  # approx chars per line at font size 11
-    y           = PAD
+    PAD    = 20 * SS
+    LINE_H = 26 * SS
+
+    # Use actual font metrics for wrap width — DejaVuSansMono is monospace,
+    # so one M-advance per character. Fallback if getlength is unavailable.
+    try:
+        char_w = font_normal.getlength("M") or 12 * SS
+    except AttributeError:
+        char_w = 12 * SS
+    WRAP_CHARS = max(1, int((rw - 2 * PAD) / char_w))
+    y          = PAD
 
     for raw in raw_lines:
         line = raw.rstrip("\n")
 
         # Determine color + font + strip markdown syntax
-        if line.startswith("# "):
+        if not line.strip():
+            # Blank line — paragraph break, advance half a line and move on
+            y += LINE_H // 2
+            continue
+        elif line.startswith("# "):
             color, font, text = MD_HEADER1, font_h1, _strip_inline_md(line[2:])
         elif line.startswith("## "):
             color, font, text = MD_HEADER2, font_h2, _strip_inline_md(line[3:])
@@ -167,6 +197,8 @@ def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
             inner = _strip_inline_md(line[2:])
             if "🔴" in inner or "CRITICAL" in inner.upper() or "TRAITOR" in inner.upper():
                 color, font = MD_RED, font_bold
+            elif "🟣" in inner or "HIDDEN DEPENDENCY" in inner.upper():
+                color, font = MD_PURPLE, font_bold
             elif "🟡" in inner or "DEAD WEIGHT" in inner.upper():
                 color, font = MD_YELLOW, font_normal
             elif "🟢" in inner or "USEFUL" in inner.upper():
@@ -176,6 +208,8 @@ def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
             text = "• " + inner
         elif "🔴" in line or "CRITICAL" in line.upper() or "TRAITOR" in line.upper():
             color, font, text = MD_RED, font_bold, _strip_inline_md(line)
+        elif "🟣" in line or "HIDDEN DEPENDENCY" in line.upper():
+            color, font, text = MD_PURPLE, font_bold, _strip_inline_md(line)
         elif "🟡" in line or "DEAD WEIGHT" in line.upper():
             color, font, text = MD_YELLOW, font_normal, _strip_inline_md(line)
         elif "🟢" in line or "USEFUL" in line.upper():
@@ -188,12 +222,21 @@ def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
         # Word-wrap long lines
         wrapped = textwrap.wrap(text, width=WRAP_CHARS) or [""]
         for subline in wrapped:
-            if y + LINE_H > height - PAD:
+            if y + LINE_H > rh - PAD:
                 break  # clip overflow
             draw.text((PAD, y), subline, font=font, fill=color)
             y += LINE_H
-        if y + LINE_H > height - PAD:
+        if y + LINE_H > rh - PAD:
             break
+
+    # Downsample to target size with LANCZOS for crisp anti-aliased text.
+    img = img.resize((width, height), RESAMPLE)
+
+    # Optional: persist the rendered panel for inspection (useful as a
+    # standalone diagnostic of how the Strategist's report evolves).
+    if save_path is not None:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        img.save(save_path)
 
     return np.array(img)
 
@@ -250,8 +293,14 @@ def build_iteration_composite(
 
     # --- Diagnostic report panel (right side) --------------------------------
     report_path = reports_dir / f"iter{iteration:02d}_report.md"
+    png_path    = reports_dir / f"iter{iteration:02d}_report.png"
     if report_path.exists():
-        report_arr = markdown_to_image(report_path, width=report_w, height=CANVAS_H)
+        report_arr = markdown_to_image(
+            report_path,
+            width=report_w,
+            height=CANVAS_H,
+            save_path=png_path,
+        )
     else:
         # Blank placeholder if report is missing
         print(f"  WARNING: Report not found at {report_path}. Using blank panel.")
@@ -339,7 +388,7 @@ def build_full_demo(
         codec="libx264",
         audio=False,          # no audio yet — voiceover added in CapCut
         threads=4,
-        preset="fast",        # better compression; use "fast" if you're impatient
+        preset="slow",        # better compression; use "fast" if you're impatient
         ffmpeg_params=["-crf", "18"],  # visually lossless for a portfolio piece
     )
     print("\nDone.")
