@@ -2,7 +2,7 @@
 """
 analyze_run.py
 --------------
-Per-run triage analysis for the ARD pipeline.
+Per-run triage analysis for the Algorithmic Reward Design pipeline.
 Called automatically by outer_loop.sh after each campaign completes.
 
 Outputs (under {campaign}/{model_dir}/reports/):
@@ -17,12 +17,20 @@ Data sources (via extract_cognition.py — structured only):
   Token / timing    : ChatResponse_data.csv
 
 Coder retry count:
- ChatResponse_data.csv   - coder-phase call count − 1  
+  ChatResponse_data.csv coder-phase call count − 1.
 
 Thinking-token estimate:
   Word-count ratio apportionment of gen_tokens between response_content and
   thinking_trace — same method as apportionTokens() in the compute_cost
   dashboard of aggregate_runs.py.
+
+Structural edit distance:
+  Per-iteration Jaccard distance on reward-component sets between
+  consecutive iterations.  Counts-based formulation:
+      (n_excised + n_added) / (n_prev_components + n_added)
+  Iter 1 returns None (no baseline).  Mathematically equivalent to
+  computing Jaccard on the actual name sets, but avoids the bootstrap
+  problem of reconstructing iter-1's starting set.
 
 Usage:
   python3 analyze_run.py --campaign 2025-05-10_spin_crash_10cycles_500kSteps
@@ -116,12 +124,10 @@ def _floor_rule_check(
 def _count_coder_retries(
     iteration:  int,
     chat_rows:  list,
-) -> tuple[int, str]:
+) -> int:
     """
-    Returns (retry_count, source).
-
-    ChatResponse CSV coder-phase call count − 1.
-    Zero here means no retries were observed by either method.
+    Returns retry count.  ChatResponse CSV coder-phase call count − 1.
+    Zero means no retries were observed.
     """
     coder_calls = sum(
         1 for r in chat_rows
@@ -129,8 +135,30 @@ def _count_coder_retries(
     )
     if coder_calls > 0:
         return max(0, coder_calls - 1)
-
     return 0
+
+
+def _jaccard_edit_distance(
+    prev_n_components: int | None,
+    n_excised:         int | None,
+    n_added:           int | None,
+) -> float | None:
+    """
+    Jaccard distance between consecutive component sets, derived from counts.
+
+    |A ∩ B| = prev_n_components − n_excised   (components kept)
+    |A ∪ B| = prev_n_components + n_added     (kept + added)
+    distance = 1 − |A ∩ B| / |A ∪ B|
+             = (n_excised + n_added) / (prev_n_components + n_added)
+
+    Returns None when the baseline is unavailable or the union is empty.
+    """
+    if prev_n_components is None or n_excised is None or n_added is None:
+        return None
+    union = prev_n_components + n_added
+    if union <= 0:
+        return None
+    return (n_excised + n_added) / union
 
 
 # ===========================================================================
@@ -183,6 +211,7 @@ def build_triage_data(
 
     # Per-iteration rows
     iter_rows = []
+    prev_n_components: int | None = None
     for it in run_summary.iterations:
         n       = it.iteration
         o       = it.outcomes
@@ -192,7 +221,14 @@ def build_triage_data(
         baseline_psr = psr_by_iter.get(n - 1)          # None for iter 1 (expected)
         floor        = _floor_rule_check(baseline_psr, o.population_success_rate,
                                          it.validator_status)
-        retries= _count_coder_retries(n, chat_rows)
+        retries      = _count_coder_retries(n, chat_rows)
+
+        # Structural edit distance from previous iteration
+        edit_dist = _jaccard_edit_distance(
+            prev_n_components,
+            cc.n_excised if cc else None,
+            cc.n_added   if cc else None,
+        )
 
         iter_rows.append({
             "iter":             n,
@@ -216,17 +252,26 @@ def build_triage_data(
             "lines_added":        cc.lines_added         if cc else None,
             "lines_removed":      cc.lines_removed       if cc else None,
             "patch_available":    cc.patch_available     if cc else False,
+            "edit_distance":      edit_dist,
             # LLM behaviour (cognition record — authoritative)
             "excision_count":     cog.excision_count,
             "selected_proposal":  cog.selected_proposal_index,
             "prop_modification":  cog.proposal_type_counts.get("modification", 0),
             "prop_addition":      cog.proposal_type_counts.get("addition", 0),
             "prop_cluster":       cog.proposal_type_counts.get("cluster", 0),
-            # Coder retries 
+            # Coder retries
             "coder_retries":  retries,
             # Parse / code warnings
             "parse_warnings": it.parse_warnings,
         })
+
+        # Update baseline for next iteration's edit distance
+        if cc is not None and cc.n_components is not None:
+            prev_n_components = cc.n_components
+
+    # Peak iteration index
+    psr_pairs = [(r["iter"], r["psr"]) for r in iter_rows if r["psr"] is not None]
+    peak_iter = max(psr_pairs, key=lambda p: p[1])[0] if psr_pairs else None
 
     return {
         "campaign_tag":             paths.campaign_tag,
@@ -234,6 +279,7 @@ def build_triage_data(
         "iteration_count":          run_summary.iteration_count,
         "total_wall_s":             round(total_wall_s, 1),
         "peak_psr":                 run_summary.peak_psr,
+        "peak_iter":                peak_iter,
         "final_psr":                run_summary.iter_final_psr,
         "collapse_count":           run_summary.collapse_count,
         "recovery_count":           run_summary.recovery_count,
@@ -276,7 +322,8 @@ TRIAGE_REPORT_TEMPLATE = r"""<!DOCTYPE html>
   .meta  { font-size: 11px; color: var(--txt3); margin-bottom: 20px; }
   .meta code { color: var(--txt); }
   /* ── headline cards ── */
-  .cards { display: grid; grid-template-columns: repeat(6, 1fr);
+  .cards { display: grid;
+           grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
            gap: 8px; margin-bottom: 20px; }
   .card  { background: var(--bg2); border: 1px solid var(--bdr);
            border-radius: 6px; padding: 12px 14px; }
@@ -285,10 +332,12 @@ TRIAGE_REPORT_TEMPLATE = r"""<!DOCTYPE html>
   .card .val { font-size: 22px; font-weight: 700; color: #fff; }
   .card .sub { font-size: 10px; color: var(--txt4); margin-top: 3px; }
   /* ── chart cards ── */
-  .cc     { background: var(--bg2); border: 1px solid var(--bdr);
-            border-radius: 6px; padding: 14px; margin-bottom: 12px; }
-  .grid2  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-  .cbox   { position: relative; height: 200px; }
+  .cc      { background: var(--bg2); border: 1px solid var(--bdr);
+             border-radius: 6px; padding: 14px; margin-bottom: 12px; }
+  .grid2   { display: grid; grid-template-columns: 1fr 1fr;
+             gap: 12px; margin-bottom: 12px; }
+  .cbox    { position: relative; height: 200px; }
+  .cbox-sm { position: relative; height: 130px; }
   /* ── tables ── */
   table   { width: 100%; border-collapse: collapse; font-size: 11px; }
   th, td  { padding: 5px 8px; text-align: left;
@@ -349,6 +398,12 @@ function pct(v)        { if (v==null) return '—'; return (v*100).toFixed(1)+'%
 function dpp(v)        { if (v==null) return '—';
                           return (v>=0?'+':'')+v.toFixed(1)+'pp'; }
 function dash(x)       { return x || '<span class="dim">—</span>'; }
+function fmtK(n) {
+  if (n == null) return '—';
+  if (n >= 10000) return Math.round(n/1000)+'K';
+  if (n >= 1000)  return (n/1000).toFixed(1)+'K';
+  return ''+n;
+}
 
 // ── verdict helpers ─────────────────────────────────────────────────────────
 function chipClass(s)  { return 'chip chip-'+(s||'Unparsed').replace(/[^A-Za-z]/g,''); }
@@ -368,6 +423,7 @@ const tc = '#555';
 function baseOpts(xLabel, yLabel) {
   return {
     animation: false,
+    maintainAspectRatio: false,
     scales: {
       x: { title:{display:true,text:xLabel,color:tc}, ticks:{color:tc}, grid:{color:gc} },
       y: { title:{display:true,text:yLabel,color:tc}, ticks:{color:tc}, grid:{color:gc} },
@@ -382,12 +438,33 @@ function baseOpts(xLabel, yLabel) {
 {
   const wrap = document.createElement('div');
   wrap.className = 'cards';
-  const wall = D.total_wall_s ? (D.total_wall_s/60).toFixed(1)+' min' : '—';
+
+  const wallMin = D.total_wall_s ? D.total_wall_s/60 : null;
+  const wall    = wallMin != null ? wallMin.toFixed(1) + ' min' : '—';
+  const wallSub = (wallMin != null && D.iteration_count)
+                ? `≈ ${(wallMin / D.iteration_count).toFixed(1)} min/iter`
+                : '';
+
+  const totalIn    = D.chat_rows.reduce((s,r) => s + (r.prompt_tokens || 0), 0);
+  const totalThink = D.chat_rows.reduce((s,r) => s + (r.think_tokens  || 0), 0);
+  const totalOut   = D.chat_rows.reduce((s,r) => s + (r.resp_tokens   || 0), 0);
+
+  const peakSub = D.peak_iter != null
+                ? `iter ${D.peak_iter}`
+                : 'population success rate';
+
   const hardViol = D.iterations.filter(i=>i.floor&&i.floor.status==='hard_violation').length;
+
   [
     { lbl:'Iterations',  val:D.iteration_count,         sub:'' },
-    { lbl:'Wall time',   val:wall,                      sub:'' },
-    { lbl:'Peak PSR',    val:pct(D.peak_psr),           sub:'population success rate' },
+    { lbl:'Wall time',   val:wall,                      sub:wallSub },
+    { lbl:'Total in',    val:fmtK(totalIn),
+      sub: totalIn.toLocaleString()+' tokens' },
+    { lbl:'Total think', val:fmtK(totalThink),
+      sub: totalThink.toLocaleString()+' tokens' },
+    { lbl:'Total out',   val:fmtK(totalOut),
+      sub: totalOut.toLocaleString()+' tokens' },
+    { lbl:'Peak PSR',    val:pct(D.peak_psr),           sub:peakSub },
     { lbl:'Final PSR',   val:pct(D.final_psr),          sub:'last iteration' },
     { lbl:'Collapses',   val:D.collapse_count,          sub:'PSR < threshold' },
     { lbl:'Floor Viol.', val:hardViol,
@@ -403,25 +480,31 @@ function baseOpts(xLabel, yLabel) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PSR TRAJECTORY
+// PSR TRAJECTORY  +  WALL TIME PER ITERATION
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const cc = document.createElement('div');
-  cc.className = 'cc';
-  cc.innerHTML = '<h2>PSR Trajectory</h2><div class="cbox"><canvas id="cPSR"></canvas></div>';
-  root.appendChild(cc);
+  const grid = document.createElement('div');
+  grid.className = 'grid2';
+  root.appendChild(grid);
 
   const iters   = D.iterations.map(i => i.iter);
-  const psrPct  = D.iterations.map(i => i.psr     != null ? i.psr*100     : null);
+  const psrPct  = D.iterations.map(i => i.psr      != null ? i.psr*100      : null);
   const centPct = D.iterations.map(i => i.centered != null ? i.centered*100 : null);
+
+  // ── Left: PSR trajectory ────────────────────────────────────────────────
+  const psrCard = document.createElement('div');
+  psrCard.className = 'cc';
+  psrCard.innerHTML = '<h2>PSR Trajectory</h2>'
+                    + '<div class="cbox"><canvas id="cPSR"></canvas></div>';
+  grid.appendChild(psrCard);
 
   // Point colour encodes verdict
   const ptCol = D.iterations.map(i => {
     const s = i.validator_status;
-    if (!s||s==='Unparsed')                              return '#444';
-    if (s==='Validated'||s==='Confirmed')                return '#6ee093';
-    if (s==='Productive Deviation')                      return '#76b7b2';
-    if (s==='Mixed'||s==='Pyrrhic Victory')              return '#e6c46e';
+    if (!s||s==='Unparsed')                                  return '#444';
+    if (s==='Validated'||s==='Confirmed')                    return '#6ee093';
+    if (s==='Productive Deviation')                          return '#76b7b2';
+    if (s==='Mixed'||s==='Pyrrhic Victory')                  return '#e6c46e';
     if (s==='Regressed'||s==='Refuted'||s==='Goodhart Trap') return '#e66e6e';
     return '#888';
   });
@@ -438,7 +521,8 @@ function baseOpts(xLabel, yLabel) {
         tension:.2, fill:false, spanGaps:false, pointRadius:3 },
     ]},
     options: {
-      ...baseOpts('Iteration','Success rate (%)'),
+      animation: false,
+      maintainAspectRatio: false,
       scales: {
         x: { title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc},
              grid:{color:gc} },
@@ -453,6 +537,51 @@ function baseOpts(xLabel, yLabel) {
             const v  = it.validator_status || '—';
             const f  = it.floor ? it.floor.label : '';
             return [`  verdict: ${v}`, f ? `  floor: ${f}` : ''].filter(Boolean);
+          }
+        }}
+      },
+    }
+  });
+
+  // ── Right: wall time per iter, stacked by phase ─────────────────────────
+  const timeCard = document.createElement('div');
+  timeCard.className = 'cc';
+  timeCard.innerHTML = '<h2>Wall Time per Iteration (by phase)</h2>'
+                     + '<div class="cbox"><canvas id="cTime"></canvas></div>';
+  grid.appendChild(timeCard);
+
+  const timeDs = PHASES.map(p => ({
+    label: p,
+    data: iters.map(i => {
+      const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
+      return rows.reduce((s, r) => s + (r.total_s || 0), 0);
+    }),
+    backgroundColor: PC[p],
+  }));
+
+  new Chart(document.getElementById('cTime'), {
+    type: 'bar',
+    data: { labels: iters, datasets: timeDs },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true,
+             title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { stacked: true, beginAtZero: true,
+             title:{display:true,text:'Wall time (s)',color:tc},
+             ticks:{color:tc, callback: v => v + 's'}, grid:{color:gc} },
+      },
+      plugins: {
+        legend: { labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
+        tooltip: { callbacks: {
+          afterTitle: ctx => {
+            const i = +ctx[0].label;
+            const total = D.chat_rows
+              .filter(r => r.iteration === i)
+              .reduce((s,r) => s + (r.total_s || 0), 0);
+            return `Iter total: ${(total/60).toFixed(1)} min`;
           }
         }}
       },
@@ -547,7 +676,7 @@ function baseOpts(xLabel, yLabel) {
       .filter(w=>!w.startsWith('iter1_no_prev')&&w!=='ledger_post_mortem_pending')
       .map(w=>`<span class="tag t-warn">${w}</span>`).join('');
     const rt = it.coder_retries > 0
-      ? `<span class="tag t-retry">${it.coder_retries}✗ <span style="opacity:.6;font-size:9px">${it.retry_src}</span></span>`
+      ? `<span class="tag t-retry">${it.coder_retries}✗</span>`
       : '';
 
     tb.innerHTML += `<tr>
@@ -563,6 +692,147 @@ function baseOpts(xLabel, yLabel) {
   tbl.appendChild(tb);
   cc.appendChild(tbl);
   root.appendChild(cc);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRUCTURAL EDIT DISTANCE  (Jaccard between consecutive component sets)
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const editVals = D.iterations.map(i => i.edit_distance);
+  const meanED   = (() => {
+    const vs = editVals.filter(v => v != null);
+    return vs.length ? vs.reduce((s,v)=>s+v,0) / vs.length : null;
+  })();
+
+  const cc = document.createElement('div');
+  cc.className = 'cc';
+  cc.innerHTML = `<h2>Structural Edit Distance
+    <span style="font-size:11px;margin-left:10px;color:#888">
+      mean ${meanED != null ? meanED.toFixed(2) : '—'}
+      &nbsp;·&nbsp; 0 = identical to prior iter, 1 = fully replaced
+    </span>
+  </h2><div class="cbox-sm"><canvas id="cEdit"></canvas></div>`;
+  root.appendChild(cc);
+
+  // Colour: high distance = exploratory (yellow), low = incremental (blue)
+  const edColors = editVals.map(v => {
+    if (v == null) return '#333';
+    if (v >= 0.6)  return '#e6c46e';
+    if (v >= 0.3)  return '#76b7b2';
+    return '#4e79a7';
+  });
+
+  new Chart(document.getElementById('cEdit'), {
+    type: 'bar',
+    data: {
+      labels: D.iterations.map(i => i.iter),
+      datasets: [{
+        label: 'Jaccard distance',
+        data: editVals,
+        backgroundColor: edColors,
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { min: 0, max: 1,
+             title:{display:true,text:'Jaccard dist.',color:tc},
+             ticks:{color:tc, stepSize:0.25}, grid:{color:gc} },
+      },
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: {
+          label: ctx => {
+            const it = D.iterations[ctx.dataIndex];
+            const v  = ctx.parsed.y;
+            if (v == null) return 'no baseline (iter 1)';
+            return `dist ${v.toFixed(2)}   (${it.n_excised}× excised, ${it.n_added}× added)`;
+          }
+        }}
+      },
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROPOSAL TYPES GENERATED  +  SELECTED PROPOSAL INDEX
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const grid = document.createElement('div');
+  grid.className = 'grid2';
+  root.appendChild(grid);
+
+  const iters = D.iterations.map(i => i.iter);
+
+  // ── Left: proposal types generated, stacked per iter ────────────────────
+  const propCard = document.createElement('div');
+  propCard.className = 'cc';
+  propCard.innerHTML = '<h2>Proposal Types Generated per Iteration</h2>'
+                     + '<div class="cbox"><canvas id="cPropType"></canvas></div>';
+  grid.appendChild(propCard);
+
+  const PROP_COLORS = { modification:'#f28e2b', addition:'#59a14f', cluster:'#b07aa1' };
+  const propDs = ['modification','addition','cluster'].map(t => ({
+    label: t,
+    data:  D.iterations.map(i => i['prop_'+t] || 0),
+    backgroundColor: PROP_COLORS[t],
+  }));
+
+  new Chart(document.getElementById('cPropType'), {
+    type: 'bar',
+    data: { labels: iters, datasets: propDs },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked:true, title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { stacked:true, beginAtZero:true,
+             ticks:{color:tc, stepSize:1},
+             title:{display:true,text:'Proposals',color:tc}, grid:{color:gc} },
+      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    }
+  });
+
+  // ── Right: which proposal index Research Lead selected per iter ─────────
+  const selCard = document.createElement('div');
+  selCard.className = 'cc';
+  selCard.innerHTML = '<h2>Selected Proposal Index per Iteration</h2>'
+                    + '<div class="cbox"><canvas id="cPropSel"></canvas></div>';
+  grid.appendChild(selCard);
+
+  const SEL_COLORS = { 1:'#4e79a7', 2:'#76b7b2', 3:'#e6c46e' };
+  const selVals   = D.iterations.map(i => i.selected_proposal);
+  const selColors = selVals.map(v => v ? SEL_COLORS[v] : '#333');
+
+  new Chart(document.getElementById('cPropSel'), {
+    type: 'bar',
+    data: { labels: iters, datasets: [{
+      label: 'Selected proposal',
+      data: selVals,
+      backgroundColor: selColors,
+      borderRadius: 3,
+    }]},
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { min: 0, max: 3.5,
+             ticks:{ color:tc, stepSize:1,
+                     callback: v => (v>=1 && v<=3) ? 'P'+v : '' },
+             title:{display:true,text:'Selected index',color:tc}, grid:{color:gc} },
+      },
+      plugins: { legend:{ display:false },
+                 tooltip:{ callbacks:{ label: ctx => 'P'+ctx.parsed.y }}},
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -596,35 +866,44 @@ if (D.chat_rows && D.chat_rows.length) {
     type:'bar',
     data:{ labels:iterLabels, datasets:tokDs },
     options:{
-      ...baseOpts('Iteration','Gen tokens'),
+      animation: false,
+      maintainAspectRatio: false,
       scales:{
         x:{ stacked:true, title:{display:true,text:'Iteration',color:tc},
             ticks:{color:tc}, grid:{color:gc} },
         y:{ stacked:true, title:{display:true,text:'Gen tokens',color:tc},
             ticks:{color:tc}, grid:{color:gc} },
       },
-      animation:false,
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
     }
   });
 
   // ── Right: strategist thinking depth (apportioned estimate) ─────────────
-  const thinkCard = document.createElement('div');
-  thinkCard.className = 'cc';
-  thinkCard.innerHTML = '<h2>Strategist Thinking Depth (est. tokens)</h2>'
-                      + '<div class="cbox"><canvas id="cThink"></canvas></div>';
-  grid.appendChild(thinkCard);
-
   const thinkVals = iterLabels.map(i => {
     const rows = D.chat_rows.filter(r=>r.iteration===i&&r.phase==='strategist');
     return rows.reduce((s,r)=>s+(r.think_tokens||0),0);
   });
-  // Red bar when gen tokens > 0 but thinking estimate is 0 (no thinking trace)
-  const thinkColors = iterLabels.map(i => {
+  const stratGen = iterLabels.map(i => {
     const rows = D.chat_rows.filter(r=>r.iteration===i&&r.phase==='strategist');
-    const gen   = rows.reduce((s,r)=>s+(r.gen_tokens||0),0);
-    const think = rows.reduce((s,r)=>s+(r.think_tokens||0),0);
-    return (gen>0 && think===0) ? '#e15759' : '#f28e2b';
+    return rows.reduce((s,r)=>s+(r.gen_tokens||0),0);
   });
+  const noThinking = thinkVals.every(v => !v) && stratGen.some(v => v > 0);
+
+  const thinkCard = document.createElement('div');
+  thinkCard.className = 'cc';
+  const thinkTitle = noThinking
+    ? 'Strategist Thinking Depth '
+      + '<span style="font-size:11px;color:#e15759;margin-left:10px">'
+      + 'no thinking trace emitted</span>'
+    : 'Strategist Thinking Depth (est. tokens)';
+  thinkCard.innerHTML = `<h2>${thinkTitle}</h2>`
+                      + '<div class="cbox"><canvas id="cThink"></canvas></div>';
+  grid.appendChild(thinkCard);
+
+  // Red bar when gen tokens > 0 but thinking estimate is 0 (no thinking trace)
+  const thinkColors = iterLabels.map((i, idx) =>
+    (stratGen[idx] > 0 && thinkVals[idx] === 0) ? '#e15759' : '#f28e2b'
+  );
 
   new Chart(document.getElementById('cThink'), {
     type:'bar',
@@ -638,10 +917,73 @@ if (D.chat_rows && D.chat_rows.length) {
       }]
     },
     options:{
-      ...baseOpts('Iteration','Est. thinking tokens'),
-      animation:false,
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { title:{display:true,text:'Est. thinking tokens',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
     }
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE AVERAGES (across run)
+// ─────────────────────────────────────────────────────────────────────────────
+if (D.chat_rows && D.chat_rows.length) {
+  const phaseStats = PHASES.map(p => {
+    const rows = D.chat_rows.filter(r => r.phase === p);
+    const n    = rows.length;
+    if (n === 0) return { phase: p, n: 0 };
+    const sumIn    = rows.reduce((s,r) => s + (r.prompt_tokens || 0), 0);
+    const sumThink = rows.reduce((s,r) => s + (r.think_tokens  || 0), 0);
+    const sumOut   = rows.reduce((s,r) => s + (r.resp_tokens   || 0), 0);
+    return {
+      phase:     p,
+      n:         n,
+      avg_in:    Math.round(sumIn    / n),
+      avg_think: Math.round(sumThink / n),
+      avg_out:   Math.round(sumOut   / n),
+      ratio:     sumOut > 0 ? sumThink / sumOut : 0,
+    };
+  });
+
+  const cc = document.createElement('div');
+  cc.className = 'cc';
+  cc.innerHTML = '<h2>Phase Averages (across run)</h2>';
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr>
+    <th>Phase</th>
+    <th class="num">Avg In-Tok</th>
+    <th class="num">Avg Think</th>
+    <th class="num">Avg Out</th>
+    <th class="num">Think/Out</th>
+  </tr></thead>`;
+  const tb = document.createElement('tbody');
+  phaseStats.forEach(s => {
+    if (!s.n) {
+      tb.innerHTML += `<tr><td>${s.phase}</td>` +
+        `<td class="num dim">—</td>`.repeat(4) + `</tr>`;
+      return;
+    }
+    // Colour cue: high ratio = deep reasoning, 0 ratio = no thinking trace
+    const ratioStyle = s.ratio >= 2   ? 'color:#76b7b2'
+                     : s.ratio === 0  ? 'color:#e15759'
+                     :                  '';
+    tb.innerHTML += `<tr>
+      <td>${s.phase}</td>
+      <td class="num">${s.avg_in.toLocaleString()}</td>
+      <td class="num">${s.avg_think.toLocaleString()}</td>
+      <td class="num">${s.avg_out.toLocaleString()}</td>
+      <td class="num" style="${ratioStyle}">${s.ratio.toFixed(2)}×</td>
+    </tr>`;
+  });
+  tbl.appendChild(tb);
+  cc.appendChild(tbl);
+  root.appendChild(cc);
 }
 </script>
 </body>
@@ -672,22 +1014,53 @@ def build_summary_json(data: dict) -> dict:
     )
     total_retries = sum(it.get("coder_retries", 0) for it in data["iterations"])
 
+    # Proposal aggregates
+    prop_type_totals = {
+        "modification": sum(it.get("prop_modification", 0) for it in data["iterations"]),
+        "addition":     sum(it.get("prop_addition",     0) for it in data["iterations"]),
+        "cluster":      sum(it.get("prop_cluster",      0) for it in data["iterations"]),
+    }
+    prop_sel_counts = {1: 0, 2: 0, 3: 0}
+    for it in data["iterations"]:
+        sp = it.get("selected_proposal")
+        if sp in prop_sel_counts:
+            prop_sel_counts[sp] += 1
+
+    # Mean structural edit distance (Jaccard, skip iter-1 where None)
+    ed_vals = [it.get("edit_distance") for it in data["iterations"]
+               if it.get("edit_distance") is not None]
+    edit_distance_mean = (sum(ed_vals) / len(ed_vals)) if ed_vals else None
+
+    # Token totals from chat rows
+    chat = data.get("chat_rows") or []
+    total_in    = sum(r.get("prompt_tokens") or 0 for r in chat)
+    total_think = sum(r.get("think_tokens")  or 0 for r in chat)
+    total_out   = sum(r.get("resp_tokens")   or 0 for r in chat)
+
     return {
-        "campaign_tag":             data["campaign_tag"],
-        "model":                    data["model"],
-        "iteration_count":          data["iteration_count"],
-        "total_wall_min":           round(data["total_wall_s"] / 60, 1)
-                                    if data.get("total_wall_s") else None,
-        "peak_psr":                 data["peak_psr"],
-        "final_psr":                data["final_psr"],
-        "collapse_count":           data["collapse_count"],
-        "recovery_count":           data["recovery_count"],
-        "stability_score":          data["stability_score"],
-        "validator_verdicts":       data["validator_verdicts"],
-        "floor_hard_violations":    floor_hard,
-        "floor_soft_violations":    floor_soft,
-        "total_coder_retries":      total_retries,
-        "iterations_with_warnings": data["iterations_with_warnings"],
+        "campaign_tag":              data["campaign_tag"],
+        "model":                     data["model"],
+        "iteration_count":           data["iteration_count"],
+        "total_wall_min":            round(data["total_wall_s"] / 60, 1)
+                                     if data.get("total_wall_s") else None,
+        "total_input_tokens":        total_in,
+        "total_thinking_tokens":     total_think,
+        "total_output_tokens":       total_out,
+        "peak_psr":                  data["peak_psr"],
+        "peak_iter":                 data.get("peak_iter"),
+        "final_psr":                 data["final_psr"],
+        "collapse_count":            data["collapse_count"],
+        "recovery_count":            data["recovery_count"],
+        "stability_score":           data["stability_score"],
+        "validator_verdicts":        data["validator_verdicts"],
+        "floor_hard_violations":     floor_hard,
+        "floor_soft_violations":     floor_soft,
+        "total_coder_retries":       total_retries,
+        "proposal_type_totals":      prop_type_totals,
+        "proposal_selection_counts": prop_sel_counts,
+        "edit_distance_mean":        round(edit_distance_mean, 3)
+                                     if edit_distance_mean is not None else None,
+        "iterations_with_warnings":  data["iterations_with_warnings"],
     }
 
 
@@ -732,6 +1105,8 @@ def _print_summary(s: dict) -> None:
     wall  = f"{s['total_wall_min']} min" if s.get("total_wall_min") is not None else "?"
     peak  = f"{s['peak_psr']*100:.1f}%"  if s.get("peak_psr")  is not None else "?"
     final = f"{s['final_psr']*100:.1f}%" if s.get("final_psr") is not None else "?"
+    if s.get("peak_iter") is not None and s.get("peak_psr") is not None:
+        peak = f"{peak} @ iter {s['peak_iter']}"
 
     print(f"\n{'='*62}")
     print(f"  ARD TRIAGE  —  {s['campaign_tag']}")
@@ -743,6 +1118,9 @@ def _print_summary(s: dict) -> None:
     print(f"  Final PSR     : {final}")
     print(f"  Collapses     : {s['collapse_count']}   Recoveries: {s['recovery_count']}")
     print(f"  Coder retries : {s['total_coder_retries']} total")
+    if s.get("edit_distance_mean") is not None:
+        print(f"  Mean edit dist: {s['edit_distance_mean']:.2f}  "
+              f"(Jaccard, 0=identical, 1=full replace)")
     if s["floor_hard_violations"] or s["floor_soft_violations"]:
         print(f"  ⚠  Floor rule : {s['floor_hard_violations']} hard  /  "
               f"{s['floor_soft_violations']} soft violations")
@@ -755,6 +1133,10 @@ def _print_summary(s: dict) -> None:
             sorted(verdicts.items(), key=lambda x: -x[1])
         )
         print(f"  Verdicts      : {vstr}")
+    psc = s.get("proposal_selection_counts") or {}
+    if any(psc.values()):
+        bias = "   ".join(f"P{k}: {'█'*v} {v}" for k, v in sorted(psc.items()))
+        print(f"  Proposal sel. : {bias}")
     if s["iterations_with_warnings"]:
         print(f"  ⚠  {s['iterations_with_warnings']} iteration(s) with parse/code warnings")
     print(f"{'='*62}\n")
