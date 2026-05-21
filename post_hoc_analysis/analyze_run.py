@@ -501,6 +501,9 @@ function baseOpts(xLabel, yLabel) {
     { lbl:'Collapses',   val:D.collapse_count,          sub:'PSR < threshold' },
     { lbl:'Floor Viol.', val:hardViol,
       sub: hardViol > 0 ? 'hard violations' : 'all compliant' },
+    { lbl:'Run Score',
+      val: D.run_score_data ? D.run_score_data.run_score.toFixed(3) : '—',
+      sub: 'composite pipeline score' },
   ].forEach(c => {
     wrap.innerHTML += `<div class="card">
       <div class="lbl">${c.lbl}</div>
@@ -512,7 +515,7 @@ function baseOpts(xLabel, yLabel) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PSR TRAJECTORY  +  WALL TIME PER ITERATION
+// PSR + TERMINAL MODE (left)  /  THINKING DEPTH + RUN SCORE (right)
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const grid = document.createElement('div');
@@ -523,14 +526,18 @@ function baseOpts(xLabel, yLabel) {
   const psrPct  = D.iterations.map(i => i.psr      != null ? i.psr*100      : null);
   const centPct = D.iterations.map(i => i.centered != null ? i.centered*100 : null);
 
-  // ── Left: PSR trajectory ────────────────────────────────────────────────
+  // ── LEFT COLUMN (PSR + Terminal Mode) ─────────────────────────────────────
+  const leftCol = document.createElement('div');
+  leftCol.style.cssText = 'display:flex;flex-direction:column;gap:12px';
+  grid.appendChild(leftCol);
+
+  // PSR Trajectory
   const psrCard = document.createElement('div');
   psrCard.className = 'cc';
   psrCard.innerHTML = '<h2>PSR Trajectory</h2>'
                     + '<div class="cbox"><canvas id="cPSR"></canvas></div>';
-  grid.appendChild(psrCard);
+  leftCol.appendChild(psrCard);
 
-  // Point colour encodes verdict
   const ptCol = D.iterations.map(i => {
     const s = i.validator_status;
     if (!s||s==='Unparsed')                                  return '#444';
@@ -553,40 +560,79 @@ function baseOpts(xLabel, yLabel) {
         tension:.2, fill:false, spanGaps:false, pointRadius:3 },
     ]},
     options: {
-      animation: false,
-      maintainAspectRatio: false,
+      animation:false, maintainAspectRatio:false,
       scales: {
-        x: { title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc},
-             grid:{color:gc} },
-        y: { min:0, max:105, title:{display:true,text:'% success',color:tc},
-             ticks:{color:tc, callback:v=>v+'%'}, grid:{color:gc} },
+        x:{ title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
+        y:{ min:0, max:105, title:{display:true,text:'% success',color:tc},
+            ticks:{color:tc,callback:v=>v+'%'}, grid:{color:gc} },
       },
       plugins: {
         legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
-        tooltip:{ callbacks:{
-          afterLabel: ctx => {
-            const it = D.iterations[ctx.dataIndex];
-            const v  = it.validator_status || '—';
-            const f  = it.floor ? it.floor.label : '';
-            return [`  verdict: ${v}`, f ? `  floor: ${f}` : ''].filter(Boolean);
-          }
-        }}
+        tooltip:{ callbacks:{ afterLabel: ctx => {
+          const it = D.iterations[ctx.dataIndex];
+          const v  = it.validator_status || '—';
+          const f  = it.floor ? it.floor.label : '';
+          return [`  verdict: ${v}`, f ? `  floor: ${f}` : ''].filter(Boolean);
+        }}}
       },
     }
   });
 
-  // ── Right: thinking depth per phase (multi-line) ─────────────────────────
-  const thinkPhaseCard = document.createElement('div');
-  thinkPhaseCard.className = 'cc';
-  thinkPhaseCard.innerHTML = '<h2>Thinking Depth per Phase (est. tokens)</h2>'
-                           + '<div class="cbox"><canvas id="cThinkPhase"></canvas></div>';
-  grid.appendChild(thinkPhaseCard);
+  // Terminal Mode Distribution
+  const termCard = document.createElement('div');
+  termCard.className = 'cc';
+  termCard.innerHTML = '<h2>Terminal Mode Distribution per Iteration</h2>'
+                     + '<div class="cbox"><canvas id="cTerm"></canvas></div>';
+  leftCol.appendChild(termCard);
 
-  const thinkByPhaseDs = PHASES.map(p => ({
+  const TERM_MODES = [
+    { key:'term_centered',             label:'landed_centered',             color:'#59a14f' },
+    { key:'term_off_centered',         label:'landed_off_centered',         color:'#4e79a7' },
+    { key:'term_off_centered_timeout', label:'landed_off_centered_timeout', color:'#7aafd4' },
+    { key:'term_slid',                 label:'landed_but_slid',             color:'#76b7b2' },
+    { key:'term_crashed',              label:'crashed',                     color:'#e15759' },
+    { key:'term_oob',                  label:'out_of_bounds',               color:'#b07aa1' },
+    { key:'term_hover',                label:'hover_timeout',               color:'#f28e2b' },
+  ];
+  const termDs = TERM_MODES.map(m => ({
+    label: m.label,
+    data:  D.iterations.map(i => i[m.key] != null ? i[m.key]*100 : null),
+    backgroundColor: m.color,
+  }));
+
+  new Chart(document.getElementById('cTerm'), {
+    type: 'bar',
+    data: { labels: iters, datasets: termDs },
+    options: {
+      animation:false, maintainAspectRatio:false,
+      scales: {
+        x:{ stacked:true, title:{display:true,text:'Iteration',color:tc},
+            ticks:{color:tc}, grid:{color:gc} },
+        y:{ stacked:true, min:0, max:100,
+            title:{display:true,text:'% of episodes',color:tc},
+            ticks:{color:tc, callback:v=>v+'%'}, grid:{color:gc} },
+      },
+      plugins:{ legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    }
+  });
+
+  // ── RIGHT COLUMN (Thinking Depth + RunScore) ──────────────────────────────
+  const rightCol = document.createElement('div');
+  rightCol.style.cssText = 'display:flex;flex-direction:column;gap:12px';
+  grid.appendChild(rightCol);
+
+  // Thinking Depth per Phase (multi-line)
+  const thinkCard = document.createElement('div');
+  thinkCard.className = 'cc';
+  thinkCard.innerHTML = '<h2>Thinking Depth per Phase (est. tokens)</h2>'
+                      + '<div class="cbox"><canvas id="cThinkPhase"></canvas></div>';
+  rightCol.appendChild(thinkCard);
+
+  const thinkPhaseDs = PHASES.map(p => ({
     label: p,
     data: iters.map(i => {
       const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
-      return rows.reduce((s, r) => s + (r.think_tokens || 0), 0);
+      return rows.reduce((s,r) => s + (r.think_tokens || 0), 0);
     }),
     borderColor: PC[p],
     backgroundColor: 'transparent',
@@ -597,66 +643,54 @@ function baseOpts(xLabel, yLabel) {
 
   new Chart(document.getElementById('cThinkPhase'), {
     type: 'line',
-    data: { labels: iters, datasets: thinkByPhaseDs },
+    data: { labels: iters, datasets: thinkPhaseDs },
     options: {
-      animation: false,
-      maintainAspectRatio: false,
+      animation:false, maintainAspectRatio:false,
       scales: {
-        x: { title:{display:true,text:'Iteration',color:tc},
-             ticks:{color:tc}, grid:{color:gc} },
-        y: { beginAtZero: true,
-             title:{display:true,text:'Est. thinking tokens',color:tc},
-             ticks:{color:tc}, grid:{color:gc} },
+        x:{ title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
+        y:{ title:{display:true,text:'Est. thinking tokens',color:tc},
+            ticks:{color:tc}, grid:{color:gc} },
       },
-      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+      plugins:{ legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
     }
   });
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TERMINAL MODE DISTRIBUTION  (full-width stacked bar)
-// ─────────────────────────────────────────────────────────────────────────────
-{
-  const cc = document.createElement('div');
-  cc.className = 'cc';
-  cc.innerHTML = '<h2>Terminal Mode Distribution per Iteration</h2>'
-               + '<div class="cbox"><canvas id="cTerm"></canvas></div>';
-  root.appendChild(cc);
+  // RunScore Panel
+  if (D.run_score_data) {
+    const rs  = D.run_score_data.run_score;
+    const sub = D.run_score_data.sub_scores;
+    const SUB_LABELS = { pe:'PE', se:'SE', ri:'RI', frc:'FRC', pa:'PA' };
+    const SUB_FULL   = { pe:'Policy Effectiveness', se:'Search Efficiency',
+                         ri:'Robustness Index', frc:'Floor Rule Compliance',
+                         pa:'Prediction Alignment' };
+    const scoreColor = rs >= 0.7 ? '#6ee093' : rs >= 0.4 ? '#e6c46e' : '#e66e6e';
 
-  const TERM_MODES = [
-    { key:'term_centered',             label:'landed_centered',             color:'#59a14f' },
-    { key:'term_off_centered',         label:'landed_off_centered',         color:'#4e79a7' },
-    { key:'term_off_centered_timeout', label:'landed_off_centered_timeout', color:'#9ecae1' },
-    { key:'term_slid',                 label:'landed_but_slid',             color:'#76b7b2' },
-    { key:'term_crashed',              label:'crashed',                     color:'#e15759' },
-    { key:'term_oob',                  label:'out_of_bounds',               color:'#b07aa1' },
-    { key:'term_hover',                label:'hover_timeout',               color:'#f28e2b' },
-  ];
-
-  const termDs = TERM_MODES.map(m => ({
-    label: m.label,
-    data: D.iterations.map(i => i[m.key] != null ? i[m.key] * 100 : null),
-    backgroundColor: m.color,
-    spanGaps: false,
-  }));
-
-  new Chart(document.getElementById('cTerm'), {
-    type: 'bar',
-    data: { labels: D.iterations.map(i => i.iter), datasets: termDs },
-    options: {
-      animation: false,
-      maintainAspectRatio: false,
-      scales: {
-        x: { stacked: true,
-             title:{display:true,text:'Iteration',color:tc},
-             ticks:{color:tc}, grid:{color:gc} },
-        y: { stacked: true, min: 0, max: 100,
-             title:{display:true,text:'% of episodes',color:tc},
-             ticks:{color:tc, callback: v => v + '%'}, grid:{color:gc} },
-      },
-      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    const rsCard = document.createElement('div');
+    rsCard.className = 'cc';
+    let barsHtml = '';
+    for (const [k, v] of Object.entries(sub)) {
+      const pct  = (v * 100).toFixed(1);
+      const col  = v >= 0.7 ? '#6ee093' : v >= 0.4 ? '#e6c46e' : '#e66e6e';
+      barsHtml += `
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;
+                      font-size:10px;color:#aaa;margin-bottom:3px">
+            <span title="${SUB_FULL[k]}">${SUB_LABELS[k]}</span>
+            <span style="color:${col}">${pct}%</span>
+          </div>
+          <div style="background:#262931;border-radius:3px;height:6px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${col};border-radius:3px"></div>
+          </div>
+        </div>`;
     }
-  });
+    rsCard.innerHTML = `
+      <h2>Run Score</h2>
+      <div style="font-size:36px;font-weight:700;color:${scoreColor};margin:8px 0 14px">
+        ${rs.toFixed(3)}
+      </div>
+      ${barsHtml}`;
+    rightCol.appendChild(rsCard);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -689,15 +723,14 @@ function baseOpts(xLabel, yLabel) {
              : fl.status==='soft_violation' ? 'fl-soft'
              : fl.status==='ok'             ? 'fl-ok'
              : 'fl-unk';
-    const dCent = (it.baseline_centered != null && it.term_centered != null)
-      ? ((it.term_centered - it.baseline_centered) * 100).toFixed(1)
-      : null;
+    const dCent = (it.centered != null && it.baseline_centered != null)
+      ? ((it.centered - it.baseline_centered) * 100) : null;
     tb.innerHTML += `<tr class="${rc}">
       <td>${it.iter}</td>
       <td class="num">${pct(it.baseline_psr)}</td>
       <td class="num">${pct(it.psr)}</td>
       <td class="num">${dpp(fl.delta_pp)}</td>
-      <td class="num">${dCent != null ? (dCent >= 0 ? '+' : '') + dCent + 'pp' : '—'}</td>
+      <td class="num">${dCent != null ? (dCent >= 0 ? '+' : '') + dCent.toFixed(1) + 'pp' : '—'}</td>
       <td>${it.validator_status || '—'}</td>
       <td>${fl.label || '—'}</td>
     </tr>`;
@@ -1035,7 +1068,7 @@ if (D.chat_rows && D.chat_rows.length) {
                      :                  '';
     tb.innerHTML += `<tr>
       <td>${s.phase}</td>
-      <td>${s.model}</td>
+      <td style="font-size:10px;color:#888">${s.model}</td>
       <td class="num">${s.avg_in.toLocaleString()}</td>
       <td class="num">${s.avg_think.toLocaleString()}</td>
       <td class="num">${s.avg_out.toLocaleString()}</td>
@@ -1057,6 +1090,46 @@ if (D.chat_rows && D.chat_rows.length) {
 # ===========================================================================
 # Output writers
 # ===========================================================================
+
+_RUNSCORE_WEIGHTS = {"pe": 0.35, "se": 0.25, "ri": 0.20, "frc": 0.10, "pa": 0.10}
+
+
+def compute_run_score(data: dict, paths: RunPaths) -> dict:
+    iters      = data["iterations"]
+    total      = data["iteration_count"]
+    peak_psr   = data.get("peak_psr") or 0.0
+    final_psr  = data.get("final_psr") or 0.0
+    peak_iter  = data.get("peak_iter") or total
+
+    pe  = (peak_psr + final_psr) / 2.0
+    se  = peak_psr / peak_iter if peak_iter else 0.0
+
+    ri = 0.0
+    if peak_iter:
+        try:
+            _pm = load_metric_payload(paths.metric_payload(peak_iter))
+            std = _pm.cross_seed_success_std or 0.4
+            ri  = 1.0 - min(1.0, std / 0.4)
+        except Exception:
+            pass
+
+    hard_violations = sum(
+        1 for it in iters
+        if (it.get("floor") or {}).get("status") == "hard_violation"
+    )
+    frc = 1.0 - (hard_violations / total) if total else 0.0
+
+    verdicts = data.get("validator_verdicts") or {}
+    pa_count = (verdicts.get("Validated", 0)
+                + verdicts.get("Confirmed", 0)
+                + verdicts.get("Productive Deviation", 0))
+    pa = pa_count / total if total else 0.0
+
+    sub = {"pe": round(pe, 4), "se": round(se, 4),
+           "ri": round(ri, 4), "frc": round(frc, 4), "pa": round(pa, 4)}
+    score = sum(_RUNSCORE_WEIGHTS[k] * sub[k] for k in _RUNSCORE_WEIGHTS)
+    return {"run_score": round(score, 4), "sub_scores": sub}
+
 
 def write_html_report(data: dict, out_path: Path) -> None:
     html = (TRIAGE_REPORT_TEMPLATE
@@ -1124,6 +1197,8 @@ def build_summary_json(data: dict) -> dict:
         "edit_distance_mean":        round(edit_distance_mean, 3)
                                      if edit_distance_mean is not None else None,
         "iterations_with_warnings":  data["iterations_with_warnings"],
+        "run_score":                 data.get("run_score_data", {}).get("run_score"),
+        "sub_scores":                data.get("run_score_data", {}).get("sub_scores"),
     }
 
 
@@ -1146,6 +1221,7 @@ def analyze_single(
 
     data    = build_triage_data(campaign_path, cfg)
     paths   = RunPaths(campaign_path)
+    data["run_score_data"] = compute_run_score(data, paths)
     out_dir = paths.model_dir / "reports"
     out_dir.mkdir(parents=True, exist_ok=True)
 
