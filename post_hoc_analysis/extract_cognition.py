@@ -148,6 +148,7 @@ class OutcomeMetrics:
     terminal_distribution: dict
     landed_centered_rate: float | None
     landed_off_centered_rate: float | None
+    landed_off_centered_timeout_rate: float | None
     landed_slid_rate: float | None
     crashed_rate: float | None
     out_of_bounds_rate: float | None
@@ -266,6 +267,7 @@ def load_metric_payload(payload_path: Path) -> OutcomeMetrics:
         terminal_distribution=term,
         landed_centered_rate=term.get("landed_centered"),
         landed_off_centered_rate=term.get("landed_off_centered"),
+        landed_off_centered_timeout_rate=term.get("landed_off_centered_timeout"),
         landed_slid_rate=term.get("landed_but_slid_into_valley"),
         crashed_rate=term.get("crashed"),
         out_of_bounds_rate=term.get("out_of_bounds"),

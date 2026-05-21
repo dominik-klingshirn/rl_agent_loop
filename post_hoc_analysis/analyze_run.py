@@ -50,8 +50,10 @@ from extract_cognition import (
     AggregationConfig,
     RunPaths,
     load_ledger,
+    load_metric_payload,
     load_run,
     load_chat_responses,
+    analyze_reward_ast,
 )
 
 _DEFAULT_EXPERIMENTS_DIR = Path(__file__).parent.parent / "experiments"
@@ -188,6 +190,19 @@ def build_triage_data(
         it.iteration: it.outcomes.population_success_rate
         for it in run_summary.iterations
     }
+    centered_by_iter: dict[int, float | None] = {
+        it.iteration: it.outcomes.landed_centered_rate
+        for it in run_summary.iterations
+    }
+
+    iter00_payload_path = paths.metric_payload(0)
+    if iter00_payload_path.is_file():
+        try:
+            _p0 = load_metric_payload(iter00_payload_path)
+            psr_by_iter[0]      = _p0.population_success_rate
+            centered_by_iter[0] = _p0.landed_centered_rate
+        except Exception:
+            pass
 
     # Slim chat rows — pre-compute thinking/response split; drop raw text
     slim_chat = []
@@ -212,6 +227,13 @@ def build_triage_data(
     # Per-iteration rows
     iter_rows = []
     prev_n_components: int | None = None
+    iter00_code = paths.reward_file(0)
+    if iter00_code.is_file():
+        try:
+            _a = analyze_reward_ast(iter00_code.read_text(encoding="utf-8"))
+            prev_n_components = _a.get("n_components")
+        except Exception:
+            pass
     for it in run_summary.iterations:
         n       = it.iteration
         o       = it.outcomes
@@ -263,6 +285,15 @@ def build_triage_data(
             "coder_retries":  retries,
             # Parse / code warnings
             "parse_warnings": it.parse_warnings,
+            # Terminal distribution (for stacked bar chart)
+            "baseline_centered":           centered_by_iter.get(n - 1),
+            "term_centered":               o.landed_centered_rate,
+            "term_off_centered":           o.landed_off_centered_rate,
+            "term_off_centered_timeout":   o.landed_off_centered_timeout_rate,
+            "term_slid":                   o.landed_slid_rate,
+            "term_crashed":                o.crashed_rate,
+            "term_oob":                    o.out_of_bounds_rate,
+            "term_hover":                  o.hover_timeout_rate,
         })
 
         # Update baseline for next iteration's edit distance
@@ -345,6 +376,7 @@ TRIAGE_REPORT_TEMPLATE = r"""<!DOCTYPE html>
   th      { color: var(--txt2); font-weight: 600; font-size: 10px;
             letter-spacing: .05em; text-transform: uppercase; }
   td.num  { text-align: right; font-variant-numeric: tabular-nums; }
+  th.num  { text-align: right; }
   tr.fl-hard td { background: #200f0f; color: var(--red); }
   tr.fl-soft td { background: #1e1800; color: var(--ylw); }
   tr.fl-ok   td { color: var(--txt4); }
@@ -543,25 +575,74 @@ function baseOpts(xLabel, yLabel) {
     }
   });
 
-  // ── Right: wall time per iter, stacked by phase ─────────────────────────
-  const timeCard = document.createElement('div');
-  timeCard.className = 'cc';
-  timeCard.innerHTML = '<h2>Wall Time per Iteration (by phase)</h2>'
-                     + '<div class="cbox"><canvas id="cTime"></canvas></div>';
-  grid.appendChild(timeCard);
+  // ── Right: thinking depth per phase (multi-line) ─────────────────────────
+  const thinkPhaseCard = document.createElement('div');
+  thinkPhaseCard.className = 'cc';
+  thinkPhaseCard.innerHTML = '<h2>Thinking Depth per Phase (est. tokens)</h2>'
+                           + '<div class="cbox"><canvas id="cThinkPhase"></canvas></div>';
+  grid.appendChild(thinkPhaseCard);
 
-  const timeDs = PHASES.map(p => ({
+  const thinkByPhaseDs = PHASES.map(p => ({
     label: p,
     data: iters.map(i => {
       const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
-      return rows.reduce((s, r) => s + (r.total_s || 0), 0);
+      return rows.reduce((s, r) => s + (r.think_tokens || 0), 0);
     }),
-    backgroundColor: PC[p],
+    borderColor: PC[p],
+    backgroundColor: 'transparent',
+    tension: 0.2,
+    pointRadius: 3,
+    spanGaps: false,
   }));
 
-  new Chart(document.getElementById('cTime'), {
+  new Chart(document.getElementById('cThinkPhase'), {
+    type: 'line',
+    data: { labels: iters, datasets: thinkByPhaseDs },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { beginAtZero: true,
+             title:{display:true,text:'Est. thinking tokens',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TERMINAL MODE DISTRIBUTION  (full-width stacked bar)
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const cc = document.createElement('div');
+  cc.className = 'cc';
+  cc.innerHTML = '<h2>Terminal Mode Distribution per Iteration</h2>'
+               + '<div class="cbox"><canvas id="cTerm"></canvas></div>';
+  root.appendChild(cc);
+
+  const TERM_MODES = [
+    { key:'term_centered',             label:'landed_centered',             color:'#59a14f' },
+    { key:'term_off_centered',         label:'landed_off_centered',         color:'#4e79a7' },
+    { key:'term_off_centered_timeout', label:'landed_off_centered_timeout', color:'#9ecae1' },
+    { key:'term_slid',                 label:'landed_but_slid',             color:'#76b7b2' },
+    { key:'term_crashed',              label:'crashed',                     color:'#e15759' },
+    { key:'term_oob',                  label:'out_of_bounds',               color:'#b07aa1' },
+    { key:'term_hover',                label:'hover_timeout',               color:'#f28e2b' },
+  ];
+
+  const termDs = TERM_MODES.map(m => ({
+    label: m.label,
+    data: D.iterations.map(i => i[m.key] != null ? i[m.key] * 100 : null),
+    backgroundColor: m.color,
+    spanGaps: false,
+  }));
+
+  new Chart(document.getElementById('cTerm'), {
     type: 'bar',
-    data: { labels: iters, datasets: timeDs },
+    data: { labels: D.iterations.map(i => i.iter), datasets: termDs },
     options: {
       animation: false,
       maintainAspectRatio: false,
@@ -569,43 +650,12 @@ function baseOpts(xLabel, yLabel) {
         x: { stacked: true,
              title:{display:true,text:'Iteration',color:tc},
              ticks:{color:tc}, grid:{color:gc} },
-        y: { stacked: true, beginAtZero: true,
-             title:{display:true,text:'Wall time (s)',color:tc},
-             ticks:{color:tc, callback: v => v + 's'}, grid:{color:gc} },
+        y: { stacked: true, min: 0, max: 100,
+             title:{display:true,text:'% of episodes',color:tc},
+             ticks:{color:tc, callback: v => v + '%'}, grid:{color:gc} },
       },
-      plugins: {
-        legend: { labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
-        tooltip: { callbacks: {
-          afterTitle: ctx => {
-            const i = +ctx[0].label;
-            const total = D.chat_rows
-              .filter(r => r.iteration === i)
-              .reduce((s,r) => s + (r.total_s || 0), 0);
-            return `Iter total: ${(total/60).toFixed(1)} min`;
-          }
-        }}
-      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
     }
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VERDICT TIMELINE  (chip row)
-// ─────────────────────────────────────────────────────────────────────────────
-{
-  const cc = document.createElement('div');
-  cc.className = 'cc';
-  cc.innerHTML = '<h2>Validator Verdict Timeline</h2><div class="chip-row" id="vchips"></div>';
-  root.appendChild(cc);
-  const row = document.getElementById('vchips');
-  D.iterations.forEach(it => {
-    const s    = it.validator_status || 'Unparsed';
-    const star = (it.floor && it.floor.status === 'hard_violation') ? '★' : '';
-    row.innerHTML += `<div class="${chipClass(s)}"
-        title="${s}&#10;${it.floor ? it.floor.label : ''}">
-      ${short(s)}${star}
-      <span class="n">${it.iter}</span>
-    </div>`;
   });
 }
 
@@ -625,7 +675,11 @@ function baseOpts(xLabel, yLabel) {
   </h2>`;
   const tbl = document.createElement('table');
   tbl.innerHTML = `<thead><tr>
-    <th>Iter</th><th>Baseline PSR</th><th>Actual PSR</th><th>Δ pp</th>
+    <th>Iter</th>
+    <th class="num">Baseline PSR</th>
+    <th class="num">Actual PSR</th>
+    <th class="num">Δ pp</th>
+    <th class="num">Δ Centered-PP</th>
     <th>Verdict</th><th>Assessment</th>
   </tr></thead>`;
   const tb = document.createElement('tbody');
@@ -635,11 +689,15 @@ function baseOpts(xLabel, yLabel) {
              : fl.status==='soft_violation' ? 'fl-soft'
              : fl.status==='ok'             ? 'fl-ok'
              : 'fl-unk';
+    const dCent = (it.baseline_centered != null && it.term_centered != null)
+      ? ((it.term_centered - it.baseline_centered) * 100).toFixed(1)
+      : null;
     tb.innerHTML += `<tr class="${rc}">
       <td>${it.iter}</td>
       <td class="num">${pct(it.baseline_psr)}</td>
       <td class="num">${pct(it.psr)}</td>
       <td class="num">${dpp(fl.delta_pp)}</td>
+      <td class="num">${dCent != null ? (dCent >= 0 ? '+' : '') + dCent + 'pp' : '—'}</td>
       <td>${it.validator_status || '—'}</td>
       <td>${fl.label || '—'}</td>
     </tr>`;
@@ -836,7 +894,7 @@ function baseOpts(xLabel, yLabel) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOKEN CONSUMPTION + STRATEGIST THINKING DEPTH
+// GEN TOKENS + WALL TIME
 // ─────────────────────────────────────────────────────────────────────────────
 if (D.chat_rows && D.chat_rows.length) {
   const maxIter = Math.max(...D.chat_rows.map(r=>r.iteration||0));
@@ -878,54 +936,48 @@ if (D.chat_rows && D.chat_rows.length) {
     }
   });
 
-  // ── Right: strategist thinking depth (apportioned estimate) ─────────────
-  const thinkVals = iterLabels.map(i => {
-    const rows = D.chat_rows.filter(r=>r.iteration===i&&r.phase==='strategist');
-    return rows.reduce((s,r)=>s+(r.think_tokens||0),0);
-  });
-  const stratGen = iterLabels.map(i => {
-    const rows = D.chat_rows.filter(r=>r.iteration===i&&r.phase==='strategist');
-    return rows.reduce((s,r)=>s+(r.gen_tokens||0),0);
-  });
-  const noThinking = thinkVals.every(v => !v) && stratGen.some(v => v > 0);
+  // ── Right: wall time per iteration, stacked by phase ────────────────────
+  const timeCard = document.createElement('div');
+  timeCard.className = 'cc';
+  timeCard.innerHTML = '<h2>Wall Time per Iteration (by phase)</h2>'
+                     + '<div class="cbox"><canvas id="cTime"></canvas></div>';
+  grid.appendChild(timeCard);
 
-  const thinkCard = document.createElement('div');
-  thinkCard.className = 'cc';
-  const thinkTitle = noThinking
-    ? 'Strategist Thinking Depth '
-      + '<span style="font-size:11px;color:#e15759;margin-left:10px">'
-      + 'no thinking trace emitted</span>'
-    : 'Strategist Thinking Depth (est. tokens)';
-  thinkCard.innerHTML = `<h2>${thinkTitle}</h2>`
-                      + '<div class="cbox"><canvas id="cThink"></canvas></div>';
-  grid.appendChild(thinkCard);
+  const timeDs = PHASES.map(p => ({
+    label: p,
+    data: iterLabels.map(i => {
+      const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
+      return rows.reduce((s, r) => s + (r.total_s || 0), 0);
+    }),
+    backgroundColor: PC[p],
+  }));
 
-  // Red bar when gen tokens > 0 but thinking estimate is 0 (no thinking trace)
-  const thinkColors = iterLabels.map((i, idx) =>
-    (stratGen[idx] > 0 && thinkVals[idx] === 0) ? '#e15759' : '#f28e2b'
-  );
-
-  new Chart(document.getElementById('cThink'), {
-    type:'bar',
-    data:{
-      labels: iterLabels,
-      datasets:[{
-        label:'Thinking (est.)',
-        data: thinkVals,
-        backgroundColor: thinkColors,
-        borderRadius: 3,
-      }]
-    },
-    options:{
+  new Chart(document.getElementById('cTime'), {
+    type: 'bar',
+    data: { labels: iterLabels, datasets: timeDs },
+    options: {
       animation: false,
       maintainAspectRatio: false,
       scales: {
-        x: { title:{display:true,text:'Iteration',color:tc},
+        x: { stacked: true,
+             title:{display:true,text:'Iteration',color:tc},
              ticks:{color:tc}, grid:{color:gc} },
-        y: { title:{display:true,text:'Est. thinking tokens',color:tc},
-             ticks:{color:tc}, grid:{color:gc} },
+        y: { stacked: true, beginAtZero: true,
+             title:{display:true,text:'Wall time (s)',color:tc},
+             ticks:{color:tc, callback: v => v + 's'}, grid:{color:gc} },
       },
-      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+      plugins: {
+        legend: { labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
+        tooltip: { callbacks: {
+          afterTitle: ctx => {
+            const i = +ctx[0].label;
+            const total = D.chat_rows
+              .filter(r => r.iteration === i)
+              .reduce((s,r) => s + (r.total_s || 0), 0);
+            return `Iter total: ${(total/60).toFixed(1)} min`;
+          }
+        }}
+      },
     }
   });
 }
@@ -934,6 +986,7 @@ if (D.chat_rows && D.chat_rows.length) {
 // PHASE AVERAGES (across run)
 // ─────────────────────────────────────────────────────────────────────────────
 if (D.chat_rows && D.chat_rows.length) {
+  const totalRunTime = D.chat_rows.reduce((s,r) => s + (r.total_s || 0), 0);
   const phaseStats = PHASES.map(p => {
     const rows = D.chat_rows.filter(r => r.phase === p);
     const n    = rows.length;
@@ -941,13 +994,18 @@ if (D.chat_rows && D.chat_rows.length) {
     const sumIn    = rows.reduce((s,r) => s + (r.prompt_tokens || 0), 0);
     const sumThink = rows.reduce((s,r) => s + (r.think_tokens  || 0), 0);
     const sumOut   = rows.reduce((s,r) => s + (r.resp_tokens   || 0), 0);
+    const sumGen   = rows.reduce((s,r) => s + (r.gen_tokens    || 0), 0);
+    const sumTime  = rows.reduce((s,r) => s + (r.total_s       || 0), 0);
     return {
       phase:     p,
       n:         n,
+      model:     rows[0]?.model || '—',
       avg_in:    Math.round(sumIn    / n),
       avg_think: Math.round(sumThink / n),
       avg_out:   Math.round(sumOut   / n),
       ratio:     sumOut > 0 ? sumThink / sumOut : 0,
+      pct_time:  totalRunTime > 0 ? sumTime / totalRunTime * 100 : 0,
+      tok_per_s: sumTime > 0 ? sumGen / sumTime : 0,
     };
   });
 
@@ -956,17 +1014,19 @@ if (D.chat_rows && D.chat_rows.length) {
   cc.innerHTML = '<h2>Phase Averages (across run)</h2>';
   const tbl = document.createElement('table');
   tbl.innerHTML = `<thead><tr>
-    <th>Phase</th>
+    <th>Phase</th><th>Model</th>
     <th class="num">Avg In-Tok</th>
     <th class="num">Avg Think</th>
     <th class="num">Avg Out</th>
     <th class="num">Think/Out</th>
+    <th class="num">% Time</th>
+    <th class="num">Avg Tok/s</th>
   </tr></thead>`;
   const tb = document.createElement('tbody');
   phaseStats.forEach(s => {
     if (!s.n) {
-      tb.innerHTML += `<tr><td>${s.phase}</td>` +
-        `<td class="num dim">—</td>`.repeat(4) + `</tr>`;
+      tb.innerHTML += `<tr><td>${s.phase}</td><td class="dim">—</td>` +
+        `<td class="num dim">—</td>`.repeat(6) + `</tr>`;
       return;
     }
     // Colour cue: high ratio = deep reasoning, 0 ratio = no thinking trace
@@ -975,10 +1035,13 @@ if (D.chat_rows && D.chat_rows.length) {
                      :                  '';
     tb.innerHTML += `<tr>
       <td>${s.phase}</td>
+      <td>${s.model}</td>
       <td class="num">${s.avg_in.toLocaleString()}</td>
       <td class="num">${s.avg_think.toLocaleString()}</td>
       <td class="num">${s.avg_out.toLocaleString()}</td>
       <td class="num" style="${ratioStyle}">${s.ratio.toFixed(2)}×</td>
+      <td class="num">${s.pct_time.toFixed(1)}%</td>
+      <td class="num">${s.tok_per_s.toFixed(1)}</td>
     </tr>`;
   });
   tbl.appendChild(tb);
