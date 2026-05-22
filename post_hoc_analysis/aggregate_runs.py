@@ -43,7 +43,7 @@ ALL_TERMINAL_MODES = (
     "landed_centered",
     "landed_off_centered",
     "landed_but_slid_into_valley",
-    "landed_off_centered_timeout",   # FIX: was missing
+    "landed_off_centered_timeout",   
     "crashed",
     "out_of_bounds",
     "hover_timeout",
@@ -311,7 +311,6 @@ def build_dashboard_payload(model_summaries, chat_rows_by_run) -> dict:
                     "centered": o.landed_centered_rate,
                     "off_centered": o.landed_off_centered_rate,
                     "slid": o.landed_slid_rate,
-                    # FIX: add landed_off_centered_timeout from terminal_distribution
                     "off_centered_timeout": o.terminal_distribution.get("landed_off_centered_timeout"),
                     "crashed": o.crashed_rate,
                     "oob": o.out_of_bounds_rate,

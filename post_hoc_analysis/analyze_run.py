@@ -586,13 +586,13 @@ function baseOpts(xLabel, yLabel) {
   leftCol.appendChild(termCard);
 
   const TERM_MODES = [
-    { key:'term_centered',             label:'landed_centered',             color:'#59a14f' },
-    { key:'term_off_centered',         label:'landed_off_centered',         color:'#4e79a7' },
-    { key:'term_off_centered_timeout', label:'landed_off_centered_timeout', color:'#7aafd4' },
-    { key:'term_slid',                 label:'landed_but_slid',             color:'#76b7b2' },
-    { key:'term_crashed',              label:'crashed',                     color:'#e15759' },
-    { key:'term_oob',                  label:'out_of_bounds',               color:'#b07aa1' },
-    { key:'term_hover',                label:'hover_timeout',               color:'#f28e2b' },
+    { key:'term_centered',             label:'landed_centered',             color:'#2ca02c' },
+    { key:'term_off_centered',         label:'landed_off_centered',         color:'#1f77b4' },
+    { key:'term_off_centered_timeout', label:'landed_off_centered_timeout', color:'#186499' },
+    { key:'term_slid',                 label:'landed_but_slid',             color:'#1A6BA4' },
+    { key:'term_crashed',              label:'crashed',                     color:'#d62728' },
+    { key:'term_oob',                  label:'out_of_bounds',               color:'#9467bd' },
+    { key:'term_hover',                label:'hover_timeout',               color:'#ff7f0e' },
   ];
   const termDs = TERM_MODES.map(m => ({
     label: m.label,
@@ -675,7 +675,7 @@ function baseOpts(xLabel, yLabel) {
         <div style="margin-bottom:8px">
           <div style="display:flex;justify-content:space-between;
                       font-size:10px;color:#aaa;margin-bottom:3px">
-            <span title="${SUB_FULL[k]}">${SUB_LABELS[k]}</span>
+            <span><strong>${SUB_LABELS[k]}</strong> — ${SUB_FULL[k]}</span>
             <span style="color:${col}">${pct}%</span>
           </div>
           <div style="background:#262931;border-radius:3px;height:6px;overflow:hidden">
