@@ -262,6 +262,7 @@ def analyze_single_seed_eval(csv_path: str, seed_id: int) -> dict:
             'episode': int(ep),
             'status': str(ep_df['status'].iloc[-1]),
             'is_success': is_success,
+            'ep_rew_total': float(ep_df['reward'].sum()),
             'chatter_rate': float(chatter_rate),
             'noop_duty': float(noop_duty),
             'main_duty': float(main_duty),
@@ -272,7 +273,14 @@ def analyze_single_seed_eval(csv_path: str, seed_id: int) -> dict:
         })
         
     metrics_df = pd.DataFrame(ep_metrics)
-    
+
+    # Eval-based reward topology signal
+    ep_level = pd.DataFrame(ep_metrics)
+    eval_reward_by_terminal_state = (
+        ep_level.groupby('status')['ep_rew_total'].mean().to_dict()
+        if 'ep_rew_total' in ep_level.columns else {}
+    )
+
     # Construct the pure data payload for the Aggregator
     payload = {
         "seed_id": seed_id,
@@ -286,6 +294,7 @@ def analyze_single_seed_eval(csv_path: str, seed_id: int) -> dict:
             "macro_oscillations": float(metrics_df['macro_oscillations'].mean()),
             "success_rate": float(metrics_df['is_success'].mean())
         },
+        "eval_reward_by_terminal_state": eval_reward_by_terminal_state,
         "terminal_distribution": {
             str(k): float(v) for k, v in metrics_df['status'].value_counts(normalize=True).to_dict().items()
         },
@@ -347,6 +356,26 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
         str(k): float(v / total_episodes) for k, v in population_status_counts.items()
     }
 
+    # Eval-side topology inversion: does the deterministic policy earn more reward from failures than landings?
+    all_eval_rewards_by_status = {}
+    for seed in seed_payloads:
+        for status, mean_r in seed.get('eval_reward_by_terminal_state', {}).items():
+            all_eval_rewards_by_status.setdefault(status, []).append(mean_r)
+
+    eval_mean_landing_reward = np.mean([
+        np.mean(v) for k, v in all_eval_rewards_by_status.items() if 'landed' in k
+    ]) if any('landed' in k for k in all_eval_rewards_by_status) else None
+
+    eval_mean_failure_reward = np.mean([
+        np.mean(v) for k, v in all_eval_rewards_by_status.items() if 'landed' not in k
+    ]) if any('landed' not in k for k in all_eval_rewards_by_status) else None
+
+    eval_topology_inverted_flag = bool(
+        eval_mean_landing_reward is not None
+        and eval_mean_failure_reward is not None
+        and eval_mean_failure_reward > eval_mean_landing_reward
+    )
+
     # 5. Build the Mac-bound LLM Payload
     # Semantic boolean thresholds are applied here to provide unarguable physical facts to the LLM.
     payload = {
@@ -369,7 +398,8 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
         "failure_mode_analysis": {
             "population_terminal_distribution": population_term_dist,
             "stable_but_suboptimal_flag": bool(mean_success < 0.2 and std_success < 0.1), # Fails consistently the exact same way
-            "universal_success_flag": bool(min(success_rates) > 0.85) # Every single seed reliably lands
+            "universal_success_flag": bool(min(success_rates) > 0.85), # Every single seed reliably lands
+            "eval_topology_inverted_flag": eval_topology_inverted_flag
             }
         }
     
@@ -453,11 +483,12 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
 
     # Correlate the LLM's total reward with the binary success metric. 
     # If the LLM's reward function is good, high reward should strongly correlate with 'is_success == 1.0'
-    df['objective_alignment_rho'] = df['is_success'].rolling(window).corr(df['ep_rew_total']).fillna(0)
+    df['objective_alignment_rho'] = df['is_success'].rolling(window).corr(df['ep_rew_total']).fillna(np.nan)
 
     # --- B. Survival Hacking Index ---
     # Does living longer equal higher LLM reward, regardless of success?
-    df['survival_hacking_idx'] = df['ep_len'].rolling(window).corr(df['ep_rew_total']).fillna(0)
+    # Retained in metric payload as a continuous narrative signal for post-hoc diagnostic analysis— not used for the flag
+    df['survival_hacking_idx'] = df['ep_len'].rolling(window).corr(df['ep_rew_total']).fillna(np.nan)
 
     # --- C. Terminal Mode Entropy (Policy Collapse) ---
     terminal_dummies = pd.get_dummies(df['terminal_status']).astype(float)
@@ -478,7 +509,14 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
     # --- Extract Converged (Late-Stage) Behavior ---
     late_stage_idx = max(1, int(len(df) * 0.2))
     late_stage_eps = df.iloc[-late_stage_idx:]
-    
+
+    # Conditional reward means by terminal state (used for survival hacking flag and topology cross-check)
+    mean_reward_by_terminal_state = (
+        late_stage_eps.groupby('terminal_status')['ep_rew_total']
+        .mean()
+        .to_dict()
+    )
+
     late_rollout_idx = max(1, int(len(rollout_stats) * 0.2))
     late_rollouts = rollout_stats.iloc[-late_rollout_idx:]
 
@@ -555,6 +593,26 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
             for col in reward_cols:
                 component_correlations[col]['mi_succ'] = 0.0
 
+        # --- Conditional Direction Delta (per-step normalized) ---
+        # Only valid on success rung with sufficient samples in both groups
+        success_eps = late_stage_eps[late_stage_eps['is_success'] == 1.0]
+        failure_eps = late_stage_eps[late_stage_eps['is_success'] == 0.0]
+        delta_sufficient_samples = (len(success_eps) >= 3 and len(failure_eps) >= 3)
+
+        component_delta = {}
+        for col in reward_cols:
+            if delta_sufficient_samples and col in late_stage_eps.columns:
+                mean_per_step_success = (success_eps[col] / success_eps['ep_len']).mean()
+                mean_per_step_failure = (failure_eps[col] / failure_eps['ep_len']).mean()
+                delta = float(mean_per_step_success - mean_per_step_failure)
+            else:
+                delta = float('nan')
+            component_delta[col] = delta
+
+        for col in reward_cols:
+            component_correlations[col]['conditional_direction_delta'] = component_delta[col]
+            component_correlations[col]['delta_sufficient_samples'] = delta_sufficient_samples
+
     # Construct the exact data contract for the Linux Aggregator
     payload = {
         "seed_id": seed_id,
@@ -562,6 +620,7 @@ def analyze_single_seed_stochastic(csv_path: str, seed_id: int, window_size: int
         "dominant_failure": str(dominant_failure),
         "objective_alignment_rho": float(late_stage_eps['objective_alignment_rho'].mean()),
         "survival_hacking_rho": float(late_stage_eps['survival_hacking_idx'].mean()),
+        "mean_reward_by_terminal_state": mean_reward_by_terminal_state,
         "terminal_entropy_norm": float(late_stage_eps['terminal_entropy_norm'].mean()),
         "intra_rollout_cv": float(late_rollouts['reward_cv'].mean()),
         "avg_crash_length": float(avg_crash_len),
@@ -678,11 +737,32 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
         else:
             is_dead_weight = bool(relative_contribution < 0.01)
 
+        # Resolve direction of non-linear dependency using cross-seed mean delta
+        mean_delta_vals = comp_base_corrs[col].get('conditional_direction_delta', [float('nan')])
+        delta_sufficient = all(comp_base_corrs[col].get('delta_sufficient_samples', [False]))
+        mean_delta = float(np.nanmean(mean_delta_vals)) if mean_delta_vals else float('nan')
+
+        is_hidden_traitor = bool(
+            is_hidden_dependency
+            and delta_sufficient
+            and not np.isnan(mean_delta)
+            and mean_delta < 0
+        )
+        is_hidden_helper = bool(
+            is_hidden_dependency
+            and delta_sufficient
+            and not np.isnan(mean_delta)
+            and mean_delta > 0
+        )
+
         component_diagnostics[col] = {
-            "alignment_rho": round(mean_rho, 3), 
+            "alignment_rho": round(mean_rho, 3),
             "alignment_mi_succ": round(mean_mi_succ, 3),
-            "is_traitor_component": bool(mean_rho < -0.2), # Actively penalizing successful behavior
-            "is_hidden_dependency": is_hidden_dependency,  # Non-linear dependency on success
+            "is_traitor_component": bool(mean_rho < -0.2 or is_hidden_traitor),
+            "is_hidden_dependency": is_hidden_dependency,       # umbrella: non-linear dep exists (direction may be unresolved)
+            "is_hidden_traitor": is_hidden_traitor,             # non-linear, rewards failures more than successes
+            "is_hidden_helper": is_hidden_helper,               # non-linear, rewards successes more than failures
+            "conditional_direction_delta": round(mean_delta, 3) if not np.isnan(mean_delta) else None,
             "relative_magnitude_pct": round(relative_contribution * 100, 1),
             "is_dead_weight": is_dead_weight
         }
@@ -694,14 +774,36 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
             population_term_dist[status] += (pct / num_seeds)
 
     # 4. Build the Mac-bound LLM Payload
+    mean_oracle_rho = np.nanmean(oracle_rhos)
+    topology_is_inverted_flag = bool(not np.isnan(mean_oracle_rho) and mean_oracle_rho < 0)
+
+    # Survival hacking: hover_timeout episodes earn more reward than landing episodes
+    # across the seed population. If no seeds produced hover_timeout episodes: False by construction.
+    hover_rewards, landing_rewards = [], []
+    for seed in seed_payloads:
+        rwds = seed.get('mean_reward_by_terminal_state', {})
+        hover_r = rwds.get('hover_timeout', None)
+        landing_r = np.mean([v for k, v in rwds.items() if 'landed' in k]) if any('landed' in k for k in rwds) else None
+        if hover_r is not None:
+            hover_rewards.append(hover_r)
+        if landing_r is not None:
+            landing_rewards.append(landing_r)
+
+    survival_hacking_detected_flag = bool(
+        len(hover_rewards) >= 1
+        and len(landing_rewards) >= 1
+        and np.mean(hover_rewards) > np.mean(landing_rewards)
+    )
+
     payload = {
             "global_reward_topology": {
                 "mean_objective_alignment_rho": round(np.mean(oracle_rhos), 3),
-                "topology_is_inverted_flag": bool(np.mean(oracle_rhos) < 0),
+                "topology_is_inverted_flag": topology_is_inverted_flag,
                 "mean_survival_hacking_rho": round(np.mean(hacking_rhos), 3),
-                "survival_hacking_detected_flag": bool(np.mean(hacking_rhos) > 0.6),
+                "survival_hacking_detected_flag": survival_hacking_detected_flag,
                 "target_metric_name": target_name, # Pass to translation layer
-                "active_rung_is_success": on_success_rung  # NEW: lets translator know whether MI is meaningful
+                "active_rung_is_success": on_success_rung,  # NEW: lets translator know whether MI is meaningful
+                "seed_success_rates": [float(seed['success_rate']) for seed in seed_payloads],
             },
             "dynamic_component_analysis": component_diagnostics,
             "policy_fragility": {
@@ -761,10 +863,25 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
         
         # Flag resolution - hidden dependency takes precedence over neutral
         flag = "🟢 Optimal"
-        if metrics.get('is_traitor_component'):
-            flag = "🔴 **NEGATIVELY ALIGNED** (ρ < -0.2)"
-        elif metrics.get('is_hidden_dependency'):
-            flag = "🟣 **HIDDEN DEPENDENCY** (Non-linear — examine functional form)"
+        is_linear_traitor = metrics.get('is_traitor_component') and rho < -0.2
+        is_hidden_traitor = metrics.get('is_hidden_traitor', False)
+        is_hidden_helper = metrics.get('is_hidden_helper', False)
+        is_hidden_dep_unresolved = (
+            metrics.get('is_hidden_dependency', False)
+            and not is_hidden_traitor
+            and not is_hidden_helper
+        )
+        delta = metrics.get('conditional_direction_delta', None)
+        delta_str = f", δ={delta:+.3f}/step" if delta is not None else ""
+
+        if is_linear_traitor:
+            flag = "🔴 **NEGATIVELY ALIGNED** — Linear gradient opposes success (ρ < -0.2). Remove or negate."
+        elif is_hidden_traitor:
+            flag = f"🔴 **HIDDEN TRAITOR** — Non-linear association with failure{delta_str}. Examine functional form (threshold/saturation likely)."
+        elif is_hidden_helper:
+            flag = f"🔵 **NON-LINEAR HELPER** — Non-linear positive contribution{delta_str}. Preserve this component's structure."
+        elif is_hidden_dep_unresolved:
+            flag = "🟣 **HIDDEN DEPENDENCY** — Non-linear relationship detected, direction unresolved (insufficient samples). Examine functional form."
         elif metrics.get('is_dead_weight'):
             flag = "🟡 **LOW MAGNITUDE** (<1% of gradient)"
         elif rho < 0.2:
