@@ -737,6 +737,12 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
         else:
             is_dead_weight = bool(relative_contribution < 0.01)
 
+        is_high_magnitude_neutral = bool(
+            not on_success_rung
+            and relative_contribution > 0.20
+            and abs(mean_rho) < 0.2
+        )
+
         # Resolve direction of non-linear dependency using cross-seed mean delta
         mean_delta_vals = comp_base_corrs[col].get('conditional_direction_delta', [float('nan')])
         delta_sufficient = all(comp_base_corrs[col].get('delta_sufficient_samples', [False]))
@@ -764,7 +770,8 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
             "is_hidden_helper": is_hidden_helper,               # non-linear, rewards successes more than failures
             "conditional_direction_delta": round(mean_delta, 3) if not np.isnan(mean_delta) else None,
             "relative_magnitude_pct": round(relative_contribution * 100, 1),
-            "is_dead_weight": is_dead_weight
+            "is_dead_weight": is_dead_weight,
+            "is_high_magnitude_neutral": is_high_magnitude_neutral
         }
 
     # Aggregate Terminal Distributions
@@ -884,6 +891,8 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
             flag = "🟣 **HIDDEN DEPENDENCY** — Non-linear relationship detected, direction unresolved (insufficient samples). Examine functional form."
         elif metrics.get('is_dead_weight'):
             flag = "🟡 **LOW MAGNITUDE** (<1% of gradient)"
+        elif metrics.get('is_high_magnitude_neutral'):
+            flag = "🟠 **UNRESOLVED INFLUENCE** — High gradient share, objective relationship indeterminate at current success rate."
         elif rho < 0.2:
             flag = "⚪ Neutral/Noisy"
 

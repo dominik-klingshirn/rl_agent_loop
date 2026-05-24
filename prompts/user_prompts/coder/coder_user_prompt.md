@@ -17,5 +17,11 @@ This is the baseline code you are modifying.
 These are the explicit mathematical updates you must integrate into the code above.
 {coder_payload_from_dispatcher}
 
+**EXECUTION CHECKLIST — complete in this order before writing any code:**
+1. Read the deletion list. For each named component: mark its variable, its `components` dict entry, and its section comment for removal.
+2. Confirm every component NOT on the deletion list is preserved with its exact variable name, dict key, and computation unchanged.
+3. Implement the Code Additions using the specified Scaling & Constraints.
+4. Check the `components` dict: verify no entry is a derived combination (sum or product) of other entries already in the dict.
+
 **ACTION REQUIRED:**
-Write the complete, updated Python script containing `calculate_reward(obs, info)`. You MUST aggressively execute any specified Code Deletions by removing that logic entirely, and integrate all Code Additions exactly as specified.
+Write the complete, updated Python script containing `calculate_reward(obs, info)`.

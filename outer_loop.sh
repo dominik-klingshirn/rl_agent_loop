@@ -7,7 +7,6 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Define the contenders (typically for the 'Strategist' role when running 'Mixture-of-Agents' style experiment)
-#MODELS=("gemma4:e4b")
 MODELS=("gemma4:26b")
 
 # --- Defaults ---
@@ -156,17 +155,14 @@ for model in "${MODELS[@]}"; do
   export LLM_MODEL="$model"
 
   echo "📂 Target Directory: experiments/$CAMPAIGN_TAG"
-  # 2. Generate Initial Reward Function
+  # 1. Generate Initial Reward Function
   echo -e "${GREEN}[Step 0] Populating Experiment Directory With Initial Flawed Reward Function ${NC}"
   python3 controllers/set_initial_shaping.py --reward "$REWARD_FUNC"
 
-  # 3. RUN THE INNER LOOP
+  # 2. RUN THE INNER LOOP
   ./inner_loop.sh "$ITERATIONS" "$SELECTED_CONTROLLER" "$TRAINING_SCRIPT"
 
-  # 4. GENERATE SUMMARY PLOT
-  python3 "$PLOTTING_SCRIPT"
-
-  # 5. Generate Cognition report
+  # 3. Generate Cognition report
   echo -e "${BLUE}[Post-run] Cognition analysis${NC}"
   python3 post_hoc_analysis/analyze_run.py --campaign "$CAMPAIGN_TAG" || \
     echo "⚠️  analyze_run.py failed — check logs"

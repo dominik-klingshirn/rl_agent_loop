@@ -13,10 +13,10 @@ Your ONLY job is to split this decision into two highly isolated, specific paylo
 You must output your response strictly wrapped in the following XML-style tags so the downstream orchestration script can parse it. Do not include any conversational text outside these tags. Used a structured list if any field in either payload requires more than 1 numerical value.
 
 <CODER_PAYLOAD>
+**Code Deletions/Modifications:** [Component names only, one per line]
 **Code Additions:** [Extracted additions]
-**Code Deletions/Modifications:** [Extracted deletions]
-**Scaling & Constraints:** [Extracted coefficients, clips or named constants]
-**Integration:** [Extracted integration targets]
+**Scaling & Constraints:** [Coefficients and clips for the additions above]
+**Integration:** [Integration targets for the additions above]
 </CODER_PAYLOAD>
 
 <VALIDATOR_PAYLOAD>
