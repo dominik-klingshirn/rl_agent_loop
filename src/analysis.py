@@ -782,34 +782,57 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
 
     # 4. Build the Mac-bound LLM Payload
     mean_oracle_rho = np.nanmean(oracle_rhos)
-    topology_is_inverted_flag = bool(not np.isnan(mean_oracle_rho) and mean_oracle_rho < 0)
 
-    # Survival hacking: hover_timeout episodes earn more reward than landing episodes
-    # across the seed population. If no seeds produced hover_timeout episodes: False by construction.
-    hover_rewards, landing_rewards = [], []
+    # Global Conditional Delta: E[R|land] - E[R|fail] across the seed population.
+    # This is the ground truth for topology inversion — sign is unambiguous regardless of ρ noise.
+    # Undefined (None) when success rate is 0% or 100%: one class has no episodes to condition on.
+    all_landing_rewards, all_failure_rewards = [], []
+    hover_rewards = []  # retained for survival hacking check
     for seed in seed_payloads:
         rwds = seed.get('mean_reward_by_terminal_state', {})
-        hover_r = rwds.get('hover_timeout', None)
         landing_r = np.mean([v for k, v in rwds.items() if 'landed' in k]) if any('landed' in k for k in rwds) else None
+        failure_r = np.mean([v for k, v in rwds.items() if 'landed' not in k]) if any('landed' not in k for k in rwds) else None
+        hover_r = rwds.get('hover_timeout', None)
+        if landing_r is not None:
+            all_landing_rewards.append(landing_r)
+        if failure_r is not None:
+            all_failure_rewards.append(failure_r)
         if hover_r is not None:
             hover_rewards.append(hover_r)
-        if landing_r is not None:
-            landing_rewards.append(landing_r)
 
+    if all_landing_rewards and all_failure_rewards:
+        global_conditional_delta = float(np.mean(all_landing_rewards) - np.mean(all_failure_rewards))
+        topology_is_inverted_flag = bool(global_conditional_delta < 0)
+    else:
+        global_conditional_delta = None
+        topology_is_inverted_flag = False  # Undefined: cannot invert what cannot be measured
+
+    # ρ-Delta Divergence: linear correlation is noisy/negative while conditional expectation
+    # confirms alignment (delta > 0). Signals non-linearity in global reward topology, not inversion.
+    rho_delta_divergence_flag = bool(
+        global_conditional_delta is not None
+        and global_conditional_delta > 0
+        and mean_oracle_rho < 0
+    )
+
+    # Survival hacking: hover_timeout earns more than landing.
+    # If no seeds produced hover_timeout episodes: False by construction.
     survival_hacking_detected_flag = bool(
         len(hover_rewards) >= 1
-        and len(landing_rewards) >= 1
-        and np.mean(hover_rewards) > np.mean(landing_rewards)
+        and len(all_landing_rewards) >= 1
+        and np.mean(hover_rewards) > np.mean(all_landing_rewards)
     )
 
     payload = {
             "global_reward_topology": {
-                "mean_objective_alignment_rho": round(np.mean(oracle_rhos), 3),
+                "mean_objective_alignment_rho": round(mean_oracle_rho, 3),  # Narrative only — does not drive flags
+                "global_conditional_delta": round(global_conditional_delta, 3) if global_conditional_delta is not None else None,
                 "topology_is_inverted_flag": topology_is_inverted_flag,
+                "rho_delta_divergence_flag": rho_delta_divergence_flag,
                 "mean_survival_hacking_rho": round(np.mean(hacking_rhos), 3),
                 "survival_hacking_detected_flag": survival_hacking_detected_flag,
-                "target_metric_name": target_name, # Pass to translation layer
-                "active_rung_is_success": on_success_rung,  # NEW: lets translator know whether MI is meaningful
+                "target_metric_name": target_name,
+                "active_rung_is_success": on_success_rung,
                 "seed_success_rates": [float(seed['success_rate']) for seed in seed_payloads],
             },
             "dynamic_component_analysis": component_diagnostics,
@@ -838,15 +861,20 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
     # A. Global Objective Alignment
     md.append("#### A. Global Objective Alignment (Oracle Test)")
     oracle_rho = topo.get("mean_objective_alignment_rho", 0)
-    md.append(f"- **Objective Alignment ($\\rho$):** `{oracle_rho:.3f}`")
-    
+    delta = topo.get("global_conditional_delta", None)
+    delta_str = f"`{delta:+.3f}`" if delta is not None else "`undefined (single-class population)`"
+    md.append(f"- **Global Conditional Delta** $\\Delta = \\mathbb{{E}}[R \\mid \\text{{land}}] - \\mathbb{{E}}[R \\mid \\text{{fail}}]$: {delta_str}  *(ground truth)*")
+    md.append(f"- **Objective Alignment ($\\rho$):** `{oracle_rho:.3f}`  *(narrative descriptor — noisy point-biserial estimator)*")
+
     if topo.get("topology_is_inverted_flag"):
-        md.append("  - *Diagnosis:* **CRITICAL FAILURE.** The total generated reward is NEGATIVELY correlated with successful landings. The agent is receiving mathematically higher returns for crashing/drifting than for landing safely.")
-    elif oracle_rho < 0.5:
-        md.append("  - *Diagnosis:* Weak alignment. The shaped reward landscape is poorly correlated with the actual goal of landing.")
+        md.append("  - *Diagnosis:* **CRITICAL FAILURE.** The conditional expectation is inverted: the agent earns mathematically higher returns for failing than for landing. The core gradient direction is wrong.")
+    elif topo.get("rho_delta_divergence_flag"):
+        md.append("  - *Diagnosis:* **ρ-Delta Divergence.** Linear correlation ($\\rho$) is noisy/negative, but the conditional expectation confirms landing yields superior returns. The global reward topology is non-linear (threshold saturation or high variance likely). Preserve the core mechanism.")
+    elif delta is not None and delta > 0:
+        md.append("  - *Diagnosis:* Aligned. Landing yields strictly higher expected return than failure.")
 
     if topo.get("survival_hacking_detected_flag"):
-        md.append("  - *Action Required:* **Survival Hacking Detected.** The agent is farming points by hovering/delaying the episode. Add a temporal penalty or check for positive constant rewards.")
+        md.append("  - *Action Required:* **Survival Hacking Detected.** The agent is farming points by hovering/delaying the episode.")
 
     # B. Component-Level Credit Assignment (The Dynamic Table)
     md.append("\n#### B. Component-Level Contribution (Algorithmic Credit Assignment)")

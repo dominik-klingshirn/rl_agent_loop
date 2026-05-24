@@ -16,6 +16,7 @@ Outputs (under output-dir):
   aggregated_data.json        full nested audit dump
   pipeline_performance.html   dashboard 1 (RL + LLM cognition)
   compute_cost.html           dashboard 2 (LLM compute)
+  code_evolution.html         dashboard 3 (Evolution of Code)
 """
 from __future__ import annotations
 
@@ -1088,9 +1089,9 @@ DATA.models.forEach((model, mi) => {
   // FIX: added landed_off_centered_timeout entry
   const TERM_COLORS = {
     landed_centered:              '#2ca02c',   // green — success
-    landed_off_centered:          '#4e90d4',   // blue — non-centered family
-    landed_but_slid_into_valley:  '#7ab8e8',   // lighter blue — non-centered family
-    landed_off_centered_timeout:  '#aad4f5',   // palest blue — non-centered family
+    landed_off_centered:          '#1f77b4',   // blue — non-centered family
+    landed_but_slid_into_valley:  '#186499',   // blue — non-centered family
+    landed_off_centered_timeout:  '#1A6BA4',   // blue — non-centered family
     crashed:                      '#d62728',   // red
     out_of_bounds:                '#9467bd',   // purple
     hover_timeout:                '#ff7f0e',   // orange

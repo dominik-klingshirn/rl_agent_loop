@@ -55,6 +55,7 @@ from extract_cognition import (
     load_chat_responses,
     analyze_reward_ast,
 )
+from compute_run_score import compute_run_score as _compute_run_score_module
 
 _DEFAULT_EXPERIMENTS_DIR = Path(__file__).parent.parent / "experiments"
 
@@ -502,7 +503,8 @@ function baseOpts(xLabel, yLabel) {
     { lbl:'Floor Viol.', val:hardViol,
       sub: hardViol > 0 ? 'hard violations' : 'all compliant' },
     { lbl:'Run Score',
-      val: D.run_score_data ? D.run_score_data.run_score.toFixed(3) : '—',
+      val: D.run_score_data && D.run_score_data.run_score != null
+           ? D.run_score_data.run_score.toFixed(3) : '—',
       sub: 'composite pipeline score' },
   ].forEach(c => {
     wrap.innerHTML += `<div class="card">
@@ -659,10 +661,10 @@ function baseOpts(xLabel, yLabel) {
   if (D.run_score_data) {
     const rs  = D.run_score_data.run_score;
     const sub = D.run_score_data.sub_scores;
-    const SUB_LABELS = { pe:'PE', se:'SE', ri:'RI', frc:'FRC', pa:'PA' };
-    const SUB_FULL   = { pe:'Policy Effectiveness', se:'Search Efficiency',
-                         ri:'Robustness Index', frc:'Floor Rule Compliance',
-                         pa:'Prediction Alignment' };
+    const SUB_LABELS = { ppv:'PPV', policy_retention:'PolicyRet', tr:'TR' };
+    const SUB_FULL   = { ppv:'Peak Graded Value',
+                         policy_retention:'Policy Retention',
+                         tr:'Training Reliability' };
     const scoreColor = rs >= 0.7 ? '#6ee093' : rs >= 0.4 ? '#e6c46e' : '#e66e6e';
 
     const rsCard = document.createElement('div');
@@ -683,12 +685,18 @@ function baseOpts(xLabel, yLabel) {
           </div>
         </div>`;
     }
+    const divTag = D.run_score_data.validity && D.run_score_data.validity.is_diverged
+      ? `<div style="margin-top:10px;font-size:10px;color:#e66e6e">
+           ⚠ Diverged run — excluded from MWU
+         </div>`
+      : '';
     rsCard.innerHTML = `
       <h2>Run Score</h2>
       <div style="font-size:36px;font-weight:700;color:${scoreColor};margin:8px 0 14px">
         ${rs.toFixed(3)}
       </div>
-      ${barsHtml}`;
+      ${barsHtml}
+      ${divTag}`;
     rightCol.appendChild(rsCard);
   }
 }
@@ -1091,44 +1099,17 @@ if (D.chat_rows && D.chat_rows.length) {
 # Output writers
 # ===========================================================================
 
-_RUNSCORE_WEIGHTS = {"pe": 0.35, "se": 0.25, "ri": 0.20, "frc": 0.10, "pa": 0.10}
-
-
 def compute_run_score(data: dict, paths: RunPaths) -> dict:
-    iters      = data["iterations"]
-    total      = data["iteration_count"]
-    peak_psr   = data.get("peak_psr") or 0.0
-    final_psr  = data.get("final_psr") or 0.0
-    peak_iter  = data.get("peak_iter") or total
-
-    pe  = (peak_psr + final_psr) / 2.0
-    se  = peak_psr / peak_iter if peak_iter else 0.0
-
-    ri = 0.0
-    if peak_iter:
-        try:
-            _pm = load_metric_payload(paths.metric_payload(peak_iter))
-            std = _pm.cross_seed_success_std or 0.4
-            ri  = 1.0 - min(1.0, std / 0.4)
-        except Exception:
-            pass
-
-    hard_violations = sum(
-        1 for it in iters
-        if (it.get("floor") or {}).get("status") == "hard_violation"
-    )
-    frc = 1.0 - (hard_violations / total) if total else 0.0
-
-    verdicts = data.get("validator_verdicts") or {}
-    pa_count = (verdicts.get("Validated", 0)
-                + verdicts.get("Confirmed", 0)
-                + verdicts.get("Productive Deviation", 0))
-    pa = pa_count / total if total else 0.0
-
-    sub = {"pe": round(pe, 4), "se": round(se, 4),
-           "ri": round(ri, 4), "frc": round(frc, 4), "pa": round(pa, 4)}
-    score = sum(_RUNSCORE_WEIGHTS[k] * sub[k] for k in _RUNSCORE_WEIGHTS)
-    return {"run_score": round(score, 4), "sub_scores": sub}
+    """Delegate to compute_run_score.py (Tier 1 RunScore)."""
+    try:
+        results = _compute_run_score_module(run_dir=paths.model_dir)
+        return {
+            "run_score": results["run_score"],
+            "sub_scores": results["components"],   # ppv, policy_retention, tr
+            "validity":   results["validity"],
+        }
+    except Exception:
+        return {"run_score": None, "sub_scores": {}, "validity": {}}
 
 
 def write_html_report(data: dict, out_path: Path) -> None:

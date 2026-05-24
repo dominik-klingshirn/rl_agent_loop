@@ -7,7 +7,7 @@ directory structure. No dependencies on live pipeline components.
 
 Usage:
     python compute_run_score.py --run_dir experiments/CampaignTag/ModelName
-    python compute_run_score.py --run_dir experiments/CampaignTag/ModelName --lambda1 0.5 --lambda2 0.5 --eps 0.001
+    python compute_run_score.py --run_dir experiments/CampaignTag/ModelName --gs_w 0.35 --lambda2 0.5 --eps 0.001
 """
 
 import json
@@ -53,6 +53,7 @@ def extract_iteration_scalars(payloads: list[dict], e_pen_key: str = "population
                Set to None to disable E_pen (defaults all values to 0.0).
     """
     psr_list = []
+    s_cen_list = []
     sigma_norm_list = []
     e_pen_list = []
     snr_list = []
@@ -67,6 +68,10 @@ def extract_iteration_scalars(payloads: list[dict], e_pen_key: str = "population
         term_dist = stoch.get("population_terminal_distribution", {})
         psr_i = float(sum(v for k, v in term_dist.items() if "landed" in k))
         psr_list.append(psr_i)
+
+        # --- s_cen_i: centered-landing rate (micro/precision goal) ---
+        s_cen_i = float(term_dist.get("landed_centered", 0.0))
+        s_cen_list.append(s_cen_i)
 
         # --- σ_norm_i: cross-seed std of per-seed success rates, normalized by 0.5 ---
         seed_rates = stoch.get("global_reward_topology", {}).get("seed_success_rates", [])
@@ -96,6 +101,7 @@ def extract_iteration_scalars(payloads: list[dict], e_pen_key: str = "population
 
     return {
         "psr": psr_list,
+        "s_cen": s_cen_list,
         "sigma_norm": sigma_norm_list,
         "e_pen": e_pen_list,
         "snr": snr_list,
@@ -104,62 +110,62 @@ def extract_iteration_scalars(payloads: list[dict], e_pen_key: str = "population
     }
 
 
-def compute_ppv(scalars: dict, lambda1: float, lambda2: float) -> float:
+def compute_ppv(gs: list[float], e_pen: list[float], lambda2: float) -> float:
     """
-    PPV = max_i ( PSR_i * max(0, 1 - λ1*σ_norm_i) * max(0, 1 - λ2*E_pen_i) )
+    PPV = max_i ( GS_i * max(0, 1 - λ2*E_pen_i) )
+    Peak graded value, efficiency-penalized. Dispersion penalty removed —
+    cross-seed reliability is now owned solely by TR (orthogonality).
     """
     best = 0.0
-    for psr_i, sigma_i, e_pen_i in zip(scalars["psr"], scalars["sigma_norm"], scalars["e_pen"]):
-        dispersion_factor = max(0.0, 1.0 - lambda1 * sigma_i)
+    for gs_i, e_pen_i in zip(gs, e_pen):
         efficiency_factor = max(0.0, 1.0 - lambda2 * e_pen_i)
-        ppv_i = psr_i * dispersion_factor * efficiency_factor
+        ppv_i = gs_i * efficiency_factor
         if ppv_i > best:
             best = ppv_i
     return best
 
 
-def compute_policy_retention(psr: list[float]) -> float:
+def compute_policy_retention(gs: list[float]) -> float:
     """
-    PolicyRetention = (1 / (N-1)) * sum( (PSR_i + PSR_{i+1}) / 2 )
-    Trapezoidal mean of PSR over the iteration horizon.
+    Trapezoidal mean of GS over the iteration horizon.
     Returns 0.0 if fewer than 2 iterations.
     """
-    n = len(psr)
+    n = len(gs)
     if n < 2:
         return 0.0
-    total = sum((psr[i] + psr[i + 1]) / 2.0 for i in range(n - 1))
+    total = sum((gs[i] + gs[i + 1]) / 2.0 for i in range(n - 1))
     return total / (n - 1)
 
 
-def compute_tr(psr: list[float], snr: list[float], diverged: list[bool]) -> tuple[float, bool, list[int]]:
+def compute_tr(gs: list[float], sigma_norm: list[float], diverged: list[bool]) -> tuple[float, bool, list[int]]:
     """
-    TR = (1 / |K|) * sum( min(1.0, SNR_i) ) for i in K
-    K = top-ceil(N/3) iterations by PSR_i.
+    TR = (1/|K|) * sum( 1 - min(1, σ_norm_i) ) for i in K
+    K = top-ceil(N/3) iterations by GS_i (graded success).
 
-    Also determines divergence validity:
-    - diverged_run = True if systemic_critic_divergence_flag is True in >50% of K iterations
+    Reliability = cross-seed success dispersion (replaces reward-SNR);
+    σ_norm_i = std(seed_success_rates_i) / 0.5, clamped to [0,1].
+
+    Divergence validity unchanged:
+    - diverged_run = True if systemic_critic_divergence_flag is True in >50% of K.
     Returns: (tr_score, diverged_run, K_indices)
     """
-    n = len(psr)
+    n = len(gs)
     k_size = math.ceil(n / 3)
 
-    # Select top-K iterations by PSR
-    ranked = sorted(range(n), key=lambda i: psr[i], reverse=True)
+    ranked = sorted(range(n), key=lambda i: gs[i], reverse=True)
     k_indices = ranked[:k_size]
 
-    # Divergence check: majority of K
     k_diverged_count = sum(1 for i in k_indices if diverged[i])
     diverged_run = (k_diverged_count > k_size / 2)
 
-    # TR: mean of clamped SNR over K
-    tr = float(np.mean([min(1.0, snr[i]) for i in k_indices]))
+    tr = float(np.mean([1.0 - min(1.0, sigma_norm[i]) for i in k_indices]))
 
     return tr, diverged_run, k_indices
 
 
 def compute_run_score(
     run_dir: str | Path,
-    lambda1: float = 0.5,
+    gs_w: float = 0.5,
     lambda2: float = 0.5,
     eps: float = 0.001,
     e_pen_key: str = "population_mean_chatter_rate",
@@ -171,16 +177,20 @@ def compute_run_score(
     - run_score: float
     - components: {ppv, policy_retention, tr}
     - validity: {is_diverged, diverged_k_iterations}
-    - per_iteration: {psr, sigma_norm, e_pen, snr, diverged}
-    - metadata: {n_iterations, lambda1, lambda2, eps, e_pen_key, run_dir}
+    - per_iteration: {s_any, s_cen, gs, sigma_norm, e_pen, snr, diverged}
+    - metadata: {n_iterations, gs_w, lambda2, eps, e_pen_key, run_dir}
     """
     run_dir = Path(run_dir)
     payloads = load_iteration_payloads(run_dir)
     scalars = extract_iteration_scalars(payloads, e_pen_key=e_pen_key)
 
-    ppv = compute_ppv(scalars, lambda1, lambda2)
-    policy_retention = compute_policy_retention(scalars["psr"])
-    tr, is_diverged, k_indices = compute_tr(scalars["psr"], scalars["snr"], scalars["diverged"])
+    # Graded success: GS_i = w·s_any_i + (1-w)·s_cen_i  (nested macro/micro goal)
+    gs = [gs_w * a + (1.0 - gs_w) * c
+          for a, c in zip(scalars["psr"], scalars["s_cen"])]
+
+    ppv = compute_ppv(gs, scalars["e_pen"], lambda2)
+    policy_retention = compute_policy_retention(gs)
+    tr, is_diverged, k_indices = compute_tr(gs, scalars["sigma_norm"], scalars["diverged"])
 
     # Clamp all bases to [eps, 1.0]
     ppv_c = max(eps, min(1.0, ppv))
@@ -201,7 +211,9 @@ def compute_run_score(
             "diverged_k_iterations": [int(i + 1) for i in k_indices if scalars["diverged"][i]],
         },
         "per_iteration": {
-            "psr": [round(v, 4) for v in scalars["psr"]],
+            "s_any": [round(v, 4) for v in scalars["psr"]],
+            "s_cen": [round(v, 4) for v in scalars["s_cen"]],
+            "gs":    [round(v, 4) for v in gs],
             "sigma_norm": [round(v, 4) for v in scalars["sigma_norm"]],
             "e_pen": [round(v, 4) for v in scalars["e_pen"]],
             "snr": [round(v, 4) for v in scalars["snr"]],
@@ -209,7 +221,7 @@ def compute_run_score(
         },
         "metadata": {
             "n_iterations": scalars["n_iterations"],
-            "lambda1": lambda1,
+            "gs_w": gs_w,
             "lambda2": lambda2,
             "eps": eps,
             "e_pen_key": e_pen_key,
@@ -237,8 +249,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute Tier 1 RunScore for a completed ARD run.")
     parser.add_argument("--run_dir", type=str, required=True,
                         help="Path to the model run root (e.g. experiments/CampaignTag/ModelName)")
-    parser.add_argument("--lambda1", type=float, default=0.5,
-                        help="Dispersion penalty weight (default: 0.5)")
+    parser.add_argument("--gs_w", type=float, default=0.35,
+                        help="Graded-success weight: GS = w*any_landing + (1-w)*centered. "
+                             "w=1.0 → pure any-landing; w=0.0 → pure centered (default: 0.35)")
     parser.add_argument("--lambda2", type=float, default=0.5,
                         help="Efficiency penalty weight (default: 0.5)")
     parser.add_argument("--eps", type=float, default=0.001,
@@ -253,7 +266,7 @@ if __name__ == "__main__":
 
     results = compute_run_score(
         run_dir=args.run_dir,
-        lambda1=args.lambda1,
+        gs_w=args.gs_w,
         lambda2=args.lambda2,
         eps=args.eps,
         e_pen_key=e_pen_key,
@@ -268,7 +281,8 @@ if __name__ == "__main__":
     print(f"  TR:               {results['components']['tr']:.4f}")
     print(f"  N iterations:     {results['metadata']['n_iterations']}")
     print(f"{'='*50}\n")
-    print("Per-iteration PSR:", results["per_iteration"]["psr"])
+    print("Per-iteration PSR:", results["per_iteration"]["s_any"])
+    print("Per-iteration GS:", results["per_iteration"]["gs"])
 
     if args.save:
         save_run_score(results, Path(args.run_dir))
