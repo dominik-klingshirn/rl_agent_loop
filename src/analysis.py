@@ -864,7 +864,7 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
     delta = topo.get("global_conditional_delta", None)
     delta_str = f"`{delta:+.3f}`" if delta is not None else "`undefined (single-class population)`"
     md.append(f"- **Global Conditional Delta** $\\Delta = \\mathbb{{E}}[R \\mid \\text{{land}}] - \\mathbb{{E}}[R \\mid \\text{{fail}}]$: {delta_str}  *(ground truth)*")
-    md.append(f"- **Objective Alignment ($\\rho$):** `{oracle_rho:.3f}`  *(narrative descriptor — noisy point-biserial estimator)*")
+    md.append(f"- **Objective Alignment ($\\rho$):** `{oracle_rho:.3f}`  *(narrative descriptor — point-biserial estimator)*")
 
     if topo.get("topology_is_inverted_flag"):
         md.append("  - *Diagnosis:* **CRITICAL FAILURE.** The conditional expectation is inverted: the agent earns mathematically higher returns for failing than for landing. The core gradient direction is wrong.")
