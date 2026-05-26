@@ -87,12 +87,17 @@ if [[ "$TAG" == *"remote"* ]]; then
     echo "📡 ENGINE: Distributed Training (Mac -> Linux)"
     # This script runs on Mac but talks to Linux
     TRAINING_SCRIPT="src/remote_train.py"
-    PLOTTING_SCRIPT="src/remote_campaign_summary.py"
+    if python3 -c "import src.optimize_remote" 2>/dev/null; then
+        echo "🔧 Optimizing Linux PC for RL training throughput"
+        python3 -m src.optimize_remote --action start
+        trap 'python3 -m src.optimize_remote --action stop' EXIT
+    else
+        echo "ℹ️  No hardware optimization module found — skipping (local defaults used)"
+    fi
 else
     echo "💻 ENGINE: Local Training"
     # This script runs the PPO math locally
     TRAINING_SCRIPT="src/local_train.py"
-    PLOTTING_SCRIPT="src/local_campaign_summary.py"
 fi
 
 # Format steps for directory naming (e.g. 500000 -> 500k, 1200000 -> 1.2M)

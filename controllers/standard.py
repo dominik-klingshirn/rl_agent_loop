@@ -35,8 +35,8 @@ if MODEL_NAME == "gemma4:e4b":
 else:
     model_overrides = {
             "research_lead":"deepseek-r1:32b",
-            "organizer": "deepseek-r1:32b",
-            "dispatcher":"deepseek-r1:32b",
+            "organizer": "qwen3.5:35b-A3B",
+            "dispatcher":"qwen3.5:35b-A3B",
             "validator":"deepseek-r1:32b",
             "coder": "qwen3-coder:30b"
         }

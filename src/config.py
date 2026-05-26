@@ -265,3 +265,7 @@ class Config:
     def validate_network_config(cls):
         if not cls.REMOTE_PROJECT_ROOT or not cls.REMOTE_PYTHON_BIN:
             raise ValueError("❌ Missing Remote Configs! Please set REMOTE_PROJECT_ROOT in your .env file.")
+        
+    # 6. Hardware optimization — defaults are conservative and work on any machine
+    REMOTE_TASKSET_CORES = None   # None = no pinning, works everywhere
+    OMP_NUM_THREADS = "4"         # conservative default

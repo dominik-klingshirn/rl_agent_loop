@@ -5,6 +5,10 @@ from src.remote_ops import RemoteManager
 from src.config import Config
 from src.workspace_manager import ExperimentWorkspace
 
+try:
+    import src.config_local 
+except ImportError:
+    pass
 def run_remote_cycle(iteration: int, num_seeds: int):
         # 1. Initialize Local Workspace (Mac side)
     # We need this to find the generated reward file to upload
@@ -31,24 +35,39 @@ def run_remote_cycle(iteration: int, num_seeds: int):
 
     # 2. EXECUTE: Trigger Sequential Training & Analysis on Linux
     print(f"🚀 Triggering Remote Execution (Iter {iteration}) across {num_seeds} seeds")
-    
+
+    # 🔧 Pin training to CCD0 (cores 0-7 + their hyperthreads 16-23) for L3 cache locality.
+    # Sequential seeds reuse the same cache-warmed CCD across runs.
+ # 🔧 Use Config values — populated by config_local.py if present, safe defaults otherwise
+    cores = Config.REMOTE_TASKSET_CORES
+    TASKSET = f"taskset -c {cores}" if cores else ""
+
+    omp = Config.OMP_NUM_THREADS
+
     env_vars = {
         "CAMPAIGN_TAG": os.environ.get("CAMPAIGN_TAG", ws.campaign_tag),
         "LLM_MODEL": os.environ.get("LLM_MODEL", ws.raw_model_name),
-        "TOTAL_TIMESTEPS": os.environ.get("TOTAL_TIMESTEPS", "50000")
+        "TOTAL_TIMESTEPS": os.environ.get("TOTAL_TIMESTEPS", "50000"),
+        "OMP_NUM_THREADS": omp,
+        "MKL_NUM_THREADS": omp,
+        "OPENBLAS_NUM_THREADS": omp,
     }
-
     # Build a sequential command chain using '&&'
     # If any step fails, the chain stops immediately.
     remote_commands = []
-    
-    # A. Loop over the seeds
+
+    # A. Train each seed (pinned to CCD0)
     for seed_id in range(num_seeds):
-        remote_commands.append(f"{Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id {seed_id}")
-    
-    # B. Cap it off by running the analysis script ON THE LINUX BOX
-    remote_commands.append(f"PYTHONPATH={Config.REMOTE_PROJECT_ROOT} {Config.REMOTE_PYTHON_BIN} -u -m src.analysis --iteration {iteration}")
-    
+        remote_commands.append(
+            f"{TASKSET} {Config.REMOTE_PYTHON_BIN} -u train.py "
+            f"--iteration {iteration} --seed_id {seed_id}"
+        )
+
+    # B. Analysis (also pinned — keeps the chain on one CCD end-to-end)
+    remote_commands.append(
+        f"PYTHONPATH={Config.REMOTE_PROJECT_ROOT} {TASKSET} "
+        f"{Config.REMOTE_PYTHON_BIN} -u -m src.analysis --iteration {iteration}"
+    )
     # Join them together: train 0 && train 1 && train 2 && analyze
     compound_cmd = " && ".join(remote_commands)
     #for command in remote_commands:
