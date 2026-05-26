@@ -5,7 +5,7 @@ import random
 from datetime import timedelta 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import SubprocVecEnv,VecNormalize
+from stable_baselines3.common.vec_env import SubprocVecEnv,VecNormalize, DummyVecEnv
 from stable_baselines3.common.logger import Logger, make_output_format
 
 # -- Custom IMPORTS --
@@ -38,7 +38,7 @@ def run_training_cycle(iteration:int, seed_id:int):
     ppo_params = get_optimized_ppo_params(n_envs, device)
 
     # Create Environment, custom wrapper for injecting new Reward Function
-    env = make_vec_env(lambda: make_env(reward_code_path), n_envs=n_envs, seed=seed_id,vec_env_cls=SubprocVecEnv)
+    env = make_vec_env(lambda: make_env(reward_code_path), n_envs=n_envs, seed=seed_id,vec_env_cls=DummyVecEnv)
     
     # Since LLMs are terrible with reward scaling, we are utilizing a running normalization of the reward
     env = VecNormalize(
