@@ -1,7 +1,7 @@
 # =============================================================================
 # SCRIPT 1: record_clips.py
 # Records one deterministic evaluation episode per seed for a given iteration.
-# Saves clips to: artifacts/Videos/iter{XX}_seed{X}.mp4
+# Saves clips to: artifacts/videos/iter{XX}_seed{X}.mp4
 #
 # Usage:
 #   python src/record_clips.py \
