@@ -918,8 +918,9 @@ def assemble_iteration(paths: RunPaths, iteration: int,
 class AggregationConfig:
     """Thresholds for behavioural-event detection within a run."""
     # Landing rates are fractions 0-1, matching the payload's units.
-    collapse_threshold: float = 0.10
-    recovery_threshold: float = 0.50
+    established_floor: float = 0.40
+    regression_k: float = 2.0
+    regression_min_floor_pp: float = 10.0
     recovery_window: int = 0
     primary_landing_metric: str = "psr"
 
@@ -964,20 +965,21 @@ def _mean(values):
     return (sum(vs) / len(vs)) if vs else None
 
 
-def _count_collapses_recoveries(rates, cfg: AggregationConfig):
-    """Walk landing-rate sequence; count collapse/recovery events."""
+def _count_collapses_recoveries(rates, collapse_threshold=0.10, recovery_threshold=0.50,
+                                recovery_window=0):
+    """Walk landing-rate sequence; count collapse/recovery events. (Unused — kept for reference.)"""
     collapses = 0
     recoveries = 0
     last_collapse_idx = None
     for i, r in enumerate(rates):
         if r is None:
             continue
-        if r < cfg.collapse_threshold:
+        if r < collapse_threshold:
             collapses += 1
             last_collapse_idx = i
-        elif r >= cfg.recovery_threshold and last_collapse_idx is not None:
-            in_window = (cfg.recovery_window == 0
-                         or (i - last_collapse_idx) <= cfg.recovery_window)
+        elif r >= recovery_threshold and last_collapse_idx is not None:
+            in_window = (recovery_window == 0
+                         or (i - last_collapse_idx) <= recovery_window)
             if in_window:
                 recoveries += 1
                 last_collapse_idx = None
@@ -992,8 +994,6 @@ def aggregate_run(iterations, cfg=None):
 
     psrs = [it.outcomes.population_success_rate for it in iterations]
     cents = [it.outcomes.landed_centered_rate for it in iterations]
-    primary = psrs if cfg.primary_landing_metric == "psr" else cents
-    collapses, recoveries = _count_collapses_recoveries(primary, cfg)
 
     total_excisions = sum(it.cognition.excision_count or 0 for it in iterations)
     mean_excisions = total_excisions / len(iterations)
@@ -1018,8 +1018,8 @@ def aggregate_run(iterations, cfg=None):
         peak_centered=_safe_max(cents),
         iter_final_psr=psrs[-1],
         iter_final_centered=cents[-1],
-        collapse_count=collapses,
-        recovery_count=recoveries,
+        collapse_count=0,
+        recovery_count=0,
         stability_score=_safe_std(psrs),
         total_excisions=total_excisions,
         mean_excisions_per_iter=mean_excisions,
