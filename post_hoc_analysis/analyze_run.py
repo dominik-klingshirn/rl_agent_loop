@@ -497,7 +497,8 @@ TRIAGE_REPORT_TEMPLATE = r"""<!DOCTYPE html>
 <h1>ARD Pipeline — Triage Report</h1>
 <div class="meta">
   Campaign: <code>{LABEL}</code> &nbsp;·&nbsp;
-  Generated: <code id="ts"></code>
+  Generated: <code id="ts"></code> &nbsp;·&nbsp;
+  Run Score: <code id="rs" style="color:#e6c46e;font-weight:700"></code>
 </div>
 
 <div id="root"></div>
@@ -508,6 +509,9 @@ const root = document.getElementById('root');
 
 document.getElementById('ts').textContent =
   new Date().toISOString().replace('T',' ').slice(0,19);
+document.getElementById('rs').textContent =
+  (D.run_score_data && D.run_score_data.run_score != null)
+    ? (+D.run_score_data.run_score).toFixed(3) : '—';
 
 // ── formatting helpers ──────────────────────────────────────────────────────
 function fmt(v, d=3)   { if (v==null) return '—'; return (+v).toFixed(d); }
@@ -624,21 +628,34 @@ function baseOpts(xLabel, yLabel) {
     return '#888';
   });
 
-  const collapseIters = D.iterations.filter(i => i.is_sharp_regression).map(i => i.iter);
+  const regressionIters = D.iterations.filter(i => i.is_sharp_regression).map(i => i.iter);
+  const recoveryIters   = D.iterations.filter(i => i.recovered).map(i => i.iter);
 
-  const collapsePlugin = {
-    id: 'collapseSpans',
+  const spanPlugin = {
+    id: 'iterSpans',
     beforeDraw(chart) {
       const { ctx, chartArea, scales } = chart;
       if (!chartArea) return;
-      ctx.save();
-      ctx.fillStyle = 'rgba(230,110,110,0.08)';
-      collapseIters.forEach(iter => {
-        const x = scales.x.getPixelForValue(iter);
-        const w = scales.x.getPixelForValue(iter + 0.5) - scales.x.getPixelForValue(iter - 0.5);
-        ctx.fillRect(x - w/2, chartArea.top, w, chartArea.bottom - chartArea.top);
-      });
-      ctx.restore();
+
+      // Category scale: getPixelForValue takes 0-based index, not label value
+      const tickW = iters.length > 1
+        ? Math.abs(scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0))
+        : 40;
+
+      function shade(iterList, fillStyle) {
+        ctx.save();
+        ctx.fillStyle = fillStyle;
+        iterList.forEach(iter => {
+          const idx = iters.indexOf(iter);
+          if (idx === -1) return;
+          const x = scales.x.getPixelForValue(idx);
+          ctx.fillRect(x - tickW / 2, chartArea.top, tickW, chartArea.bottom - chartArea.top);
+        });
+        ctx.restore();
+      }
+
+      shade(regressionIters, 'rgba(230,110,110,0.10)');
+      shade(recoveryIters,   'rgba(110,224,147,0.07)');
     }
   };
 
@@ -683,7 +700,7 @@ function baseOpts(xLabel, yLabel) {
         }}}
       },
     },
-    plugins: [collapsePlugin],
+    plugins: [spanPlugin],
   });
 }
 
