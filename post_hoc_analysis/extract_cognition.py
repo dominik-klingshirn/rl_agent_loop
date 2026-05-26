@@ -113,13 +113,15 @@ class OutcomeMetrics:
     fractions 0-1, matching the payload's units.
     """
     # --- Optimization Dynamics ---
-    cross_seed_snr: float | None
+    cross_seed_cv: float | None
     cross_seed_reward_std: float | None
     mean_final_reward: float | None
     critic_saturation_index: float | None
     trajectory_isomorphism_rho: float | None
     is_initialization_sensitive: bool | None
     is_universally_converged: bool | None
+    within_seed_terminal_cv: float | None
+    is_terminal_unstable: bool | None
     critic_diverged: bool | None
     optimization_unstable: bool | None
 
@@ -161,7 +163,10 @@ class OutcomeMetrics:
     n_dead_weight: int
     n_hidden_dependency: int
     n_optimal: int
-    n_neutral_noisy: int 
+    n_neutral_noisy: int
+    n_hidden_traitor: int
+    n_hidden_helper: int
+    n_high_magnitude_neutral: int
 
 
 def _safe_get(d, *keys, default=None):
@@ -175,14 +180,17 @@ def _safe_get(d, *keys, default=None):
 
 
 def _classify_component(comp: dict) -> str:
-    if comp.get("is_traitor_component"):
+    # Priority order matters — earlier checks win.
+    if comp.get("is_traitor_component"):           # covers both linear (rho < -0.2) and hidden traitors
         return "traitor"
-    if comp.get("is_hidden_dependency"):
+    if comp.get("is_hidden_helper"):               # non-linear positive contributor
+        return "hidden_helper"
+    if comp.get("is_hidden_dependency"):           # non-linear, direction unresolved
         return "hidden_dependency"
     if comp.get("is_dead_weight"):
         return "dead_weight"
-    # Matches analysis.py: elif rho < 0.2 → Neutral/Noisy
-    # Note: traitor already handles rho < -0.2, so this catches -0.2 ≤ rho < 0.2
+    if comp.get("is_high_magnitude_neutral"):      # high gradient share, indeterminate relationship
+        return "high_magnitude_neutral"
     if abs(comp.get("alignment_rho") or 0.0) < 0.2:
         return "neutral_noisy"
     return "optimal"
@@ -207,13 +215,17 @@ def load_metric_payload(payload_path: Path) -> OutcomeMetrics:
     components_clean = {
         k.removeprefix("reward_"): v for k, v in components.items()
     }
-    counts = {"traitor": 0, "hidden_dependency": 0,
-          "dead_weight": 0, "neutral_noisy": 0, "optimal": 0}
+    counts = {"traitor": 0, "hidden_dependency": 0, "dead_weight": 0,
+              "neutral_noisy": 0, "optimal": 0,
+              "hidden_helper": 0, "high_magnitude_neutral": 0}
     for v in components_clean.values():
         counts[_classify_component(v)] += 1
+    n_hidden_traitor = sum(
+        1 for v in components_clean.values() if v.get("is_hidden_traitor")
+    )
 
     return OutcomeMetrics(
-        cross_seed_snr=_safe_get(opt, "population_metrics", "cross_seed_snr"),
+        cross_seed_cv=_safe_get(opt, "population_metrics", "cross_seed_cv"),
         cross_seed_reward_std=_safe_get(opt, "population_metrics",
                                         "cross_seed_reward_std"),
         mean_final_reward=_safe_get(opt, "population_metrics",
@@ -226,6 +238,10 @@ def load_metric_payload(payload_path: Path) -> OutcomeMetrics:
                                               "is_initialization_sensitive"),
         is_universally_converged=_safe_get(opt, "summary_flags",
                                            "is_universally_converged"),
+        within_seed_terminal_cv=_safe_get(opt, "population_metrics",
+                                          "within_seed_terminal_cv"),
+        is_terminal_unstable=_safe_get(opt, "summary_flags",
+                                       "is_terminal_unstable"),
         critic_diverged=_safe_get(opt, "critic_robustness",
                                   "systemic_critic_divergence_flag"),
         optimization_unstable=_safe_get(opt, "learning_dynamics",
@@ -278,7 +294,10 @@ def load_metric_payload(payload_path: Path) -> OutcomeMetrics:
         n_dead_weight=counts["dead_weight"],
         n_hidden_dependency=counts["hidden_dependency"],
         n_optimal=counts["optimal"],
-        n_neutral_noisy=counts["neutral_noisy"]
+        n_neutral_noisy=counts["neutral_noisy"],
+        n_hidden_traitor=n_hidden_traitor,
+        n_hidden_helper=counts["hidden_helper"],
+        n_high_magnitude_neutral=counts["high_magnitude_neutral"],
     )
 
 
@@ -1208,7 +1227,7 @@ if __name__ == "__main__":
                   f"PSR={outcomes.population_success_rate} "
                   f"centered={outcomes.landed_centered_rate} "
                   f"ρ={outcomes.objective_alignment_rho} "
-                  f"SNR={outcomes.cross_seed_snr} "
+                  f"CV={outcomes.cross_seed_cv} "
                   f"comps={outcomes.n_components}")
             cog_path = upload / f"iter{it:02d}_cognition_record.json"
             if cog_path.is_file():
