@@ -82,18 +82,21 @@ def write_iterations_csv(model_summaries, path: Path):
         # outcomes — fractions 0-1 from the payload (not percent)
         "psr", "centered_rate",
         "objective_alignment_rho", "survival_hacking_rho",
-        "cross_seed_snr", "critic_saturation_index",
+        "cross_seed_cv", "critic_saturation_index",
         "trajectory_isomorphism_rho", "intra_rollout_cv",
         "terminal_entropy_norm", "mean_descent_efficiency",
         "actuator_chatter_rate", "macro_oscillations",
         # flags
         "is_lottery_ticket", "survival_hacking_detected",
         "is_initialization_sensitive", "is_universally_converged",
+        "within_seed_terminal_cv", "is_terminal_unstable",
         # terminal distribution
         *[f"term_{m}" for m in ALL_TERMINAL_MODES],
         # component rollups
         "n_components", "n_optimal", "n_traitor",
         "n_dead_weight", "n_hidden_dependency", "n_neutral_noisy",
+        "n_hidden_traitor", "n_hidden_helper", "n_high_magnitude_neutral",
+        "optimal_noise_ratio", "optimal_delta",
         # cognition
         "validator_status", "excision_count",
         "prop_modification", "prop_addition", "prop_cluster", "prop_unknown",
@@ -104,6 +107,7 @@ def write_iterations_csv(model_summaries, path: Path):
         w.writeheader()
         for ms in model_summaries:
             for run in ms.run_summaries:
+                prev_n_optimal = None
                 for it in run.iterations:
                     o = it.outcomes
                     c = it.cognition
@@ -115,7 +119,7 @@ def write_iterations_csv(model_summaries, path: Path):
                         "centered_rate": o.landed_centered_rate,
                         "objective_alignment_rho": o.objective_alignment_rho,
                         "survival_hacking_rho": o.survival_hacking_rho,
-                        "cross_seed_snr": o.cross_seed_snr,
+                        "cross_seed_cv": o.cross_seed_cv,
                         "critic_saturation_index": o.critic_saturation_index,
                         "trajectory_isomorphism_rho": o.trajectory_isomorphism_rho,
                         "intra_rollout_cv": o.intra_rollout_cv,
@@ -127,12 +131,18 @@ def write_iterations_csv(model_summaries, path: Path):
                         "survival_hacking_detected": o.survival_hacking_detected,
                         "is_initialization_sensitive": o.is_initialization_sensitive,
                         "is_universally_converged": o.is_universally_converged,
+                        "within_seed_terminal_cv": o.within_seed_terminal_cv,
+                        "is_terminal_unstable": o.is_terminal_unstable,
                         "n_components": o.n_components,
                         "n_optimal": o.n_optimal,
                         "n_traitor": o.n_traitor,
                         "n_dead_weight": o.n_dead_weight,
                         "n_hidden_dependency": o.n_hidden_dependency,
                         "n_neutral_noisy": o.n_neutral_noisy,
+                        "n_hidden_traitor": o.n_hidden_traitor,
+                        "n_hidden_helper": o.n_hidden_helper,
+                        "n_high_magnitude_neutral": o.n_high_magnitude_neutral,
+                        "optimal_noise_ratio": round(o.n_optimal / (o.n_neutral_noisy + 1), 3),
                         "validator_status": it.validator_status,
                         "excision_count": c.excision_count,
                         "prop_modification": c.proposal_type_counts.get("modification", 0),
@@ -142,6 +152,10 @@ def write_iterations_csv(model_summaries, path: Path):
                         "selected_proposal_index": c.selected_proposal_index,
                         "parse_warnings": ";".join(it.parse_warnings),
                     }
+                    row["optimal_delta"] = (
+                        (o.n_optimal - prev_n_optimal) if prev_n_optimal is not None else None
+                    )
+                    prev_n_optimal = o.n_optimal
                     for m in ALL_TERMINAL_MODES:
                         row[f"term_{m}"] = o.terminal_distribution.get(m)
                     w.writerow(row)
@@ -317,7 +331,9 @@ def build_dashboard_payload(model_summaries, chat_rows_by_run) -> dict:
                     "oob": o.out_of_bounds_rate,
                     "hover_timeout": o.hover_timeout_rate,
                     "rho": o.objective_alignment_rho,
-                    "snr": o.cross_seed_snr,
+                    "cross_seed_cv": o.cross_seed_cv,
+                    "within_seed_terminal_cv": o.within_seed_terminal_cv,
+                    "is_terminal_unstable": o.is_terminal_unstable,
                     "csi": o.critic_saturation_index,
                     "isomorphism": o.trajectory_isomorphism_rho,
                     "intra_cv": o.intra_rollout_cv,
@@ -1281,7 +1297,7 @@ new Chart(exCard.querySelector('canvas'), {
 
   for (const [key, label, logScale] of [
     ['rho', 'Objective Alignment ρ', false],
-    ['snr', 'SNR (log scale, clipped)', true],
+    ['cross_seed_cv', 'Cross-Seed CV', false],
     ['intra_cv', 'Intra-rollout CV', false],
   ]) {
     const card = document.createElement('div');
@@ -1322,7 +1338,7 @@ new Chart(exCard.querySelector('canvas'), {
     sec.style.marginTop = '10px';
     sec.innerHTML = `<div class="small" style="margin-bottom:4px">${run.tag.split('_').slice(-1)[0]}</div>`;
     const tbl = document.createElement('table');
-    let hdr2 = '<thead><tr><th>Iter</th><th>PSR</th><th>Centered</th><th>ρ</th><th>SNR</th><th>Validator</th><th>Excisions</th><th>Warnings</th></tr></thead>';
+    let hdr2 = '<thead><tr><th>Iter</th><th>PSR</th><th>Centered</th><th>ρ</th><th>Cross-Seed CV</th><th>Validator</th><th>Excisions</th><th>Warnings</th></tr></thead>';
     tbl.innerHTML = hdr2;
     const tb2 = document.createElement('tbody');
     run.iterations.forEach(it => {
@@ -1332,7 +1348,7 @@ new Chart(exCard.querySelector('canvas'), {
         <td class="num">${fmt(it.psr)}</td>
         <td class="num">${fmt(it.centered)}</td>
         <td class="num">${fmt(it.rho)}</td>
-        <td class="num">${fmt(it.snr)}</td>
+        <td class="num">${fmt(it.cross_seed_cv)}</td>
         <td>${it.validator_status ? `<span class="${statusClass(it.validator_status)}">${it.validator_status}</span>` : '—'}</td>
         <td class="num">${it.code?.n_excised != null ? it.code.n_excised : '—'}</td>
         <td class="small">${w}</td>

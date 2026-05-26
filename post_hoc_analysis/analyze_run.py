@@ -168,6 +168,19 @@ def _jaccard_edit_distance(
 # Data assembly
 # ===========================================================================
 
+def _load_seed_success_rates(payload_path: Path, iteration: int) -> list[float] | None:
+    """Extract per-seed success rates from the metric payload for a given iteration."""
+    try:
+        with open(payload_path) as f:
+            p = json.load(f)
+        rates = (p.get("multi_seed_stochastic_health", {})
+                   .get("global_reward_topology", {})
+                   .get("seed_success_rates"))
+        return rates if isinstance(rates, list) else None
+    except Exception:
+        return None
+
+
 def build_triage_data(
     campaign_path: Path,
     cfg: AggregationConfig | None = None,
@@ -295,6 +308,22 @@ def build_triage_data(
             "term_crashed":                o.crashed_rate,
             "term_oob":                    o.out_of_bounds_rate,
             "term_hover":                  o.hover_timeout_rate,
+            # Component classification (metric payload — authoritative)
+            "n_optimal":                   o.n_optimal,
+            "n_traitor":                   o.n_traitor,
+            "n_dead_weight":               o.n_dead_weight,
+            "n_hidden_dependency":         o.n_hidden_dependency,
+            "n_hidden_helper":             o.n_hidden_helper,
+            "n_neutral_noisy":             o.n_neutral_noisy,
+            "n_high_magnitude_neutral":    o.n_high_magnitude_neutral,
+            # Optimization health (metric payload)
+            "cross_seed_cv":               o.cross_seed_cv,
+            "within_seed_cv":              o.within_seed_terminal_cv,
+            "is_terminal_unstable":        o.is_terminal_unstable,
+            "macro_oscillations":          o.macro_oscillations,
+            "seed_success_rates":          _load_seed_success_rates(paths.metric_payload(n), n),
+            "cross_seed_success_std":      o.cross_seed_success_std,
+            "objective_alignment_rho":     o.objective_alignment_rho,
         })
 
         # Update baseline for next iteration's edit distance
@@ -502,10 +531,6 @@ function baseOpts(xLabel, yLabel) {
     { lbl:'Collapses',   val:D.collapse_count,          sub:'PSR < threshold' },
     { lbl:'Floor Viol.', val:hardViol,
       sub: hardViol > 0 ? 'hard violations' : 'all compliant' },
-    { lbl:'Run Score',
-      val: D.run_score_data && D.run_score_data.run_score != null
-           ? D.run_score_data.run_score.toFixed(3) : '—',
-      sub: 'composite pipeline score' },
   ].forEach(c => {
     wrap.innerHTML += `<div class="card">
       <div class="lbl">${c.lbl}</div>
@@ -517,31 +542,24 @@ function baseOpts(xLabel, yLabel) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PSR + TERMINAL MODE (left)  /  THINKING DEPTH + RUN SCORE (right)
+// PSR TRAJECTORY — full width
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const grid = document.createElement('div');
-  grid.className = 'grid2';
-  root.appendChild(grid);
-
   const iters   = D.iterations.map(i => i.iter);
   const psrPct  = D.iterations.map(i => i.psr      != null ? i.psr*100      : null);
   const centPct = D.iterations.map(i => i.centered != null ? i.centered*100 : null);
 
-  // ── LEFT COLUMN (PSR + Terminal Mode) ─────────────────────────────────────
-  const leftCol = document.createElement('div');
-  leftCol.style.cssText = 'display:flex;flex-direction:column;gap:12px';
-  grid.appendChild(leftCol);
-
-  // PSR Trajectory
   const psrCard = document.createElement('div');
   psrCard.className = 'cc';
   psrCard.innerHTML = '<h2>PSR Trajectory</h2>'
-                    + '<div class="cbox"><canvas id="cPSR"></canvas></div>';
-  leftCol.appendChild(psrCard);
+    + `<div style="font-size:10px;color:#888;margin:-4px 0 6px">${D.collapse_count} collapse${D.collapse_count!==1?'s':''} · peak ${(D.peak_psr*100).toFixed(1)}% at iter ${D.peak_iter} · final ${(D.final_psr*100).toFixed(1)}%</div>`
+    + '<div class="cbox"><canvas id="cPSR"></canvas></div>';
+  root.appendChild(psrCard);
 
   const ptCol = D.iterations.map(i => {
+    const isTerminal = (i.iter === D.iteration_count);
     const s = i.validator_status;
+    if (isTerminal && (!s || s === 'Unparsed'))              return '#666';
     if (!s||s==='Unparsed')                                  return '#444';
     if (s==='Validated'||s==='Confirmed')                    return '#6ee093';
     if (s==='Productive Deviation')                          return '#76b7b2';
@@ -549,6 +567,24 @@ function baseOpts(xLabel, yLabel) {
     if (s==='Regressed'||s==='Refuted'||s==='Goodhart Trap') return '#e66e6e';
     return '#888';
   });
+
+  const collapseIters = D.iterations.filter(i => i.psr != null && i.psr < 0.10).map(i => i.iter);
+
+  const collapsePlugin = {
+    id: 'collapseSpans',
+    beforeDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      if (!chartArea) return;
+      ctx.save();
+      ctx.fillStyle = 'rgba(230,110,110,0.08)';
+      collapseIters.forEach(iter => {
+        const x = scales.x.getPixelForValue(iter);
+        const w = scales.x.getPixelForValue(iter + 0.5) - scales.x.getPixelForValue(iter - 0.5);
+        ctx.fillRect(x - w/2, chartArea.top, w, chartArea.bottom - chartArea.top);
+      });
+      ctx.restore();
+    }
+  };
 
   new Chart(document.getElementById('cPSR'), {
     type: 'line',
@@ -560,6 +596,12 @@ function baseOpts(xLabel, yLabel) {
       { label:'Centered (%)', data:centPct,
         borderColor:'#59a14f', borderDash:[4,3],
         tension:.2, fill:false, spanGaps:false, pointRadius:3 },
+      { label:`Peak PSR (${(D.peak_psr*100).toFixed(1)}%)`,
+        data: iters.map(() => D.peak_psr * 100),
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderDash: [2, 4],
+        pointRadius: 0,
+        fill: false },
     ]},
     options: {
       animation:false, maintainAspectRatio:false,
@@ -572,20 +614,30 @@ function baseOpts(xLabel, yLabel) {
         legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
         tooltip:{ callbacks:{ afterLabel: ctx => {
           const it = D.iterations[ctx.dataIndex];
-          const v  = it.validator_status || '—';
+          const isTerminalIter = (it.iter === D.iteration_count);
+          const rawV = it.validator_status;
+          const v = (isTerminalIter && (!rawV || rawV === 'Unparsed'))
+                    ? 'terminal (unreviewed)' : (rawV || '—');
           const f  = it.floor ? it.floor.label : '';
           return [`  verdict: ${v}`, f ? `  floor: ${f}` : ''].filter(Boolean);
         }}}
       },
-    }
+    },
+    plugins: [collapsePlugin],
   });
+}
 
-  // Terminal Mode Distribution
+// ─────────────────────────────────────────────────────────────────────────────
+// TERMINAL MODE DISTRIBUTION — full width
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const iters = D.iterations.map(i => i.iter);
+
   const termCard = document.createElement('div');
   termCard.className = 'cc';
   termCard.innerHTML = '<h2>Terminal Mode Distribution per Iteration</h2>'
                      + '<div class="cbox"><canvas id="cTerm"></canvas></div>';
-  leftCol.appendChild(termCard);
+  root.appendChild(termCard);
 
   const TERM_MODES = [
     { key:'term_centered',             label:'landed_centered',             color:'#2ca02c' },
@@ -614,50 +666,176 @@ function baseOpts(xLabel, yLabel) {
             title:{display:true,text:'% of episodes',color:tc},
             ticks:{color:tc, callback:v=>v+'%'}, grid:{color:gc} },
       },
-      plugins:{ legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+      plugins:{
+        legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
+        tooltip:{ callbacks:{ afterBody: (items) => {
+          const idx = items[0].dataIndex;
+          if (idx === 0) return [];
+          const curr = D.iterations[idx];
+          const prev = D.iterations[idx - 1];
+          let maxDelta = 0, maxMode = '';
+          TERM_MODES.forEach(m => {
+            const d = Math.abs((curr[m.key] || 0) - (prev[m.key] || 0));
+            if (d > maxDelta) { maxDelta = d; maxMode = m.label; }
+          });
+          return maxDelta > 0.05 ? [`  largest shift: ${maxMode} (${(maxDelta*100).toFixed(1)}pp)`] : [];
+        }}}
+      },
     }
   });
+}
 
-  // ── RIGHT COLUMN (Thinking Depth + RunScore) ──────────────────────────────
-  const rightCol = document.createElement('div');
-  rightCol.style.cssText = 'display:flex;flex-direction:column;gap:12px';
-  grid.appendChild(rightCol);
+// ─────────────────────────────────────────────────────────────────────────────
+// REWARD DESIGN QUALITY grid2
+// Left: Cross-Seed PSR Spread + Objective Alignment ρ
+// Right: Run Score + Component Classification
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const rdGrid = document.createElement('div');
+  rdGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:12px;margin-bottom:20px';
+  root.appendChild(rdGrid);
 
-  // Thinking Depth per Phase (multi-line)
-  const thinkCard = document.createElement('div');
-  thinkCard.className = 'cc';
-  thinkCard.innerHTML = '<h2>Thinking Depth per Phase (est. tokens)</h2>'
-                      + '<div class="cbox"><canvas id="cThinkPhase"></canvas></div>';
-  rightCol.appendChild(thinkCard);
+  // ── Top-left: Cross-Seed PSR Spread ──────────────────────────────────────
+  const seedCard = document.createElement('div');
+  seedCard.className = 'cc';
+  seedCard.style.gridArea = '1 / 1 / 2 / 2';
+  seedCard.innerHTML = '<h2>Cross-Seed PSR Spread per Iteration</h2>'
+                     + '<div class="cbox"><canvas id="cSeedSpread"></canvas></div>';
+  rdGrid.appendChild(seedCard);
 
-  const thinkPhaseDs = PHASES.map(p => ({
-    label: p,
-    data: iters.map(i => {
-      const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
-      return rows.reduce((s,r) => s + (r.think_tokens || 0), 0);
+  const SEED_COLORS = ['#4e79a7', '#f28e2b', '#59a14f'];
+
+  const scatterDs = [0, 1, 2].map(si => ({
+    type: 'scatter',
+    label: `Seed ${si} — training (stochastic, late-stage)`,
+    backgroundColor: SEED_COLORS[si],
+    pointRadius: 5,
+    data: D.iterations.flatMap(i => {
+      const rates = i.seed_success_rates;
+      if (!rates || rates[si] == null) return [];
+      return [{ x: i.iter, y: rates[si] * 100 }];
     }),
-    borderColor: PC[p],
-    backgroundColor: 'transparent',
-    tension: 0.2,
-    pointRadius: 3,
-    spanGaps: false,
   }));
 
-  new Chart(document.getElementById('cThinkPhase'), {
+  const seedMeanData = D.iterations.map(i => {
+    const rates = i.seed_success_rates;
+    if (!rates || !rates.length) return i.psr != null ? i.psr*100 : null;
+    return (rates.reduce((s,v)=>s+v,0)/rates.length)*100;
+  });
+
+  const itersForBand = D.iterations.map(i => i.iter);
+
+  const upperBoundData = D.iterations.map((i, idx) => {
+    const std  = i.cross_seed_success_std;
+    const mean = seedMeanData[idx];
+    return mean != null && std != null ? mean + std*100 : null;
+  });
+  const lowerBoundData = D.iterations.map((i, idx) => {
+    const std  = i.cross_seed_success_std;
+    const mean = seedMeanData[idx];
+    return mean != null && std != null ? mean - std*100 : null;
+  });
+
+  const upperDs = {
     type: 'line',
-    data: { labels: iters, datasets: thinkPhaseDs },
+    label: '±1σ cross-seed',
+    data: itersForBand.map((iter, idx) => ({ x: iter, y: upperBoundData[idx] })),
+    borderColor: 'rgba(255,255,255,0)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    pointRadius: 0,
+    fill: '+1',
+    spanGaps: false,
+  };
+  const lowerDs = {
+    type: 'line',
+    label: '',
+    data: itersForBand.map((iter, idx) => ({ x: iter, y: lowerBoundData[idx] })),
+    borderColor: 'rgba(255,255,255,0)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    pointRadius: 0,
+    fill: false,
+    spanGaps: false,
+  };
+  const meanDs = {
+    type: 'line',
+    label: 'Eval PSR — deterministic (population mean)',
+    borderColor: '#e6e6e6',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderDash: [4, 3],
+    pointRadius: 0,
+    tension: 0.2,
+    data: itersForBand.map((iter, idx) => ({ x: iter, y: seedMeanData[idx] })),
+    spanGaps: false,
+  };
+
+  new Chart(document.getElementById('cSeedSpread'), {
+    type: 'scatter',
+    data: { datasets: [...scatterDs, upperDs, lowerDs, meanDs] },
     options: {
-      animation:false, maintainAspectRatio:false,
+      animation: false,
+      maintainAspectRatio: false,
       scales: {
-        x:{ title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
-        y:{ title:{display:true,text:'Est. thinking tokens',color:tc},
-            ticks:{color:tc}, grid:{color:gc} },
+        x: { type: 'linear', title: { display: true, text: 'Iteration', color: tc },
+             ticks: { color: tc, stepSize: 1 }, grid: { color: gc } },
+        y: { min: 0, max: 100, title: { display: true, text: '% success', color: tc },
+             ticks: { color: tc, callback: v => v + '%' }, grid: { color: gc } },
       },
-      plugins:{ legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+      plugins: { legend: { labels: { color: '#aaa', boxWidth: 10, font: { size: 10 },
+        filter: item => item.text !== '' } } },
+    },
+  });
+
+  // ── Bottom-left: Objective Alignment ρ ───────────────────────────────────
+  const rhoCard = document.createElement('div');
+  rhoCard.className = 'cc';
+  rhoCard.style.gridArea = '2 / 1 / 3 / 2';
+  rhoCard.innerHTML = '<h2>Objective Alignment ρ per Iteration</h2>'
+    + '<div style="font-size:10px;color:#888;margin:-4px 0 6px">Training-side leading indicator — point-biserial correlation of reward with is_success</div>'
+    + '<div class="cbox"><canvas id="cRho"></canvas></div>';
+  rdGrid.appendChild(rhoCard);
+
+  const rhoIters = D.iterations.map(i => i.iter);
+  const rhoData  = D.iterations.map(i => i.objective_alignment_rho ?? null);
+
+  new Chart(document.getElementById('cRho'), {
+    type: 'line',
+    data: { labels: rhoIters, datasets: [
+      { label: 'ρ (objective alignment)',
+        data: rhoData,
+        borderColor: '#76b7b2',
+        backgroundColor: 'rgba(118,183,178,0.1)',
+        tension: 0.2,
+        fill: true,
+        spanGaps: false,
+        pointRadius: 3 },
+      { label: 'zero',
+        data: rhoIters.map(() => 0),
+        borderColor: 'rgba(255,255,255,0.2)',
+        borderDash: [4, 4],
+        pointRadius: 0,
+        fill: false },
+      { label: 'weak alignment (0.3)',
+        data: rhoIters.map(() => 0.3),
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderDash: [2, 6],
+        pointRadius: 0,
+        fill: false },
+    ]},
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
+        y: { min: -1, max: 1,
+             title:{display:true,text:'ρ',color:tc},
+             ticks:{color:tc, stepSize:0.25}, grid:{color:gc} },
+      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
     }
   });
 
-  // RunScore Panel
+  // ── Top-right: Run Score ─────────────────────────────────────────────────
   if (D.run_score_data) {
     const rs  = D.run_score_data.run_score;
     const sub = D.run_score_data.sub_scores;
@@ -669,6 +847,7 @@ function baseOpts(xLabel, yLabel) {
 
     const rsCard = document.createElement('div');
     rsCard.className = 'cc';
+    rsCard.style.gridArea = '1 / 2 / 2 / 3';
     let barsHtml = '';
     for (const [k, v] of Object.entries(sub)) {
       const pct  = (v * 100).toFixed(1);
@@ -697,8 +876,74 @@ function baseOpts(xLabel, yLabel) {
       </div>
       ${barsHtml}
       ${divTag}`;
-    rightCol.appendChild(rsCard);
+    rdGrid.appendChild(rsCard);
   }
+
+  // ── Bottom-right: Component Classification + Traitor line ─────────────────
+  const compCard = document.createElement('div');
+  compCard.className = 'cc';
+  compCard.style.gridArea = '2 / 2 / 3 / 3';
+  compCard.innerHTML = '<h2>Reward Component Classification per Iteration</h2>'
+                     + '<div class="cbox"><canvas id="cCompClass"></canvas></div>';
+  rdGrid.appendChild(compCard);
+
+  const COMP_CATS = [
+    { key: 'n_optimal',              label: 'optimal',              color: '#2ca02c' },
+    { key: 'n_hidden_helper',        label: 'hidden_helper',        color: '#17becf' },
+    { key: 'n_neutral_noisy',        label: 'neutral_noisy',        color: '#aec7e8' },
+    { key: 'n_hidden_dependency',    label: 'hidden_dependency',    color: '#9467bd' },
+    { key: 'n_high_magnitude_neutral', label: 'high_magnitude_neutral', color: '#ff7f0e' },
+    { key: 'n_dead_weight',          label: 'dead_weight',          color: '#bcbd22' },
+    { key: 'n_traitor',              label: 'traitor',              color: '#d62728' },
+  ];
+
+  const compMaxTraitor = Math.max(3, ...D.iterations.map(i => i.n_traitor||0));
+
+  new Chart(document.getElementById('cCompClass'), {
+    type: 'bar',
+    data: {
+      labels: D.iterations.map(i => i.iter),
+      datasets: [
+        ...COMP_CATS.map(cat => ({
+          label: cat.label,
+          data: D.iterations.map(i => i[cat.key] ?? 0),
+          backgroundColor: cat.color,
+        })),
+        {
+          type: 'line',
+          label: 'Traitor count',
+          data: D.iterations.map(i => i.n_traitor ?? null),
+          borderColor: '#e66e6e',
+          backgroundColor: 'rgba(230,110,110,0.15)',
+          yAxisID: 'yTraitor',
+          pointRadius: 4,
+          tension: 0,
+          fill: false,
+          order: 0,
+        },
+      ],
+    },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, title: { display: true, text: 'Iteration', color: tc },
+             ticks: { color: tc }, grid: { color: gc } },
+        y: { stacked: true, beginAtZero: true,
+             title: { display: true, text: 'Component count', color: tc },
+             ticks: { color: tc, stepSize: 1 }, grid: { color: gc } },
+        yTraitor: {
+          position: 'right',
+          min: 0,
+          max: compMaxTraitor + 1,
+          title: { display: true, text: 'Traitors', color: '#e66e6e' },
+          ticks: { color: '#e66e6e', stepSize: 1 },
+          grid: { drawOnChartArea: false },
+        },
+      },
+      plugins: { legend: { labels: { color: '#aaa', boxWidth: 10, font: { size: 10 } } } },
+    },
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -722,7 +967,9 @@ function baseOpts(xLabel, yLabel) {
     <th class="num">Actual PSR</th>
     <th class="num">Δ pp</th>
     <th class="num">Δ Centered-PP</th>
-    <th>Verdict</th><th>Assessment</th>
+    <th>Verdict</th>
+    <th class="num">Prop</th>
+    <th>Assessment</th>
   </tr></thead>`;
   const tb = document.createElement('tbody');
   D.iterations.forEach(it => {
@@ -733,13 +980,20 @@ function baseOpts(xLabel, yLabel) {
              : 'fl-unk';
     const dCent = (it.centered != null && it.baseline_centered != null)
       ? ((it.centered - it.baseline_centered) * 100) : null;
+    const isTerminalIter = (it.iter === D.iteration_count);
+    const rawVerdict = it.validator_status;
+    const verdictLabel = (isTerminalIter && (!rawVerdict || rawVerdict === 'Unparsed'))
+      ? '<span style="color:#888">terminal (unreviewed)</span>'
+      : (rawVerdict || '—');
+    const propLabel = it.selected_proposal != null ? `P${it.selected_proposal}` : '—';
     tb.innerHTML += `<tr class="${rc}">
       <td>${it.iter}</td>
       <td class="num">${pct(it.baseline_psr)}</td>
       <td class="num">${pct(it.psr)}</td>
       <td class="num">${dpp(fl.delta_pp)}</td>
       <td class="num">${dCent != null ? (dCent >= 0 ? '+' : '') + dCent.toFixed(1) + 'pp' : '—'}</td>
-      <td>${it.validator_status || '—'}</td>
+      <td>${verdictLabel}</td>
+      <td class="num">${propLabel}</td>
       <td>${fl.label || '—'}</td>
     </tr>`;
   });
@@ -794,26 +1048,32 @@ function baseOpts(xLabel, yLabel) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STRUCTURAL EDIT DISTANCE  (Jaccard between consecutive component sets)
+// PIPELINE PROCESS — grid2 (Edit Distance | Proposal Types) + Thinking Depth
 // ─────────────────────────────────────────────────────────────────────────────
 {
+  const ppGrid = document.createElement('div');
+  ppGrid.className = 'grid2';
+  root.appendChild(ppGrid);
+
+  const iters = D.iterations.map(i => i.iter);
+
+  // ── Left: Structural Edit Distance ───────────────────────────────────────
   const editVals = D.iterations.map(i => i.edit_distance);
   const meanED   = (() => {
     const vs = editVals.filter(v => v != null);
     return vs.length ? vs.reduce((s,v)=>s+v,0) / vs.length : null;
   })();
 
-  const cc = document.createElement('div');
-  cc.className = 'cc';
-  cc.innerHTML = `<h2>Structural Edit Distance
+  const editCard = document.createElement('div');
+  editCard.className = 'cc';
+  editCard.innerHTML = `<h2>Structural Edit Distance
     <span style="font-size:11px;margin-left:10px;color:#888">
       mean ${meanED != null ? meanED.toFixed(2) : '—'}
       &nbsp;·&nbsp; 0 = identical to prior iter, 1 = fully replaced
     </span>
   </h2><div class="cbox-sm"><canvas id="cEdit"></canvas></div>`;
-  root.appendChild(cc);
+  ppGrid.appendChild(editCard);
 
-  // Colour: high distance = exploratory (yellow), low = incremental (blue)
   const edColors = editVals.map(v => {
     if (v == null) return '#333';
     if (v >= 0.6)  return '#e6c46e';
@@ -855,24 +1115,13 @@ function baseOpts(xLabel, yLabel) {
       },
     }
   });
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PROPOSAL TYPES GENERATED  +  SELECTED PROPOSAL INDEX
-// ─────────────────────────────────────────────────────────────────────────────
-{
-  const grid = document.createElement('div');
-  grid.className = 'grid2';
-  root.appendChild(grid);
-
-  const iters = D.iterations.map(i => i.iter);
-
-  // ── Left: proposal types generated, stacked per iter ────────────────────
+  // ── Right: Proposal Types Generated ──────────────────────────────────────
   const propCard = document.createElement('div');
   propCard.className = 'cc';
   propCard.innerHTML = '<h2>Proposal Types Generated per Iteration</h2>'
                      + '<div class="cbox"><canvas id="cPropType"></canvas></div>';
-  grid.appendChild(propCard);
+  ppGrid.appendChild(propCard);
 
   const PROP_COLORS = { modification:'#f28e2b', addition:'#59a14f', cluster:'#b07aa1' };
   const propDs = ['modification','addition','cluster'].map(t => ({
@@ -897,45 +1146,48 @@ function baseOpts(xLabel, yLabel) {
       plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
     }
   });
+}
 
-  // ── Right: which proposal index Research Lead selected per iter ─────────
-  const selCard = document.createElement('div');
-  selCard.className = 'cc';
-  selCard.innerHTML = '<h2>Selected Proposal Index per Iteration</h2>'
-                    + '<div class="cbox"><canvas id="cPropSel"></canvas></div>';
-  grid.appendChild(selCard);
+// Thinking Depth per Phase — full width, after pipeline grid2
+{
+  const iters = D.iterations.map(i => i.iter);
 
-  const SEL_COLORS = { 1:'#4e79a7', 2:'#76b7b2', 3:'#e6c46e' };
-  const selVals   = D.iterations.map(i => i.selected_proposal);
-  const selColors = selVals.map(v => v ? SEL_COLORS[v] : '#333');
+  const thinkCard = document.createElement('div');
+  thinkCard.className = 'cc';
+  thinkCard.innerHTML = '<h2>Thinking Depth per Phase (est. tokens)</h2>'
+                      + '<div class="cbox"><canvas id="cThinkPhase"></canvas></div>';
+  root.appendChild(thinkCard);
 
-  new Chart(document.getElementById('cPropSel'), {
-    type: 'bar',
-    data: { labels: iters, datasets: [{
-      label: 'Selected proposal',
-      data: selVals,
-      backgroundColor: selColors,
-      borderRadius: 3,
-    }]},
+  const thinkPhaseDs = PHASES.map(p => ({
+    label: p,
+    data: iters.map(i => {
+      const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
+      return rows.reduce((s,r) => s + (r.think_tokens || 0), 0);
+    }),
+    borderColor: PC[p],
+    backgroundColor: 'transparent',
+    tension: 0.2,
+    pointRadius: 3,
+    spanGaps: false,
+  }));
+
+  new Chart(document.getElementById('cThinkPhase'), {
+    type: 'line',
+    data: { labels: iters, datasets: thinkPhaseDs },
     options: {
-      animation: false,
-      maintainAspectRatio: false,
+      animation:false, maintainAspectRatio:false,
       scales: {
-        x: { title:{display:true,text:'Iteration',color:tc},
-             ticks:{color:tc}, grid:{color:gc} },
-        y: { min: 0, max: 3.5,
-             ticks:{ color:tc, stepSize:1,
-                     callback: v => (v>=1 && v<=3) ? 'P'+v : '' },
-             title:{display:true,text:'Selected index',color:tc}, grid:{color:gc} },
+        x:{ title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
+        y:{ title:{display:true,text:'Est. thinking tokens',color:tc},
+            ticks:{color:tc}, grid:{color:gc} },
       },
-      plugins: { legend:{ display:false },
-                 tooltip:{ callbacks:{ label: ctx => 'P'+ctx.parsed.y }}},
+      plugins:{ legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
     }
   });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GEN TOKENS + WALL TIME
+// COMPUTE — Gen Tokens + Wall Time
 // ─────────────────────────────────────────────────────────────────────────────
 if (D.chat_rows && D.chat_rows.length) {
   const maxIter = Math.max(...D.chat_rows.map(r=>r.iteration||0));
@@ -1059,6 +1311,7 @@ if (D.chat_rows && D.chat_rows.length) {
     <th class="num">Avg In-Tok</th>
     <th class="num">Avg Think</th>
     <th class="num">Avg Out</th>
+    <th class="num">Avg Total</th>
     <th class="num">Think/Out</th>
     <th class="num">% Time</th>
     <th class="num">Avg Tok/s</th>
@@ -1080,6 +1333,7 @@ if (D.chat_rows && D.chat_rows.length) {
       <td class="num">${s.avg_in.toLocaleString()}</td>
       <td class="num">${s.avg_think.toLocaleString()}</td>
       <td class="num">${s.avg_out.toLocaleString()}</td>
+      <td class="num">${fmtK(s.avg_in + s.avg_think + s.avg_out)}</td>
       <td class="num" style="${ratioStyle}">${s.ratio.toFixed(2)}×</td>
       <td class="num">${s.pct_time.toFixed(1)}%</td>
       <td class="num">${s.tok_per_s.toFixed(1)}</td>
