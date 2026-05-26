@@ -166,7 +166,7 @@ def write_runs_csv(model_summaries, path: Path):
         "model", "campaign_tag", "iteration_count",
         "peak_psr", "peak_centered",
         "iter_final_psr", "iter_final_centered",
-        "collapse_count", "recovery_count", "stability_score",
+        "regression_count", "recovery_count", "stability_score",
         "total_excisions", "mean_excisions_per_iter",
         "prop_modification_total", "prop_addition_total",
         "prop_cluster_total", "prop_unknown_total",
@@ -185,7 +185,7 @@ def write_runs_csv(model_summaries, path: Path):
                     "peak_centered": run.peak_centered,
                     "iter_final_psr": run.iter_final_psr,
                     "iter_final_centered": run.iter_final_centered,
-                    "collapse_count": run.collapse_count,
+                    "regression_count": run.collapse_count,
                     "recovery_count": run.recovery_count,
                     "stability_score": run.stability_score,
                     "total_excisions": run.total_excisions,
@@ -210,7 +210,7 @@ def write_cross_run_summary_csv(model_summaries, path: Path):
         "model", "campaign_signature", "n_runs",
         "peak_psr", "peak_centered",
         "iter_final_psr", "iter_final_centered",
-        "collapse_count", "recovery_count", "stability_score",
+        "regression_count", "recovery_count", "stability_score",
         "mean_excisions_per_iter",
         "mean_modifications_per_iter",
         "mean_additions_per_iter",
@@ -228,7 +228,7 @@ def write_cross_run_summary_csv(model_summaries, path: Path):
                 "peak_centered": fmt(ms.peak_centered_mean, ms.peak_centered_std),
                 "iter_final_psr": fmt(ms.iter_final_psr_mean, ms.iter_final_psr_std),
                 "iter_final_centered": fmt(ms.iter_final_centered_mean, ms.iter_final_centered_std),
-                "collapse_count": fmt(ms.collapse_count_mean, ms.collapse_count_std, 1),
+                "regression_count": fmt(ms.regression_count_mean, ms.regression_count_std, 1),
                 "recovery_count": fmt(ms.recovery_count_mean, ms.recovery_count_std, 1),
                 "stability_score": fmt(ms.stability_score_mean, ms.stability_score_std),
                 "mean_excisions_per_iter": f"{ms.mean_excisions_per_iter_across_runs:.2f}",
@@ -385,7 +385,7 @@ def build_dashboard_payload(model_summaries, chat_rows_by_run) -> dict:
                 "peak_centered": run.peak_centered,
                 "iter_final_psr": run.iter_final_psr,
                 "iter_final_centered": run.iter_final_centered,
-                "collapse_count": run.collapse_count,
+                "regression_count": run.collapse_count,
                 "recovery_count": run.recovery_count,
                 "stability_score": run.stability_score,
                 "verdicts": run.validator_verdicts,
@@ -404,8 +404,8 @@ def build_dashboard_payload(model_summaries, chat_rows_by_run) -> dict:
                 "peak_centered_std": ms.peak_centered_std,
                 "iter_final_psr_mean": ms.iter_final_psr_mean,
                 "iter_final_psr_std": ms.iter_final_psr_std,
-                "collapse_count_mean": ms.collapse_count_mean,
-                "collapse_count_std": ms.collapse_count_std,
+                "regression_count_mean": ms.regression_count_mean,
+                "regression_count_std": ms.regression_count_std,
                 "recovery_count_mean": ms.recovery_count_mean,
                 "recovery_count_std": ms.recovery_count_std,
                 "stability_score_mean": ms.stability_score_mean,
@@ -1043,7 +1043,7 @@ DATA.models.forEach((model, mi) => {
         <td class="num">${fmtMeanStd(model.summary.peak_centered_mean, model.summary.peak_centered_std)}</td>
         <td class="num">${fmtMeanStd(model.summary.iter_final_psr_mean, model.summary.iter_final_psr_std)}</td>
         <td class="num">${fmtMeanStd(0, 0)}</td>
-        <td class="num">${fmtMeanStd(model.summary.collapse_count_mean, model.summary.collapse_count_std, 1)}</td>
+        <td class="num">${fmtMeanStd(model.summary.regression_count_mean, model.summary.regression_count_std, 1)}</td>
         <td class="num">${fmtMeanStd(model.summary.recovery_count_mean, model.summary.recovery_count_std, 1)}</td>
         <td class="num">${fmtMeanStd(model.summary.stability_score_mean, model.summary.stability_score_std)}</td>
       </tr></tbody>
@@ -1755,7 +1755,7 @@ def main():
                     help="Human-readable label (used in filenames + dashboards)")
     ap.add_argument("--output-dir", type=Path, default=None,
                     help="Output directory (default: post_hoc_analysis/outputs/{label})")
-    ap.add_argument("--collapse-threshold", type=float, default=0.10)
+    ap.add_argument("--regression-threshold", type=float, default=0.10)
     ap.add_argument("--recovery-threshold", type=float, default=0.50)
     ap.add_argument("--primary-metric", default="psr",
                     choices=["psr", "centered"])
@@ -1768,7 +1768,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = AggregationConfig(
-        collapse_threshold=args.collapse_threshold,
+        regression_threshold=args.regression_threshold,
         recovery_threshold=args.recovery_threshold,
         primary_landing_metric=args.primary_metric,
     )
