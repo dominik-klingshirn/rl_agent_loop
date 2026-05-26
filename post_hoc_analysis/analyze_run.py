@@ -189,6 +189,7 @@ def build_triage_data(
     Load all structured sources for one campaign run and return a single
     dict that both the HTML template and the JSON summary consume.
     """
+    cfg         = cfg or AggregationConfig()
     paths       = RunPaths(campaign_path)
     run_summary = load_run(campaign_path, cfg)
     chat_rows   = load_chat_responses(
@@ -208,6 +209,10 @@ def build_triage_data(
         it.iteration: it.outcomes.landed_centered_rate
         for it in run_summary.iterations
     }
+    std_by_iter: dict[int, float | None] = {
+        it.iteration: it.outcomes.cross_seed_success_std
+        for it in run_summary.iterations
+    }
 
     iter00_payload_path = paths.metric_payload(0)
     if iter00_payload_path.is_file():
@@ -215,6 +220,7 @@ def build_triage_data(
             _p0 = load_metric_payload(iter00_payload_path)
             psr_by_iter[0]      = _p0.population_success_rate
             centered_by_iter[0] = _p0.landed_centered_rate
+            std_by_iter[0]      = _p0.cross_seed_success_std
         except Exception:
             pass
 
@@ -258,6 +264,22 @@ def build_triage_data(
         floor        = _floor_rule_check(baseline_psr, o.population_success_rate,
                                          it.validator_status)
         retries      = _count_coder_retries(n, chat_rows)
+
+        prev_std = std_by_iter.get(n - 1)
+        if prev_std is not None:
+            regression_threshold_pp = max(
+                cfg.regression_min_floor_pp,
+                cfg.regression_k * prev_std * 100,
+            )
+        else:
+            regression_threshold_pp = cfg.regression_min_floor_pp
+
+        is_sharp_regression = (
+            baseline_psr is not None
+            and baseline_psr >= cfg.established_floor
+            and o.population_success_rate is not None
+            and (o.population_success_rate - baseline_psr) * 100 <= -regression_threshold_pp
+        )
 
         # Structural edit distance from previous iteration
         edit_dist = _jaccard_edit_distance(
@@ -324,11 +346,42 @@ def build_triage_data(
             "seed_success_rates":          _load_seed_success_rates(paths.metric_payload(n), n),
             "cross_seed_success_std":      o.cross_seed_success_std,
             "objective_alignment_rho":     o.objective_alignment_rho,
+            # Sharp regression detection (second-pass recovery filled below)
+            "is_sharp_regression":         is_sharp_regression,
+            "regression_threshold_pp":     round(regression_threshold_pp, 1),
+            "recovered":                   False,
+            "recovery_iter":               None,
         })
 
         # Update baseline for next iteration's edit distance
         if cc is not None and cc.n_components is not None:
             prev_n_components = cc.n_components
+
+    # Second pass — recovery detection within 2-iter window after each regression
+    regression_indices = [
+        idx for idx, r in enumerate(iter_rows) if r["is_sharp_regression"]
+    ]
+    for reg_idx in regression_indices:
+        reg_iter         = iter_rows[reg_idx]["iter"]
+        pre_psr          = iter_rows[reg_idx]["baseline_psr"]
+        threshold        = iter_rows[reg_idx]["regression_threshold_pp"]
+        if pre_psr is None:
+            continue
+        recovery_target = pre_psr - (threshold / 100)
+        window = [
+            r for r in iter_rows
+            if reg_iter < r["iter"] <= reg_iter + 2
+            and r["psr"] is not None
+            and r["psr"] >= recovery_target
+        ]
+        if window:
+            iter_rows[reg_idx]["recovered"]     = True
+            iter_rows[reg_idx]["recovery_iter"] = window[0]["iter"]
+
+    # Summary counts
+    sharp_regression_count = sum(1 for r in iter_rows if r["is_sharp_regression"])
+    recovery_count         = sum(1 for r in iter_rows if r["is_sharp_regression"] and r["recovered"])
+    unrecovered_count      = sharp_regression_count - recovery_count
 
     # Peak iteration index
     psr_pairs = [(r["iter"], r["psr"]) for r in iter_rows if r["psr"] is not None]
@@ -342,8 +395,10 @@ def build_triage_data(
         "peak_psr":                 run_summary.peak_psr,
         "peak_iter":                peak_iter,
         "final_psr":                run_summary.iter_final_psr,
-        "collapse_count":           run_summary.collapse_count,
-        "recovery_count":           run_summary.recovery_count,
+        "collapse_count":           sharp_regression_count,
+        "sharp_regression_count":   sharp_regression_count,
+        "recovery_count":           recovery_count,
+        "unrecovered_count":        unrecovered_count,
         "stability_score":          run_summary.stability_score,
         "validator_verdicts":       run_summary.validator_verdicts,
         "iterations_with_warnings": run_summary.iterations_with_warnings,
@@ -528,7 +583,8 @@ function baseOpts(xLabel, yLabel) {
       sub: totalOut.toLocaleString()+' tokens' },
     { lbl:'Peak PSR',    val:pct(D.peak_psr),           sub:peakSub },
     { lbl:'Final PSR',   val:pct(D.final_psr),          sub:'last iteration' },
-    { lbl:'Collapses',   val:D.collapse_count,          sub:'PSR < threshold' },
+    { lbl:'Sharp Regress.', val:D.sharp_regression_count,
+      sub:'unrecovered: ' + D.unrecovered_count },
     { lbl:'Floor Viol.', val:hardViol,
       sub: hardViol > 0 ? 'hard violations' : 'all compliant' },
   ].forEach(c => {
@@ -552,7 +608,7 @@ function baseOpts(xLabel, yLabel) {
   const psrCard = document.createElement('div');
   psrCard.className = 'cc';
   psrCard.innerHTML = '<h2>PSR Trajectory</h2>'
-    + `<div style="font-size:10px;color:#888;margin:-4px 0 6px">${D.collapse_count} collapse${D.collapse_count!==1?'s':''} · peak ${(D.peak_psr*100).toFixed(1)}% at iter ${D.peak_iter} · final ${(D.final_psr*100).toFixed(1)}%</div>`
+    + `<div style="font-size:10px;color:#888;margin:-4px 0 6px">${D.sharp_regression_count} sharp regression${D.sharp_regression_count!==1?'s':''} · peak ${(D.peak_psr*100).toFixed(1)}% at iter ${D.peak_iter} · final ${(D.final_psr*100).toFixed(1)}%</div>`
     + '<div class="cbox"><canvas id="cPSR"></canvas></div>';
   root.appendChild(psrCard);
 
@@ -568,7 +624,7 @@ function baseOpts(xLabel, yLabel) {
     return '#888';
   });
 
-  const collapseIters = D.iterations.filter(i => i.psr != null && i.psr < 0.10).map(i => i.iter);
+  const collapseIters = D.iterations.filter(i => i.is_sharp_regression).map(i => i.iter);
 
   const collapsePlugin = {
     id: 'collapseSpans',
@@ -619,7 +675,11 @@ function baseOpts(xLabel, yLabel) {
           const v = (isTerminalIter && (!rawV || rawV === 'Unparsed'))
                     ? 'terminal (unreviewed)' : (rawV || '—');
           const f  = it.floor ? it.floor.label : '';
-          return [`  verdict: ${v}`, f ? `  floor: ${f}` : ''].filter(Boolean);
+          const rr = it.is_sharp_regression
+            ? `  ⚠ sharp regression (threshold: ${it.regression_threshold_pp}pp)` : '';
+          const rc = it.recovered
+            ? `  ↗ recovered at iter ${it.recovery_iter}` : '';
+          return [`  verdict: ${v}`, f ? `  floor: ${f}` : '', rr, rc].filter(Boolean);
         }}}
       },
     },
@@ -699,7 +759,7 @@ function baseOpts(xLabel, yLabel) {
   const seedCard = document.createElement('div');
   seedCard.className = 'cc';
   seedCard.style.gridArea = '1 / 1 / 2 / 2';
-  seedCard.innerHTML = '<h2>Cross-Seed PSR Spread per Iteration</h2>'
+  seedCard.innerHTML = '<h2>Cross-Seed PSR Spread per Iteration <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888;font-size:10px">(late-stage training, stochastic policy)</span></h2>'
                      + '<div class="cbox"><canvas id="cSeedSpread"></canvas></div>';
   rdGrid.appendChild(seedCard);
 
@@ -707,7 +767,7 @@ function baseOpts(xLabel, yLabel) {
 
   const scatterDs = [0, 1, 2].map(si => ({
     type: 'scatter',
-    label: `Seed ${si} — training (stochastic, late-stage)`,
+    label: `Seed ${si}`,
     backgroundColor: SEED_COLORS[si],
     pointRadius: 5,
     data: D.iterations.flatMap(i => {
@@ -758,7 +818,7 @@ function baseOpts(xLabel, yLabel) {
   };
   const meanDs = {
     type: 'line',
-    label: 'Eval PSR — deterministic (population mean)',
+    label: 'Stochastic mean PSR',
     borderColor: '#e6e6e6',
     backgroundColor: 'transparent',
     borderWidth: 2,
@@ -768,7 +828,6 @@ function baseOpts(xLabel, yLabel) {
     data: itersForBand.map((iter, idx) => ({ x: iter, y: seedMeanData[idx] })),
     spanGaps: false,
   };
-
   new Chart(document.getElementById('cSeedSpread'), {
     type: 'scatter',
     data: { datasets: [...scatterDs, upperDs, lowerDs, meanDs] },
@@ -1071,7 +1130,7 @@ function baseOpts(xLabel, yLabel) {
       mean ${meanED != null ? meanED.toFixed(2) : '—'}
       &nbsp;·&nbsp; 0 = identical to prior iter, 1 = fully replaced
     </span>
-  </h2><div class="cbox-sm"><canvas id="cEdit"></canvas></div>`;
+  </h2><div class="cbox"><canvas id="cEdit"></canvas></div>`;
   ppGrid.appendChild(editCard);
 
   const edColors = editVals.map(v => {
@@ -1420,8 +1479,10 @@ def build_summary_json(data: dict) -> dict:
         "peak_psr":                  data["peak_psr"],
         "peak_iter":                 data.get("peak_iter"),
         "final_psr":                 data["final_psr"],
-        "collapse_count":            data["collapse_count"],
+        "sharp_regression_count":    data["sharp_regression_count"],
         "recovery_count":            data["recovery_count"],
+        "unrecovered_count":         data["unrecovered_count"],
+        "collapse_count":            data["collapse_count"],
         "stability_score":           data["stability_score"],
         "validator_verdicts":        data["validator_verdicts"],
         "floor_hard_violations":     floor_hard,
@@ -1490,7 +1551,7 @@ def _print_summary(s: dict) -> None:
     print(f"  Wall time     : {wall}")
     print(f"  Peak PSR      : {peak}")
     print(f"  Final PSR     : {final}")
-    print(f"  Collapses     : {s['collapse_count']}   Recoveries: {s['recovery_count']}")
+    print(f"  Sharp regress.: {s['sharp_regression_count']}   Recovered: {s['recovery_count']}   Unrecovered: {s['unrecovered_count']}")
     print(f"  Coder retries : {s['total_coder_retries']} total")
     if s.get("edit_distance_mean") is not None:
         print(f"  Mean edit dist: {s['edit_distance_mean']:.2f}  "
@@ -1557,12 +1618,14 @@ def main() -> None:
     ap.add_argument("--experiments-root", default=None,
                     help=f"Root experiments/ directory "
                          f"(default: {_DEFAULT_EXPERIMENTS_DIR}).")
-    ap.add_argument("--collapse-threshold", type=float, default=0.10,
-                    help="PSR fraction below which an iteration is a collapse "
-                         "(default: 0.10).")
-    ap.add_argument("--recovery-threshold", type=float, default=0.50,
-                    help="PSR fraction at which a post-collapse iter counts as "
-                         "recovery (default: 0.50).")
+    ap.add_argument("--established-floor", type=float, default=0.40,
+                    help="Minimum PSR (fraction) before a drop can be a sharp regression "
+                         "(default: 0.40).")
+    ap.add_argument("--regression-k", type=float, default=2.0,
+                    help="Std multiplier for regression threshold (default: 2.0).")
+    ap.add_argument("--regression-min-floor", type=float, default=10.0,
+                    help="Minimum regression threshold in pp regardless of std "
+                         "(default: 10.0).")
     ap.add_argument("--quiet", "-q", action="store_true",
                     help="Suppress terminal summary (files still written).")
     args = ap.parse_args()
@@ -1575,8 +1638,9 @@ def main() -> None:
         sys.exit(1)
 
     cfg = AggregationConfig(
-        collapse_threshold=args.collapse_threshold,
-        recovery_threshold=args.recovery_threshold,
+        established_floor=args.established_floor,
+        regression_k=args.regression_k,
+        regression_min_floor_pp=args.regression_min_floor,
     )
 
     try:
