@@ -92,7 +92,7 @@ def aggregate_progress_seeds(seed_payloads: list) -> dict:
     """
     Ingests a list of payloads from analyze_single_seed_progress().
     Computes cross-seed robustness, CV, and trajectory isomorphism.
-    Returns the aggregated JSON payload for the Strategist Diagnostic Report.
+    Returns the aggregated JSON payload for the Diagnostic Report.
     """
     if not seed_payloads:
         return json.dumps({"error": "No seed payloads provided."})
@@ -132,7 +132,7 @@ def aggregate_progress_seeds(seed_payloads: list) -> dict:
                 
     mean_trajectory_corr = np.mean(correlations) if correlations else 0.0
 
-    # 5. Build the Strategist Diagnostic Report Payload
+    # 5. Build the payload for the Diagnostic Report 
     # We apply the semantic boolean thresholds HERE, at the population level.
     payload = {
             "population_metrics": {
@@ -162,8 +162,8 @@ def aggregate_progress_seeds(seed_payloads: list) -> dict:
 
 def translate_optimization_health(agg_progress_json: dict) -> str:
     """
-    Translates the Linux-aggregated progress JSON into a dense, 
-    Strategist-ready Markdown diagnostic report.
+    Translates the Linux-aggregated progress JSON into a 
+    LLM Orchestration-ready Markdown diagnostic report.
     """
     opt = agg_progress_json.get("multi_seed_optimization_health", {})
     pop = opt.get("population_metrics", {})
@@ -338,7 +338,7 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
     """
     Ingests a list of payloads from analyze_single_seed_eval().
     Computes cross-seed kinematic robustness, mechanical sensitivity, and success variance.
-    Returns the final JSON for the Strategist Diagnostic Report.
+    Returns the final JSON for the Diagnostic Report.
     """
     if not seed_payloads:
         return json.dumps({"error": "No eval seed payloads provided."})
@@ -405,7 +405,7 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
         else None
     )
 
-    # 5. Build the Strategist Diagnostic Report Payload
+    # 5. Build the Diagnostic Report Payload
     # Semantic boolean thresholds are applied here to provide unarguable physical facts to the LLM.
     payload = {
         "success_robustness": {
@@ -438,7 +438,7 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
 def translate_behavior_kinematics(agg_eval_json: dict) -> str:
     """
     Translates aggregated evaluation (deterministic) metrics into a physical 
-    behavior diagnostic report for the Strategist LLM.
+    behavior section of the diagnostic report for the LLM Orchestration to reason over.
     """
     eval_data = agg_eval_json.get("multi_seed_evaluation_health", {})
     succ = eval_data.get("success_robustness", {})
@@ -669,10 +669,10 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
     """
     Ingests payloads from analyze_single_seed_stochastic().
     Dynamically analyzes LLM-generated reward components to find misaligned gradients.
-    Returns the final JSON for the Strategist Diagnostic Report.
+    Returns the final JSON for the Diagnostic Report.
     
-    Tier 1 MI: adds 'alignment_mi_succ' and 'is_hidden_dependency' diagnostics.
-    The hidden-dependency flag fires only when the success rung is active AND a 
+    Mutual Information (MI): adds 'alignment_mi_succ' and 'is_hidden_dependency' diagnostics.
+    The hidden-dependency flags fires only when the success rung is active AND a 
     component has low |ρ| but non-trivial MI — i.e., a non-linear relationship that 
     Pearson missed. Dead-weight detection now also requires low MI to avoid 
     misclassifying small-magnitude gating terms (e.g., threshold bonuses).
@@ -810,7 +810,7 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
         for status, pct in seed['terminal_distribution'].items():
             population_term_dist[status] += (pct / num_seeds)
 
-    # 4. Build the Strategist Diagnostic Report Payload
+    # 4. Build the payload for Diagnostic Report
     mean_oracle_rho = np.nanmean(oracle_rhos)
 
     # Global Conditional Delta: E[R|land] - E[R|fail] across the seed population.
