@@ -91,8 +91,8 @@ def analyze_single_seed_progress(csv_path: str, seed_id: int, window_size: int =
 def aggregate_progress_seeds(seed_payloads: list) -> dict:
     """
     Ingests a list of payloads from analyze_single_seed_progress().
-    Computes cross-seed robustness, SNR, and trajectory isomorphism.
-    Returns the final JSON for the MacBook LLM Diagnostician.
+    Computes cross-seed robustness, CV, and trajectory isomorphism.
+    Returns the aggregated JSON payload for the Strategist Diagnostic Report.
     """
     if not seed_payloads:
         return json.dumps({"error": "No seed payloads provided."})
@@ -105,11 +105,14 @@ def aggregate_progress_seeds(seed_payloads: list) -> dict:
     
     # Extract the raw trajectories (assumes they are the same length, which they should be for the final quartile)
     reward_trajectories = [seed['trajectories']['reward_trend'] for seed in seed_payloads]
-    
-    # 2. Compute Cross-Seed Robustness (SNR)
+    within_seed_terminal_cv = float(np.mean([
+        np.std(t) / (abs(np.mean(t)) + 1e-5) for t in reward_trajectories
+    ]))
+
+    # 2. Compute Cross-Seed Robustness (CV)
     reward_mean = np.mean(final_rewards)
     reward_std = np.std(final_rewards)
-    cross_seed_snr = reward_mean / (reward_std + 1e-5)
+    cross_seed_cv = reward_std / (abs(reward_mean) + 1e-5)
     
     # 3. Compute Critic Concordance
     csi_mean = np.mean(final_csi)
@@ -129,13 +132,14 @@ def aggregate_progress_seeds(seed_payloads: list) -> dict:
                 
     mean_trajectory_corr = np.mean(correlations) if correlations else 0.0
 
-    # 5. Build the Mac-bound LLM Payload
+    # 5. Build the Strategist Diagnostic Report Payload
     # We apply the semantic boolean thresholds HERE, at the population level.
     payload = {
             "population_metrics": {
                 "mean_final_reward": round(reward_mean, 2),
                 "cross_seed_reward_std": round(reward_std, 2),
-                "cross_seed_snr": round(cross_seed_snr, 3)
+                "cross_seed_cv": round(cross_seed_cv, 3),
+                "within_seed_terminal_cv": round(within_seed_terminal_cv, 3),
             },
             "critic_robustness": {
                 "mean_critic_saturation_index": round(csi_mean, 2),
@@ -144,11 +148,12 @@ def aggregate_progress_seeds(seed_payloads: list) -> dict:
             },
             "learning_dynamics": {
                 "mean_trajectory_isomorphism_rho": round(mean_trajectory_corr, 3),
-                "highly_unstable_optimization_landscape_flag": bool(cross_seed_snr < 1.0 and mean_trajectory_corr < 0.3)
+                "highly_unstable_optimization_landscape_flag": bool(cross_seed_cv > 0.5 and mean_trajectory_corr < 0.3)
             },
             "summary_flags": {
                 "is_initialization_sensitive": bool(reward_std > abs(reward_mean) * 0.5), # STD is > 50% of the Mean
-                "is_universally_converged": bool(reward_mean > 0 and reward_std < abs(reward_mean) * 0.2)
+                "is_universally_converged": bool(reward_mean > 0 and reward_std < abs(reward_mean) * 0.2),
+                "is_terminal_unstable":        bool(within_seed_terminal_cv > 0.15),
             }
         }
     
@@ -174,13 +179,29 @@ def translate_optimization_health(agg_progress_json: dict) -> str:
     md = [f"### 1. Optimization Dynamics & Critic Health\n**Status:** {status_header}\n"]
 
     # 2. Reward Robustness (Scale-Invariant Focus)
-    md.append("#### A. Cross-Seed Robustness")
-    snr = pop.get('cross_seed_snr', 0)
-    md.append(f"- **Signal-to-Noise Ratio (SNR):** `{snr:.2f}`")
-    if snr < 1.0:
-        md.append("  - *Diagnosis:* The cross-seed variance exceeds the mean reward. The current reward topology is highly chaotic and fails to enforce a universal policy.")
-    else:
-        md.append("  - *Diagnosis:* Strong cross-seed consistency. The reward landscape is learnable.")
+    md.append("#### A. Cross-Seed Robustness & Terminal Stationarity")
+
+    cv = pop.get('cross_seed_cv', None)
+    wscv = pop.get('within_seed_terminal_cv', None)
+    is_converged = flags.get('is_universally_converged', False)
+
+    if cv is not None:
+        md.append(f"- **Cross-Seed Reproducibility (CV):** `{cv:.4f}`  *(lower = more reproducible)*")
+        if not is_converged:
+            md.append("  - *Diagnosis:* Pre-convergence regime — reproducibility undefined.")
+        elif cv > 0.5:
+            md.append("  - *Diagnosis:* High cross-seed dispersion. The reward topology is not enforcing a consistent policy across seeds.")
+        elif cv > 0.2:
+            md.append("  - *Diagnosis:* Moderate cross-seed variance. Seeds are finding similar but not identical solutions.")
+        else:
+            md.append("  - *Diagnosis:* Strong cross-seed consistency. The reward landscape is learnable and reproducible.")
+
+    if wscv is not None:
+        md.append(f"- **Within-Seed Terminal Stationarity (CV):** `{wscv:.4f}`  *(lower = more settled)*")
+        if flags.get('is_terminal_unstable'):
+            md.append("  - *Diagnosis:* The optimization is still churning inside the final training quartile. The converged policy is non-stationary and may not retain.")
+        else:
+            md.append("  - *Diagnosis:* Policy has settled. Final-quartile reward is stationary within each seed.")
 
     # 3. Critic Health (Crucial for ARD)
     md.append("\n#### B. Value Network (Critic) Integrity")
@@ -252,8 +273,11 @@ def analyze_single_seed_eval(csv_path: str, seed_id: int) -> dict:
         
         # --- E. Lateral Macro-Oscillations (Bounded |x| > 0.2) ---
         ep_df['x_vel_sign'] = np.sign(ep_df['x_vel'].fillna(0))
-        sign_changes = ep_df['x_vel_sign'].diff().ne(0) & ep_df['x_vel_sign'].diff().notna()
-        macro_oscillations = (sign_changes & (ep_df['x_pos'].abs() > 0.2)).sum()
+        sign_changes        = ep_df['x_vel_sign'].diff().ne(0) & ep_df['x_vel_sign'].diff().notna()
+        outside_pad         = ep_df['x_pos'].abs() > 0.2
+        steps_outside       = outside_pad.sum()
+        raw_osc             = (sign_changes & outside_pad).sum()
+        macro_oscillations  = float(raw_osc / (steps_outside + 1e-5) * 100)   # osc per 100 exposed steps
         
         # Target boolean success metric for correlation
         is_success = 1.0 if 'landed' in str(ep_df['status'].iloc[-1]) else 0.0
@@ -269,7 +293,7 @@ def analyze_single_seed_eval(csv_path: str, seed_id: int) -> dict:
             'side_duty': float(side_duty),
             'attitude_phase': float(attitude_phase),
             'efficiency': float(efficiency),
-            'macro_oscillations': int(macro_oscillations)
+            'macro_oscillations': float(macro_oscillations)
         })
         
     metrics_df = pd.DataFrame(ep_metrics)
@@ -314,7 +338,7 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
     """
     Ingests a list of payloads from analyze_single_seed_eval().
     Computes cross-seed kinematic robustness, mechanical sensitivity, and success variance.
-    Returns the final JSON for the MacBook LLM Diagnostician.
+    Returns the final JSON for the Strategist Diagnostic Report.
     """
     if not seed_payloads:
         return json.dumps({"error": "No eval seed payloads provided."})
@@ -375,8 +399,13 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
         and eval_mean_failure_reward is not None
         and eval_mean_failure_reward > eval_mean_landing_reward
     )
+    eval_global_conditional_delta = (
+        round(float(eval_mean_landing_reward - eval_mean_failure_reward), 3)
+        if eval_mean_landing_reward is not None and eval_mean_failure_reward is not None
+        else None
+    )
 
-    # 5. Build the Mac-bound LLM Payload
+    # 5. Build the Strategist Diagnostic Report Payload
     # Semantic boolean thresholds are applied here to provide unarguable physical facts to the LLM.
     payload = {
         "success_robustness": {
@@ -393,13 +422,14 @@ def aggregate_eval_seeds(seed_payloads: list) -> dict:
                 },
         "lateral_control": {
             "population_mean_macro_oscillations": round(mean_oscillations, 2),
-            "systemic_lateral_instability_flag": bool(mean_oscillations > 5.0)
+            "systemic_lateral_instability_flag": bool(mean_oscillations > 2.0)   # rate: osc per 100 exposed steps; calibrate empirically
             },
         "failure_mode_analysis": {
             "population_terminal_distribution": population_term_dist,
             "stable_but_suboptimal_flag": bool(mean_success < 0.2 and std_success < 0.1), # Fails consistently the exact same way
             "universal_success_flag": bool(min(success_rates) > 0.85), # Every single seed reliably lands
-            "eval_topology_inverted_flag": eval_topology_inverted_flag
+            "eval_topology_inverted_flag": eval_topology_inverted_flag,
+            "eval_global_conditional_delta": eval_global_conditional_delta
             }
         }
     
@@ -639,7 +669,7 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
     """
     Ingests payloads from analyze_single_seed_stochastic().
     Dynamically analyzes LLM-generated reward components to find misaligned gradients.
-    Returns the final JSON for the MacBook LLM Diagnostician.
+    Returns the final JSON for the Strategist Diagnostic Report.
     
     Tier 1 MI: adds 'alignment_mi_succ' and 'is_hidden_dependency' diagnostics.
     The hidden-dependency flag fires only when the success rung is active AND a 
@@ -780,7 +810,7 @@ def aggregate_stochastic_seeds(seed_payloads: list) -> dict:
         for status, pct in seed['terminal_distribution'].items():
             population_term_dist[status] += (pct / num_seeds)
 
-    # 4. Build the Mac-bound LLM Payload
+    # 4. Build the Strategist Diagnostic Report Payload
     mean_oracle_rho = np.nanmean(oracle_rhos)
 
     # Global Conditional Delta: E[R|land] - E[R|fail] across the seed population.
@@ -855,13 +885,14 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
     topo = stoch.get("global_reward_topology", {})
     comps = stoch.get("dynamic_component_analysis", {})
     frag = stoch.get("policy_fragility", {})
+    eval_fail = agg_stochastic_json.get("multi_seed_evaluation_health", {}).get("failure_mode_analysis", {})
 
     md = ["### 3. Reward Topology & Algorithmic Credit Assignment\n"]
 
     # A. Global Objective Alignment
     md.append("#### A. Global Objective Alignment (Oracle Test)")
     oracle_rho = topo.get("mean_objective_alignment_rho", 0)
-    delta = topo.get("global_conditional_delta", None)
+    delta = eval_fail.get("eval_global_conditional_delta", None)
     delta_str = f"`{delta:+.3f}`" if delta is not None else "`undefined (single-class population)`"
     md.append(f"- **Global Conditional Delta** $\\Delta = \\mathbb{{E}}[R \\mid \\text{{land}}] - \\mathbb{{E}}[R \\mid \\text{{fail}}]$: {delta_str}  *(ground truth)*")
     md.append(f"- **Objective Alignment ($\\rho$):** `{oracle_rho:.3f}`  *(narrative descriptor — point-biserial estimator)*")
