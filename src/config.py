@@ -90,7 +90,10 @@ class Config:
         model_id = model_name.lower()
         role = role.lower()
 
-        is_reasoning = any(k in model_id for k in ["deepseek-r1", "thinking", "openthinker", "gpt-oss"])
+        is_reasoning = any(k in model_id for k in [
+            "deepseek-r1", "thinking", "openthinker", "gpt-oss",
+            "gemma4","qwen3.6:35b-A3B"
+            ])
 
         # Shared baseline — overridden per role below
         options = {
