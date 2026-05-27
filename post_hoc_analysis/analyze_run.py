@@ -1366,15 +1366,18 @@ if (D.chat_rows && D.chat_rows.length) {
     const sumGen   = rows.reduce((s,r) => s + (r.gen_tokens    || 0), 0);
     const sumTime  = rows.reduce((s,r) => s + (r.total_s       || 0), 0);
     return {
-      phase:     p,
-      n:         n,
-      model:     rows[0]?.model || '—',
-      avg_in:    Math.round(sumIn    / n),
-      avg_think: Math.round(sumThink / n),
-      avg_out:   Math.round(sumOut   / n),
-      ratio:     sumOut > 0 ? sumThink / sumOut : 0,
-      pct_time:  totalRunTime > 0 ? sumTime / totalRunTime * 100 : 0,
-      tok_per_s: sumTime > 0 ? sumGen / sumTime : 0,
+      phase:      p,
+      n:          n,
+      model:      rows[0]?.model || '—',
+      avg_in:     Math.round(sumIn    / n),
+      avg_think:  Math.round(sumThink / n),
+      avg_gen:    Math.round(sumGen   / n),
+      avg_resp:   Math.round(sumOut   / n),
+      avg_total:  Math.round((sumIn + sumGen) / n),
+      avg_time_s: sumTime / n,
+      ratio:      sumOut > 0 ? sumThink / sumOut : 0,
+      pct_time:   totalRunTime > 0 ? sumTime / totalRunTime * 100 : 0,
+      tok_per_s:  sumTime > 0 ? sumGen / sumTime : 0,
     };
   });
 
@@ -1384,11 +1387,13 @@ if (D.chat_rows && D.chat_rows.length) {
   const tbl = document.createElement('table');
   tbl.innerHTML = `<thead><tr>
     <th>Phase</th><th>Model</th>
-    <th class="num">Avg In-Tok</th>
-    <th class="num">Avg Think</th>
-    <th class="num">Avg Out</th>
     <th class="num">Avg Total</th>
+    <th class="num">Avg In-Tok</th>
+    <th class="num">Avg Out-Tok</th>
+    <th class="num">Avg Think</th>
+    <th class="num">Avg Response</th>
     <th class="num">Think/Out</th>
+    <th class="num">Avg Time</th>
     <th class="num">% Time</th>
     <th class="num">Avg Tok/s</th>
   </tr></thead>`;
@@ -1396,7 +1401,7 @@ if (D.chat_rows && D.chat_rows.length) {
   phaseStats.forEach(s => {
     if (!s.n) {
       tb.innerHTML += `<tr><td>${s.phase}</td><td class="dim">—</td>` +
-        `<td class="num dim">—</td>`.repeat(6) + `</tr>`;
+        `<td class="num dim">—</td>`.repeat(9) + `</tr>`;
       return;
     }
     // Colour cue: high ratio = deep reasoning, 0 ratio = no thinking trace
@@ -1406,11 +1411,13 @@ if (D.chat_rows && D.chat_rows.length) {
     tb.innerHTML += `<tr>
       <td>${s.phase}</td>
       <td style="font-size:10px;color:#888">${s.model}</td>
+      <td class="num">${fmtK(s.avg_total)}</td>
       <td class="num">${s.avg_in.toLocaleString()}</td>
+      <td class="num">${s.avg_gen.toLocaleString()}</td>
       <td class="num">${s.avg_think.toLocaleString()}</td>
-      <td class="num">${s.avg_out.toLocaleString()}</td>
-      <td class="num">${fmtK(s.avg_in + s.avg_think + s.avg_out)}</td>
+      <td class="num">${s.avg_resp.toLocaleString()}</td>
       <td class="num" style="${ratioStyle}">${s.ratio.toFixed(2)}×</td>
+      <td class="num">${s.avg_time_s.toFixed(1)}s</td>
       <td class="num">${s.pct_time.toFixed(1)}%</td>
       <td class="num">${s.tok_per_s.toFixed(1)}</td>
     </tr>`;
