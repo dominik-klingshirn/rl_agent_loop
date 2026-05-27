@@ -38,7 +38,7 @@ def run_remote_cycle(iteration: int, num_seeds: int):
 
     # 🔧 Pin training to CCD0 (cores 0-7 + their hyperthreads 16-23) for L3 cache locality.
     # Sequential seeds reuse the same cache-warmed CCD across runs.
- # 🔧 Use Config values — populated by config_local.py if present, safe defaults otherwise
+    # 🔧 Use Config values — populated by config_local.py if present, safe defaults otherwise
     cores = Config.REMOTE_TASKSET_CORES
     TASKSET = f"taskset -c {cores}" if cores else ""
 
