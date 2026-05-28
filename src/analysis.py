@@ -976,7 +976,7 @@ def translate_reward_topology(agg_stochastic_json: dict) -> str:
 
     return "\n".join(md)
 
-def generate_metric_payload(iteration:int, num_of_seeds:int =3):
+def generate_metric_payload(iteration:int, num_of_seeds:int =4):
     """
     Goes through the following CSVs analyzes each across all seeds trained
     Results are passed to corresponding aggregating/cross-seed analysis script
@@ -1029,7 +1029,7 @@ def generate_diagnostic_report(metrics: dict) -> str:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--iteration", type=int, required=True)
-    parser.add_argument("--num_seeds", type=int, default=3)
+    parser.add_argument("--num_seeds", type=int, default=4)
     args = parser.parse_args()
     
     generate_metric_payload(args.iteration,args.num_seeds)

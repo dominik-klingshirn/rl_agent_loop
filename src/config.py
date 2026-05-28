@@ -272,3 +272,7 @@ class Config:
     # 6. Hardware optimization — defaults are conservative and work on any machine
     REMOTE_TASKSET_CORES = None   # None = no pinning, works everywhere
     OMP_NUM_THREADS = "4"         # conservative default
+
+    # 7. Training defaults — statistical power baseline, independent of hardware
+    NUM_SEEDS = 4
+    EVAL_EPISODES = 25

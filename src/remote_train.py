@@ -33,17 +33,10 @@ def run_remote_cycle(iteration: int, num_seeds: int):
     print(f"📤 Uploading Reward Function: {local_reward_path}")
     manager.sync_file(str(local_reward_path), str(relative_path))
 
-    # 2. EXECUTE: Trigger Sequential Training & Analysis on Linux
+    # 3. EXECUTE: Trigger Training & Analysis on Linux
     print(f"🚀 Triggering Remote Execution (Iter {iteration}) across {num_seeds} seeds")
 
-    # 🔧 Pin training to CCD0 (cores 0-7 + their hyperthreads 16-23) for L3 cache locality.
-    # Sequential seeds reuse the same cache-warmed CCD across runs.
-    # 🔧 Use Config values — populated by config_local.py if present, safe defaults otherwise
-    cores = Config.REMOTE_TASKSET_CORES
-    TASKSET = f"taskset -c {cores}" if cores else ""
-
     omp = Config.OMP_NUM_THREADS
-
     env_vars = {
         "CAMPAIGN_TAG": os.environ.get("CAMPAIGN_TAG", ws.campaign_tag),
         "LLM_MODEL": os.environ.get("LLM_MODEL", ws.raw_model_name),
@@ -52,27 +45,16 @@ def run_remote_cycle(iteration: int, num_seeds: int):
         "MKL_NUM_THREADS": omp,
         "OPENBLAS_NUM_THREADS": omp,
     }
-    # Build a sequential command chain using '&&'
-    # If any step fails, the chain stops immediately.
-    remote_commands = []
-
-    # A. Train each seed (pinned to CCD0)
-    for seed_id in range(num_seeds):
-        remote_commands.append(
-            f"{TASKSET} {Config.REMOTE_PYTHON_BIN} -u train.py "
-            f"--iteration {iteration} --seed_id {seed_id}"
-        )
-
-    # B. Analysis (also pinned — keeps the chain on one CCD end-to-end)
-    remote_commands.append(
-        f"PYTHONPATH={Config.REMOTE_PROJECT_ROOT} {TASKSET} "
-        f"{Config.REMOTE_PYTHON_BIN} -u -m src.analysis --iteration {iteration}"
+    # Dispatch via the universal seed dispatcher on the Linux side.
+    # local_train.py uses get_parallel_training_config() at runtime to detect
+    # the remote machine's topology and applies concurrency + CCX pinning when
+    # the hardware supports it. On any machine without multi-CCX topology, it
+    # falls back to sequential execution automatically.
+    compound_cmd = (
+        f"PYTHONPATH={Config.REMOTE_PROJECT_ROOT} "
+        f"{Config.REMOTE_PYTHON_BIN} -u -m src.local_train "
+        f"--iteration {iteration} --num_seeds {num_seeds}"
     )
-    # Join them together: train 0 && train 1 && train 2 && analyze
-    compound_cmd = " && ".join(remote_commands)
-    #for command in remote_commands:
-     #   success = manager.stream_command(command, env_vars=env_vars)
-    # This blocks on the Mac until Linux finishes all training and aggregation
 
     success = manager.stream_command(compound_cmd, env_vars=env_vars)
     
@@ -100,7 +82,7 @@ def run_remote_cycle(iteration: int, num_seeds: int):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--iteration", type=int, required=True)
-    parser.add_argument("--num_seeds", type=int, default=3)
+    parser.add_argument("--num_seeds", type=int, default=4)
     args = parser.parse_args()
     
     run_remote_cycle(args.iteration, args.num_seeds)

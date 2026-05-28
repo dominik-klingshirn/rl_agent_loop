@@ -2,7 +2,11 @@ import argparse
 import warnings
 import time
 import random
-from datetime import timedelta 
+import os
+from datetime import timedelta
+import torch
+torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", "4")))
+torch.set_num_interop_threads(1)
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv,VecNormalize, DummyVecEnv
@@ -103,11 +107,11 @@ def run_training_cycle(iteration:int, seed_id:int):
 
     # Collect Evaluation Statistics and Merge 
     eval_data = evaluate_agent(
-        model, 
+        model,
         seed_id=seed_id,
         deterministic= True,
-        reward_code_path=reward_code_path, 
-        num_episodes=10
+        reward_code_path=reward_code_path,
+        num_episodes=Config.EVAL_EPISODES
         )
 
     # Save Evaluation Data 

@@ -8,7 +8,7 @@ MAX_LOOPS=${1:-10}
 CONTROLLER_SCRIPT=${2:-"controllers/standard.py"}
 # 3. Capture the training script name (default to train.py)
 TRAINING_SCRIPT=${3:-"src/train_local.py"}
-NUM_SEEDS=3
+NUM_SEEDS=4
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
