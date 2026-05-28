@@ -945,6 +945,7 @@ class RunSummary:
     validator_verdicts: dict
     iterations: list
     iterations_with_warnings: int
+    model_dir_path: Path | None = None
 
 
 def _safe_max(values):
@@ -1039,7 +1040,9 @@ def load_run(campaign_path, cfg=None):
     if not iters:
         raise FileNotFoundError(f"No iterations found under {campaign_path}")
     records = [assemble_iteration(paths, it, ledger) for it in iters]
-    return aggregate_run(records, cfg)
+    summary = aggregate_run(records, cfg)
+    summary.model_dir_path = paths.model_dir
+    return summary
 
 
 # ===========================================================================
