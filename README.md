@@ -171,6 +171,27 @@ To handle continuous iteration loops and separate LLM inference from PPO trainin
 └── requirements.txt      
 ```
 
+## Hardware Expectations
+
+The training pipeline detects host hardware at runtime via
+`get_parallel_training_config()` in `src/utils.py` and adapts seed
+dispatch accordingly:
+
+- **Linux + multi-CCX CPU (e.g. AMD Zen 2/3/4):** seeds run in parallel
+  with `taskset` pinning each seed to one CCX for L3 locality. On a
+  4-CCX machine (16-core Ryzen), four seeds train concurrently.
+- **Any other platform** (macOS, Windows, single-CCX Linux, detection
+  failure): seeds run sequentially with no pinning. The pipeline produces
+  identical learning outcomes — only wall-clock time differs.
+
+Each parallel run is capped to 4 BLAS/OMP threads, which is roughly
+optimal for the 64×64 MLP policy used here. On machines with fewer than
+4 cores, the cap drops to the available core count.
+
+Defaults: `NUM_SEEDS=4`, `EVAL_EPISODES=25`. These are statistical-power
+defaults independent of hardware; slower machines simply take longer to
+complete a full campaign.
+
 ## Future Work (Phase 2)
 
 The next phase extends algorithmic credit assignment beyond statistical correlation. Rather than having the LLM guess scalar coefficients, it will generate purely structural reward proposals. **Optuna** will then tune the coefficients across parallel mini-runs. An **XGBoost** model trained on the resulting tabular telemetry will compute **SHAP values** to determine exact, non-linear feature importance for each reward component—completing the transition from statistical diagnostics to causal attribution.
