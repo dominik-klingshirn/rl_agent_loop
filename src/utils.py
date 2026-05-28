@@ -6,6 +6,7 @@ import torch
 import platform
 import importlib.util
 import sys
+import glob
 import numpy as np
 import gymnasium as gym
 from stable_baselines3.common.monitor import Monitor
@@ -185,6 +186,53 @@ def linear_schedule(initial_value: float, final_value: float):
 # ---------------------------------------------------------
 # HARDWARE
 # ---------------------------------------------------------
+def get_parallel_training_config():
+    """
+    Detect the host machine and return (concurrency, ccx_groups, threads_per_run)
+    for parallel seed dispatch.
+
+    Fallback chain (each level returns safe sequential config):
+      1. Non-Linux platforms (macOS, Windows) → no CCX topology accessible
+      2. /sys cache topology unreadable → detection failure
+      3. Single CCX detected → concurrency offers no locality benefit
+
+    On a multi-CCX Linux box, returns concurrency = min(ccx_count, 4) with the
+    per-CCX cpu_list strings ready for `taskset -c`.
+
+    Returns:
+        concurrency (int): how many seeds to run in parallel per batch
+        ccx_groups (list[str]): cpu_list strings per CCX (empty list = no pinning)
+        threads_per_run (int): torch + OMP/MKL/OPENBLAS/NUMEXPR thread cap
+    """
+    import os
+    threads_per_run = min(4, os.cpu_count() or 1)
+
+    if sys.platform != "linux":
+        return 1, [], threads_per_run
+
+    try:
+        seen = {}
+        for path in sorted(glob.glob(
+                "/sys/devices/system/cpu/cpu[0-9]*/cache/index3/shared_cpu_list")):
+            s = open(path).read().strip()
+            key = tuple(sorted(
+                int(x) for part in s.split(",")
+                for x in ([part] if "-" not in part else
+                          [str(i) for i in range(int(part.split("-")[0]),
+                                                  int(part.split("-")[1]) + 1)])
+            ))
+            if key not in seen:
+                seen[key] = s
+        ccx_groups = list(seen.values())
+    except Exception:
+        return 1, [], threads_per_run
+
+    if len(ccx_groups) < 2:
+        return 1, [], threads_per_run
+
+    concurrency = min(len(ccx_groups), 4)
+    return concurrency, ccx_groups, threads_per_run
+
 def get_optimized_ppo_params(n_envs, device_type="auto"):
     TARGET_BUFFER_SIZE = 8192 
     TARGET_NUM_MINIBATCHES = 4 
