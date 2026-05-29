@@ -45,16 +45,44 @@ def run_remote_cycle(iteration: int, num_seeds: int):
         "MKL_NUM_THREADS": omp,
         "OPENBLAS_NUM_THREADS": omp,
     }
-    # Dispatch via the universal seed dispatcher on the Linux side.
-    # local_train.py uses get_parallel_training_config() at runtime to detect
-    # the remote machine's topology and applies concurrency + CCX pinning when
-    # the hardware supports it. On any machine without multi-CCX topology, it
-    # falls back to sequential execution automatically.
-    compound_cmd = (
-        f"PYTHONPATH={Config.REMOTE_PROJECT_ROOT} "
-        f"{Config.REMOTE_PYTHON_BIN} -u -m src.local_train "
-        f"--iteration {iteration} --num_seeds {num_seeds}"
-    )
+    # Build remote bash script: detect CCX topology, launch seeds in parallel
+    # with taskset, wait for all, then run analysis. Falls back to sequential
+    # if the remote machine lacks multi-CCX topology.
+    compound_cmd = f"""
+set -o pipefail
+cd {Config.REMOTE_PROJECT_ROOT}
+export PYTHONPATH={Config.REMOTE_PROJECT_ROOT}
+
+mapfile -t CCX < <(cat /sys/devices/system/cpu/cpu[0-9]*/cache/index3/shared_cpu_list 2>/dev/null | sort -u)
+NUM_CCX=${{#CCX[@]}}
+echo "📡 [Remote-Dispatch] Detected $NUM_CCX CCX groups for {num_seeds} seeds"
+
+if [ $NUM_CCX -lt 2 ]; then
+    echo "   Single CCX or detection failed → sequential dispatch"
+    for seed_id in $(seq 0 $(({num_seeds} - 1))); do
+        {Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id $seed_id || exit 1
+    done
+else
+    echo "   Multi-CCX → parallel dispatch with taskset pinning"
+    declare -a PIDS
+    for seed_id in $(seq 0 $(({num_seeds} - 1))); do
+        CCX_IDX=$((seed_id % NUM_CCX))
+        echo "   → seed $seed_id pinned to CCX ${{CCX[$CCX_IDX]}}"
+        taskset -c "${{CCX[$CCX_IDX]}}" {Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id $seed_id &
+        PIDS+=($!)
+    done
+    EXIT_CODE=0
+    for pid in "${{PIDS[@]}}"; do
+        if ! wait $pid; then EXIT_CODE=1; fi
+    done
+    if [ $EXIT_CODE -ne 0 ]; then
+        echo "❌ One or more seeds failed"
+        exit 1
+    fi
+fi
+
+{Config.REMOTE_PYTHON_BIN} -u -m src.analysis --iteration {iteration} --num_seeds {num_seeds}
+"""
 
     success = manager.stream_command(compound_cmd, env_vars=env_vars)
     
