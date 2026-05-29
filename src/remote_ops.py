@@ -56,19 +56,19 @@ class RemoteManager:
         # 2. Construct the full SSH command
         # We cd to remote_root first to ensure relative paths work
         remote_cmd_str = f"{prefix} cd {self.remote_root} && {command}"
-        full_cmd = f"ssh {self.flags} {self.target} \"{remote_cmd_str}\""
-        
+        ssh_argv = ["ssh", *self.flags.split(), self.target, "bash -s"]
+
         print(f"📡 [Stream] Executing on {self.target}")
 
-        # 3. Open the process
         process = subprocess.Popen(
-            full_cmd,
-            shell=True,
+            ssh_argv,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
         )
-
+        process.stdin.write(remote_cmd_str)
+        process.stdin.close()
         # 4. Stream stdout line by line
         while True:
             output = process.stdout.readline()
