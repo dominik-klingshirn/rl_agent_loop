@@ -2,6 +2,7 @@
 import subprocess
 import os
 import sys
+import select
 
 class RemoteManager:
     def __init__(self, hostname, username, ssh_key_path, remote_project_root):
@@ -17,7 +18,15 @@ class RemoteManager:
         # -4: Force IPv4
         # -o BatchMode=yes: Don't ask for passwords (fail if key missing)
         # -o StrictHostKeyChecking=no: Don't block on new fingerprints
-        self.flags = f"-4 -i {self.key_path} -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+        self.flags = (
+            f"-4 -i {self.key_path} "
+            f"-o BatchMode=yes "
+            f"-o StrictHostKeyChecking=no "
+            f"-o UserKnownHostsFile=/dev/null "
+            f"-o LogLevel=ERROR "
+            f"-o ServerAliveInterval=60 "
+            f"-o ServerAliveCountMax=3"
+        )
 
     def run_command(self, command):
         """
@@ -69,14 +78,22 @@ class RemoteManager:
         )
         process.stdin.write(remote_cmd_str)
         process.stdin.close()
-        # 4. Stream stdout line by line
+        # 4. Stream stdout line by line with a 5-min wall-clock timeout per read.
+        # Prevents indefinite blocking when a remote grandchild holds the fd open.
         while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                # Print exactly what Linux sends, stripping double newlines
-                print(f"   [Linux]: {output.rstrip()}")
+            ready, _, _ = select.select([process.stdout], [], [], 300)
+            if ready:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    print(f"   [Linux]: {output.rstrip()}")
+            else:
+                if process.poll() is not None:
+                    break
+                print("⚠️  [stream_command] No output for 5 min — possible remote hang. Killing.")
+                process.kill()
+                return False
 
         # 5. Check final status
         if process.poll() == 0:

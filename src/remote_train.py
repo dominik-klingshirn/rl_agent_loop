@@ -68,12 +68,17 @@ else
     for seed_id in $(seq 0 $(({num_seeds} - 1))); do
         CCX_IDX=$((seed_id % NUM_CCX))
         echo "   → seed $seed_id pinned to CCX ${{CCX[$CCX_IDX]}}"
-        taskset -c "${{CCX[$CCX_IDX]}}" {Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id $seed_id &
+        LOG=/tmp/ard_iter{iteration}_seed$seed_id.log
+        taskset -c "${{CCX[$CCX_IDX]}}" {Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id $seed_id > "$LOG" 2>&1 &
         PIDS+=($!)
     done
     EXIT_CODE=0
     for pid in "${{PIDS[@]}}"; do
         if ! wait $pid; then EXIT_CODE=1; fi
+    done
+    for seed_id in $(seq 0 $(({num_seeds} - 1))); do
+        echo "--- Seed $seed_id ---"
+        cat /tmp/ard_iter{iteration}_seed$seed_id.log 2>/dev/null || true
     done
     if [ $EXIT_CODE -ne 0 ]; then
         echo "❌ One or more seeds failed"
