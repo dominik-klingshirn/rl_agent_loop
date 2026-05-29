@@ -780,9 +780,11 @@ function baseOpts(xLabel, yLabel) {
                      + '<div class="cbox"><canvas id="cSeedSpread"></canvas></div>';
   rdGrid.appendChild(seedCard);
 
-  const SEED_COLORS = ['#4e79a7', '#f28e2b', '#59a14f'];
-
-  const scatterDs = [0, 1, 2].map(si => ({
+  const maxSeeds = Math.max(...D.iterations.map(i => (i.seed_success_rates || []).length));
+  const SEED_COLORS = Array.from({ length: maxSeeds }, (_, i) =>
+    `hsl(${Math.round(i * 360 / maxSeeds)}, 65%, 58%)`
+  );
+  const scatterDs = Array.from({ length: maxSeeds }, (_, si) => ({
     type: 'scatter',
     label: `Seed ${si}`,
     backgroundColor: SEED_COLORS[si],
