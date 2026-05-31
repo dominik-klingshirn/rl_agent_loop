@@ -34,10 +34,10 @@ if MODEL_NAME == "gemma4:e4b":
 
 else:
     model_overrides = {
-            "research_lead":"deepseek-r1:32b",
+            "research_lead":"nemotron-cascade-2",
             "organizer": "gpt-oss:20b",
             "dispatcher":"gpt-oss:20b",
-            "validator":"deepseek-r1:32b",
+            "validator":"nemotron-cascade-2",
             "coder": "qwen3-coder:30b"
         }
 

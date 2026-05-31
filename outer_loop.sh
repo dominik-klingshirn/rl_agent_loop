@@ -7,7 +7,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 # Define the contenders (typically for the 'Strategist' role when running 'Mixture-of-Agents' style experiment)
-MODELS=("gemma4:26b")
+MODELS=("gemma4:26b-mlx")
 
 # --- Defaults ---
 ITERATIONS=""

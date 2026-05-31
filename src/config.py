@@ -17,7 +17,7 @@ class Config:
     INITIAL_FUNC=os.getenv("INITIAL_FUNC", "spin_crash")
     
     # 3. LLM Prompt Templates ###################################################################
-    strategist_role = "strategist_system_prompt"
+    strategist_role = "strategist_system_prompt_test"
     strategist_task = "strategist_user_prompt"
     strategist_template = (strategist_role,strategist_task)
 
@@ -92,7 +92,7 @@ class Config:
 
         is_reasoning = any(k in model_id for k in [
             "deepseek-r1", "thinking", "openthinker", "gpt-oss",
-            "gemma4","qwen3.6:35b-A3B"
+            "gemma4","qwen3.6:35b-A3B","nemotron-cascade-2"
             ])
 
         # Shared baseline — overridden per role below
@@ -117,8 +117,8 @@ class Config:
                 # Needs reliable pattern-matching, not creative divergence.
                 # Context: Diagnostic Report + 1 ledger entry (targeted, not full history).
                 # Low temp keeps the post-mortem grounded; slight top_p room for nuanced language.
-                options["temperature"] = 0.5
-                options["top_p"] = 0.9
+                options["temperature"] = 1.0
+                options["top_p"] = 0.95
                 options["num_ctx"] = 16384
                 options["num_predict"] = 4096   # Post-mortem is an essay, not a treatise
 
@@ -147,10 +147,10 @@ class Config:
                 # Goal: Apply Occam's Razor and select the single most viable hypothesis.
                 # Convergent reasoning — must commit to one choice, not hedge.
                 # Context: Organized proposals + ledger (to avoid repeating prior failures).
-                options["temperature"] = 0.55
-                options["top_p"] = 0.9
+                options["temperature"] = 1.0
+                options["top_p"] = 0.95
                 options["num_ctx"] = 20480      # Proposals + relevant ledger context
-                options["num_predict"] = 2048   # Selection + rationale, not a full essay
+                options["num_predict"] = 4096   
 
             elif role == "dispatcher":
                 # Goal: Split the selected hypothesis into <CODER_PAYLOAD> and <VALIDATOR_PAYLOAD>.
@@ -159,7 +159,7 @@ class Config:
                 options["temperature"] = 0.4
                 options["top_p"] = 0.85
                 options["num_ctx"] = 8192       # Single hypothesis only — smallest window
-                options["num_predict"] = 2048   # Two structured payload blocks, nothing more
+                options["num_predict"] = 4096   # Two structured payload blocks, nothing more
 
             elif role == "coder":
                 # Goal: Translate a mathematical spec into a valid Python reward function.
