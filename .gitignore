@@ -46,6 +46,7 @@ remote_build_demo.py
 bench/
 ARD_WORKSPACE_ROOT/
 results/
+build_diagnostic_video.py
 
 # Local operational infrastructure — not part of the project
 ard_train_start.sh

@@ -1,23 +1,20 @@
 # =============================================================================
 # SCRIPT 2: build_demo_video.py
-# Composites per-seed clips + diagnostic report panel into a full demo video.
+# Composites a hero agent clip + diagnostic report panel into a full demo video.
 #
 # Layout (1920x1080):
-#   ┌──────────┬───────────────────────────────┐
-#   │  seed 0  │                               │
-#   │ (short)  │  Diagnostic                   │
-#   ├──────────┤  Report                       │
-#   │  seed 1  │  (syntax-coloured .md)        │
-#   │          │                               │
-#   ├──────────┤                               │
-#   │  seed 2  │                               │
-#   │ (long)   │                               │
-#   └──────────┴───────────────────────────────┘
-#   Seeds sorted by clip duration (shortest top → longest bottom).
-#   Iteration label overlaid at top-left.
+#   ┌────────────────────────────────────────────────────────────────────────┐
+#   │  ITERATION 01                                   [STATUS PILL]          │  <- 96px header
+#   ├──────────────────────────────┬─────────────────────────────────────────┤
+#   │                              │                                         │
+#   │    Hero Agent Clip           │    Diagnostic Report                    │
+#   │    (seed 0, scaled)          │    (Playwright HTML render)             │
+#   │                              │                                         │
+#   └──────────────────────────────┴─────────────────────────────────────────┘
+#   740px (CLIP_AREA_W)            1180px (REPORT_W)
 #
 # Usage:
-#   python src/build_demo_video.py \
+#   python post_hoc_analysis/build_demo_video.py \
 #       --campaign_tag "2025-01-15_baseline_10cycles_500kSteps" \
 #       --model_name "gpt-4o" \
 #       --iterations 1 2 3 4 5 \
@@ -25,22 +22,22 @@
 #       --output_name "demo.mp4"
 # =============================================================================
 
+import io
 import os
+import re
 import sys
 import argparse
-import textwrap
 from pathlib import Path
 
-import re
+import markdown
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
+from playwright.sync_api import sync_playwright
 from moviepy import (
     VideoFileClip,
     ImageClip,
     concatenate_videoclips,
-    clips_array,
     CompositeVideoClip,
-    TextClip,
     ColorClip,
 )
 
@@ -48,15 +45,23 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from src.workspace_manager import ExperimentWorkspace
 
 
-# --- Layout Constants (tweak to taste) ----------------------------------------
-CANVAS_W      = 1920
-CANVAS_H      = 1080
-# Clip column width is derived inside build_iteration_composite from num_seeds
-# (vertical layout: per-clip height = CANVAS_H // num_seeds, width preserves 3:2).
-MAX_CLIP_DUR  = 20.0    # Hard cap per episode clip (seconds)
-FPS           = 30
-TITLE_DUR     = 2.5     # Seconds each iteration title card is shown
-BG_COLOR      = (10, 10, 20)
+# --- Layout Constants ---------------------------------------------------------
+CANVAS_W, CANVAS_H = 1920, 1080
+HEADER_H    = 96
+REPORT_W    = 1180
+CLIP_AREA_W = CANVAS_W - REPORT_W
+CONTENT_H   = CANVAS_H - HEADER_H
+MAX_CLIP_DUR, MIN_CLIP_DUR = 12.0, 3.0
+FPS         = 30
+INTRO_DUR, OUTRO_DUR = 4.0, 5.0
+BG_COLOR    = (10, 10, 18)
+HERO_SEED   = 0
+STATUS_STYLE = {"CONVERGED": (90, 220, 130), "UNSTABLE": (255, 90, 90)}
+BASE_CSS = """
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0c0f1c; color:#d2d2dc;
+         font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+"""
 
 
 # --- Utility: Freeze last frame to fill up to max_dur -------------------------
@@ -75,170 +80,126 @@ def freeze_to_duration(clip: VideoFileClip, max_dur: float) -> VideoFileClip:
     return concatenate_videoclips([clip, freeze_clip])
 
 
-# --- Utility: Render markdown report to a PIL image ---------------------------
+# --- Utility: Shared HTML → NumPy renderer ------------------------------------
 
-# Color scheme for the report panel
-MD_BG       = (12, 15, 28)
-MD_TEXT     = (210, 210, 220)
-MD_HEADER1  = (140, 210, 255)   # # headers
-MD_HEADER2  = (100, 185, 240)   # ## headers
-MD_HEADER3  = (80,  165, 225)   # ### headers
-MD_RED      = (255,  90,  90)   # 🔴 traitor components / CRITICAL
-MD_YELLOW   = (255, 210,  80)   # 🟡 dead weight
-MD_GREEN    = (90,  220, 130)   # 🟢 useful signal
-MD_PURPLE   = (190, 130, 240)   # 🟣 hidden dependency (non-linear, MI-detected)
-MD_DIM      = (120, 120, 140)   # separator lines / dashes
-
-
-def _pick_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Try common monospace font paths across Linux and macOS."""
-    candidates = [
-        # Linux (DejaVu)
-        f"/usr/share/fonts/truetype/dejavu/DejaVuSansMono{'-Bold' if bold else ''}.ttf",
-        # macOS
-        "/System/Library/Fonts/Supplemental/Courier New Bold.ttf" if bold
-        else "/System/Library/Fonts/Supplemental/Courier New.ttf",
-        # Generic fallback path
-        "/usr/share/fonts/truetype/liberation/LiberationMono{}-Regular.ttf".format("-Bold" if bold else ""),
-    ]
-    for path in candidates:
-        if Path(path).exists():
-            return ImageFont.truetype(path, size)
-    return ImageFont.load_default()  # last resort — no size control
-
-def _pick_font_path() -> str | None:
-    candidates = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
-        "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
-    ]
-    for path in candidates:
-        if Path(path).exists():
-            return path
-    return None  # MoviePy will use its own default
-
-def _strip_inline_md(text: str) -> str:
-    """
-    Remove inline markdown syntax so the rendered panel shows clean text.
-    Handles: **bold**, *italic*, `code spans`, and leading bullet markers.
-    """
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)   # **bold**
-    text = re.sub(r'\*(.+?)\*',     r'\1', text)    # *italic*
-    text = re.sub(r'`(.+?)`',       r'\1', text)    # `code`
-    return text
-
-
-# Supersample factor — render at SS× the panel size, then LANCZOS-downsample.
-# Critical for crisp small text under h264 compression at 1080p.
-SS       = 2
-RESAMPLE = getattr(Image, "Resampling", Image).LANCZOS
-
-
-def markdown_to_image(
-    md_path: Path,
-    width: int,
-    height: int,
-    save_path: Path | None = None,
-) -> np.ndarray:
-    """
-    Renders a diagnostic report .md file into a numpy RGB image.
-    Applies syntax-aware coloring (headers, emoji flags, separators).
-
-    Renders at SS× the requested size and downsamples with LANCZOS so text
-    stays crisp after h264 compression. Optionally writes the rendered PNG
-    to save_path for inspection / debugging (no re-render side effect — the
-    same array is returned regardless).
-    """
-    with open(md_path, "r") as f:
-        raw_lines = f.readlines()
-
-    # Render at supersample resolution; downsample at the end.
-    rw, rh = width * SS, height * SS
-    img    = Image.new("RGB", (rw, rh), color=MD_BG)
-    draw   = ImageDraw.Draw(img)
-
-    # Font sizes tuned for the wider vertical-layout report panel (~1380px @ 3 seeds).
-    font_normal = _pick_font(18 * SS)
-    font_bold   = _pick_font(18 * SS, bold=True)
-    font_h1     = _pick_font(28 * SS, bold=True)
-    font_h2     = _pick_font(24 * SS, bold=True)
-    font_h3     = _pick_font(20 * SS, bold=True)
-
-    PAD    = 20 * SS
-    LINE_H = 26 * SS
-
-    # Use actual font metrics for wrap width — DejaVuSansMono is monospace,
-    # so one M-advance per character. Fallback if getlength is unavailable.
-    try:
-        char_w = font_normal.getlength("M") or 12 * SS
-    except AttributeError:
-        char_w = 12 * SS
-    WRAP_CHARS = max(1, int((rw - 2 * PAD) / char_w))
-    y          = PAD
-
-    for raw in raw_lines:
-        line = raw.rstrip("\n")
-
-        # Determine color + font + strip markdown syntax
-        if not line.strip():
-            # Blank line — paragraph break, advance half a line and move on
-            y += LINE_H // 2
-            continue
-        elif line.startswith("# "):
-            color, font, text = MD_HEADER1, font_h1, _strip_inline_md(line[2:])
-        elif line.startswith("## "):
-            color, font, text = MD_HEADER2, font_h2, _strip_inline_md(line[3:])
-        elif line.startswith("### "):
-            color, font, text = MD_HEADER3, font_h3, _strip_inline_md(line[4:])
-        elif line.startswith("---") or set(line.strip()) <= {"-", "=", "_"}:
-            color, font, text = MD_DIM, font_normal, "─" * (WRAP_CHARS - 2)
-        elif line.startswith("- ") or line.startswith("* "):
-            # Bullet list item — swap marker for a clean bullet, then check flags
-            inner = _strip_inline_md(line[2:])
-            if "🔴" in inner or "CRITICAL" in inner.upper() or "TRAITOR" in inner.upper():
-                color, font = MD_RED, font_bold
-            elif "🟣" in inner or "HIDDEN DEPENDENCY" in inner.upper():
-                color, font = MD_PURPLE, font_bold
-            elif "🟡" in inner or "DEAD WEIGHT" in inner.upper():
-                color, font = MD_YELLOW, font_normal
-            elif "🟢" in inner or "USEFUL" in inner.upper():
-                color, font = MD_GREEN, font_normal
-            else:
-                color, font = MD_TEXT, font_normal
-            text = "• " + inner
-        elif "🔴" in line or "CRITICAL" in line.upper() or "TRAITOR" in line.upper():
-            color, font, text = MD_RED, font_bold, _strip_inline_md(line)
-        elif "🟣" in line or "HIDDEN DEPENDENCY" in line.upper():
-            color, font, text = MD_PURPLE, font_bold, _strip_inline_md(line)
-        elif "🟡" in line or "DEAD WEIGHT" in line.upper():
-            color, font, text = MD_YELLOW, font_normal, _strip_inline_md(line)
-        elif "🟢" in line or "USEFUL" in line.upper():
-            color, font, text = MD_GREEN, font_normal, _strip_inline_md(line)
-        elif line.startswith("**") and line.endswith("**"):
-            color, font, text = MD_HEADER3, font_bold, line.strip("*")
-        else:
-            color, font, text = MD_TEXT, font_normal, _strip_inline_md(line)
-
-        # Word-wrap long lines
-        wrapped = textwrap.wrap(text, width=WRAP_CHARS) or [""]
-        for subline in wrapped:
-            if y + LINE_H > rh - PAD:
-                break  # clip overflow
-            draw.text((PAD, y), subline, font=font, fill=color)
-            y += LINE_H
-        if y + LINE_H > rh - PAD:
-            break
-
-    # Downsample to target size with LANCZOS for crisp anti-aliased text.
-    img = img.resize((width, height), RESAMPLE)
-
-    # Optional: persist the rendered panel for inspection (useful as a
-    # standalone diagnostic of how the Strategist's report evolves).
-    if save_path is not None:
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        img.save(save_path)
-
+def render_html_to_image(html: str, width: int, height: int) -> np.ndarray:
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": height},
+                                device_scale_factor=2)
+        page.set_content(html)
+        png = page.screenshot(clip={"x": 0, "y": 0, "width": width, "height": height})
+        browser.close()
+    img = Image.open(io.BytesIO(png)).convert("RGB").resize((width, height))
     return np.array(img)
+
+
+# --- Utility: Preprocessing markdown for correct table rendering --------------
+
+def preprocess_markdown(text: str) -> str:
+    """Ensure blank line before any markdown table block."""
+    lines = text.split('\n')
+    result = []
+    for i, line in enumerate(lines):
+        if (line.startswith('|') and
+                i > 0 and result and
+                result[-1].strip() and
+                not result[-1].strip().startswith('|')):
+            result.append('')
+        result.append(line)
+    return '\n'.join(result)
+
+
+# --- Utility: Render markdown report to a NumPy image via Playwright ----------
+
+def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
+    md_text = preprocess_markdown(md_path.read_text())
+    body = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
+    html = f"""<html><head><style>
+      {BASE_CSS}
+      body {{ font-size:14px; padding:20px; }}
+      h1 {{ color:#8cd2ff; font-size:17px; margin:10px 0 6px; }}
+      h2 {{ color:#64b9f0; font-size:15px; margin:8px 0 5px; }}
+      h3 {{ color:#50a5e1; font-size:14px; margin:6px 0 4px; }}
+      p, li {{ line-height:1.45; margin:3px 0; }}
+      strong {{ color:#fff; }}
+      table {{ border-collapse:collapse; width:100%; font-size:12px; margin:8px 0; table-layout:fixed; }}
+      td, th {{ border:1px solid #2a2d4a; padding:5px 8px; }}
+      th {{ background:#1a1d32; }}
+      td:last-child {{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+      hr {{ border:none; border-top:1px solid #2a2d4a; margin:8px 0; }}
+      body::after {{ content:''; position:fixed; left:0; right:0; bottom:0; height:80px;
+                     background:linear-gradient(transparent,#0c0f1c); }}
+    </style></head><body>{body}</body></html>"""
+    return render_html_to_image(html, width, height)
+
+
+# --- Utility: Parse convergence status from a report -------------------------
+
+def parse_status(report_path: Path):
+    if not report_path.exists():
+        return None
+    m = re.search(r"\*\*Status:\*\*.*?\*\*(CONVERGED|UNSTABLE)", report_path.read_text())
+    return m.group(1) if m else None
+
+
+# --- Utility: Render header bar -----------------------------------------------
+
+def make_header(iteration: int, status, width: int = CANVAS_W, height: int = HEADER_H) -> np.ndarray:
+    pill = ""
+    if status in STATUS_STYLE:
+        r, g, b = STATUS_STYLE[status]
+        rgb = f"rgb({r},{g},{b})"
+        pill = (f'<div class="pill"><span class="dot" style="background:{rgb};color:{rgb}">'
+                f'</span><span style="color:{rgb}">{status}</span></div>')
+    html = f"""<html><head><style>
+      {BASE_CSS}
+      body {{ background:#10131f; height:{height}px; display:flex; align-items:center;
+              justify-content:space-between; padding:0 36px; border-bottom:2px solid #1f2540; }}
+      .iter {{ font-size:30px; font-weight:700; letter-spacing:3px; color:#e8e8f0; }}
+      .pill {{ display:flex; align-items:center; gap:12px; font-size:23px; font-weight:700;
+               letter-spacing:2px; background:#161a2e; padding:9px 22px; border-radius:24px;
+               border:1px solid #262c48; }}
+      .dot {{ width:15px; height:15px; border-radius:50%; box-shadow:0 0 12px currentColor; }}
+    </style></head><body>
+      <div class="iter">ITERATION {iteration:02d}</div>{pill}
+    </body></html>"""
+    return render_html_to_image(html, width, height)
+
+
+# --- Utility: Intro / outro cards ---------------------------------------------
+
+def make_intro_card(width: int = CANVAS_W, height: int = CANVAS_H) -> np.ndarray:
+    html = f"""<html><head><style>
+      {BASE_CSS}
+      body {{ height:{height}px; display:flex; flex-direction:column; align-items:center;
+              justify-content:center; text-align:center; padding:0 80px; }}
+      .title {{ font-size:64px; font-weight:800; letter-spacing:2px;
+                background:linear-gradient(90deg,#8cd2ff,#64b9f0);
+                -webkit-background-clip:text; -webkit-text-fill-color:transparent; }}
+      .sub {{ font-size:27px; color:#a8b0c8; margin-top:26px; max-width:1100px; line-height:1.5; }}
+      .meta {{ font-size:17px; color:#5a6280; margin-top:42px; letter-spacing:3px; }}
+    </style></head><body>
+      <div class="title">ARD · Algorithmic Reward Design</div>
+      <div class="sub">An autonomous multi-agent system where LLMs read RL training telemetry and iteratively redesign the reward function.</div>
+      <div class="meta">LUNARLANDER-V3 · SELF-HOSTED LLMs · CLOSED-LOOP</div>
+    </body></html>"""
+    return render_html_to_image(html, width, height)
+
+
+def make_outro_card(width: int = CANVAS_W, height: int = CANVAS_H) -> np.ndarray:
+    html = f"""<html><head><style>
+      {BASE_CSS}
+      body {{ height:{height}px; display:flex; flex-direction:column; align-items:center;
+              justify-content:center; text-align:center; }}
+      .result {{ font-size:46px; font-weight:700; color:#e8e8f0; }}
+      .hl {{ color:#5adc82; }}
+      .repo {{ font-size:24px; color:#64b9f0; margin-top:50px; letter-spacing:1px; }}
+    </style></head><body>
+      <div class="result">Crash-dominant &rarr; <span class="hl">73% landing success</span><br>across 5 reward-design iterations</div>
+      <div class="repo">github.com/dominik-klingshirn/rl_agent_loop</div>
+    </body></html>"""
+    return render_html_to_image(html, width, height)
 
 
 # --- Core: build one iteration's composite clip --------------------------------
@@ -248,95 +209,44 @@ def build_iteration_composite(
     ws: ExperimentWorkspace,
     num_seeds: int,
 ) -> CompositeVideoClip:
-    """
-    Loads seed clips, freezes them to a uniform duration (max 20s, but all
-    clips within one iteration sync to the longest natural duration among them),
-    arranges them side-by-side, and composes with the diagnostic report panel.
-    """
     videos_dir  = ws.dirs["root"] / "artifacts" / f"iteration{iteration:02d}" / "videos"
-    reports_dir = ws.dirs["telemetry_reports"]
+    report_path = ws.dirs["telemetry_reports"] / f"iter{iteration:02d}_report.md"
 
-    # --- Load seed clips ------------------------------------------------------
-    clips = []
-    for seed_id in range(num_seeds):
-        clip_path = videos_dir / f"iter{iteration:02d}_seed{seed_id}.mp4"
-        if not clip_path.exists():
-            raise FileNotFoundError(
-                f"Missing clip: {clip_path}\n"
-                f"Run record_clips.py for iteration {iteration} first."
-            )
-        clips.append(VideoFileClip(str(clip_path)))
+    hero = min(HERO_SEED, num_seeds - 1)
+    clip_path = videos_dir / f"iter{iteration:02d}_seed{hero}.mp4"
+    if not clip_path.exists():
+        raise FileNotFoundError(f"Missing hero clip: {clip_path}")
+    clip = VideoFileClip(str(clip_path))
+    target_dur = max(min(clip.duration, MAX_CLIP_DUR), MIN_CLIP_DUR)
+    clip = freeze_to_duration(clip, target_dur)
 
-    # All clips share the same target duration: longest natural clip, capped at MAX_CLIP_DUR
-    natural_durations = [c.duration for c in clips]
-    target_dur = min(max(natural_durations), MAX_CLIP_DUR)
+    margin = 40
+    scale  = min((CLIP_AREA_W - 2*margin) / 600, (CONTENT_H - 2*margin) / 400)
+    cw, ch = int(600*scale), int(400*scale)
+    clip = clip.resized((cw, ch)).with_position(
+        ((CLIP_AREA_W - cw)//2, HEADER_H + (CONTENT_H - ch)//2))
 
-    # Sort by natural duration ascending — shortest clip goes on top
-    order  = sorted(range(len(clips)), key=lambda i: natural_durations[i])
-    clips  = [clips[i] for i in order]
-
-    # Freeze short clips so all seeds end at the same time
-    clips = [freeze_to_duration(c, target_dur) for c in clips]
-
-    # --- Resize clips for vertical stacking -----------------------------------
-    # Each seed gets an equal horizontal slice of CANVAS_H; width preserves 3:2.
-    clip_h       = CANVAS_H // num_seeds
-    clip_w       = int(clip_h * (600 / 400))   # LunarLander native res is 600×400
-    clip_area_w  = clip_w                       # clip column width
-    report_w     = CANVAS_W - clip_area_w
-
-    clips = [c.resized((clip_w, clip_h)) for c in clips]
-
-    # Vertical column of seeds (shortest top → longest bottom)
-    agent_strip = clips_array([[c] for c in clips])   # shape: [num_seeds rows, 1 col]
-    agent_strip = agent_strip.with_position((0, 0))
-
-    # --- Diagnostic report panel (right side) --------------------------------
-    report_path = reports_dir / f"iter{iteration:02d}_report.md"
-    png_path    = reports_dir / f"iter{iteration:02d}_report.png"
     if report_path.exists():
-        report_arr = markdown_to_image(
-            report_path,
-            width=report_w,
-            height=CANVAS_H,
-            save_path=png_path,
-        )
+        report_arr = markdown_to_image(report_path, REPORT_W, CONTENT_H)
     else:
-        # Blank placeholder if report is missing
-        print(f"  WARNING: Report not found at {report_path}. Using blank panel.")
-        report_arr = np.full((CANVAS_H, report_w, 3), fill_value=MD_BG, dtype=np.uint8)
+        print(f"  WARNING: report missing at {report_path}")
+        report_arr = np.full((CONTENT_H, REPORT_W, 3), BG_COLOR, dtype=np.uint8)
+    report_clip = (ImageClip(report_arr, duration=target_dur)
+                   .with_position((CLIP_AREA_W, HEADER_H))
+                   .with_fps(FPS))
 
-    report_clip = (
-        ImageClip(report_arr, duration=target_dur)
-        .with_position((clip_area_w, 0))
-        .with_fps(FPS)
-    )
-
-    # --- Thin vertical divider between clip column and report -----------------
-    divider_arr = np.full((CANVAS_H, 2, 3), fill_value=(40, 50, 80), dtype=np.uint8)
-    divider     = ImageClip(divider_arr, duration=target_dur).with_position((clip_area_w - 1, 0)).with_fps(FPS)
-
-    # --- Iteration label (top-left corner) ------------------------------------
-    label = (
-        TextClip(
-            text=f"Iteration {iteration:02d}",
-            font_size=32,
-            color="white",
-            font=_pick_font_path(),
-            stroke_color="black",
-            stroke_width=1,
-        )
-        .with_duration(target_dur)
-        .with_position((20, 18))
-    )
-
-    # --- Background fill (handles letterbox areas above/below clip strip) ----
+    header_clip = (ImageClip(make_header(iteration, parse_status(report_path)),
+                             duration=target_dur)
+                   .with_position((0, 0))
+                   .with_fps(FPS))
+    divider = (ImageClip(np.full((CONTENT_H, 2, 3), (40, 50, 80), dtype=np.uint8),
+                         duration=target_dur)
+               .with_position((CLIP_AREA_W - 1, HEADER_H))
+               .with_fps(FPS))
     bg = ColorClip(size=(CANVAS_W, CANVAS_H), color=BG_COLOR, duration=target_dur)
 
-    return CompositeVideoClip(
-        [bg, agent_strip, divider, report_clip, label],
-        size=(CANVAS_W, CANVAS_H),
-    )
+    return CompositeVideoClip([bg, clip, divider, report_clip, header_clip],
+                              size=(CANVAS_W, CANVAS_H))
 
 
 # --- Build full demo ----------------------------------------------------------
@@ -347,37 +257,11 @@ def build_full_demo(
     num_seeds: int,
     output_name: str,
 ):
-    """
-    Chains iteration composites (with a brief title card between each) and
-    exports the final demo video to artifacts/videos/{output_name}.
-    """
-    segments = []
-
-    for i, iteration in enumerate(iterations):
+    segments = [ImageClip(make_intro_card(), duration=INTRO_DUR).with_fps(FPS)]
+    for iteration in iterations:
         print(f"\n  Building composite for iteration {iteration:02d}")
-
-        # Short title card between iterations (except before the first)
-        if i > 0:
-            card_txt = (
-                TextClip(
-                    text=f"Iteration {iteration:02d}",
-                    font_size=52,
-                    color="white",
-                    font=_pick_font_path(),
-                    bg_color="black",
-                )
-                .with_duration(TITLE_DUR)
-                .with_position("center")
-            )
-            card = CompositeVideoClip(
-                [ColorClip(size=(CANVAS_W, CANVAS_H), color=(0, 0, 0), duration=TITLE_DUR), card_txt],
-                size=(CANVAS_W, CANVAS_H),
-            )
-            segments.append(card)
-
-        composite = build_iteration_composite(iteration, ws, num_seeds)
-        segments.append(composite)
-
+        segments.append(build_iteration_composite(iteration, ws, num_seeds))
+    segments.append(ImageClip(make_outro_card(), duration=OUTRO_DUR).with_fps(FPS))
     final = concatenate_videoclips(segments, method="compose")
 
     output_path = ws.dirs["root"] / "artifacts" / f"{output_name}.mp4"
