@@ -150,7 +150,7 @@ class Config:
                 options["temperature"] = 1.0
                 options["top_p"] = 0.95
                 options["num_ctx"] = 20480      # Proposals + relevant ledger context
-                options["num_predict"] = 4096   
+                options["num_predict"] = 8192   
 
             elif role == "dispatcher":
                 # Goal: Split the selected hypothesis into <CODER_PAYLOAD> and <VALIDATOR_PAYLOAD>.
