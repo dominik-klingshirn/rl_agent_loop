@@ -194,6 +194,7 @@ def append_chatresponse_row(
     csv_path: str,
     model_name: str,
     response: ChatResponse,
+    attempt_num:int,
     *,
     run_id: Optional[str] = None,
     iteration: Optional[int] = None,
@@ -229,12 +230,15 @@ def append_chatresponse_row(
         cognition_path=cognition_path,
         options=options,
     )
-
+    row['call_attempt_num'] = attempt_num
+    row['total_ctx'] = row.get('prompt_eval_count',0) + row.get('eval_count',0)
+    
     fieldnames = [
         # IDs / experiment context
         "run_id",
         "iteration",
         "phase",
+        "call_attempt_num",
         "prompt_type",
         "model_name",
         "cognition_path",
@@ -270,6 +274,7 @@ def append_chatresponse_row(
         "prompt_eval_duration_ns",
         "eval_count",
         "eval_duration_ns",
+        'total_ctx'
     ]
 
     file_exists = os.path.exists(csv_path)

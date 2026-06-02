@@ -1,6 +1,10 @@
+import sys
 import time
 import ollama
+from ollama import ChatResponse
 from typing import Optional, Dict, Any, Union
+
+# -- project imports --
 from src import utils, llm_utils
 from src.config import Config
 from src.workspace_manager import ExperimentWorkspace
@@ -28,7 +32,10 @@ class CognitiveNode:
         self.csv_container = self.ws.containers.get("cognition_csv", None)
         
         # 3. Markdown Report Buffer (Human readable summary)
+        self.plan_path = self.ws.get_path("cognition_markdown", self.iteration, "cognition_record.md")
+        self.fail_path = self.ws.get_path("cognition_fails", self.iteration, "failed_calls_record.md")
         self.markdown_buffer = []
+        self.failed_calls = []
 
     def chat(self, 
              phase_name: str, 
@@ -52,15 +59,34 @@ class CognitiveNode:
             - Parsed Dict (if parse_json=True and success)
             - None (if API failed or JSON parsing failed)
         """
-        print(f"🔵 AGENT (Iter {self.iteration}): Phase '{phase_name}' Model {model_override if model_override else self.model}")
+        active_model = model_override if model_override else self.model
+        print(f"🔵 AGENT (Iter {self.iteration}): Phase '{phase_name}' Model {active_model}")
 
 
         # 1. Execute Robust API Call
-        response = self._robust_api_call(system_prompt, user_prompt, options, model_override)
+        response,empty_responses = self._robust_api_call(system_prompt, user_prompt, options, model_override)
         
+        if len(empty_responses) > 0 and self.csv_container:
+                run_id = f"Iter_{self.iteration:02d}_{phase_name}_fail"
+                for attempt_num, empty_response in enumerate(empty_responses):
+                    llm_utils.append_chatresponse_row(
+                        csv_path=self.csv_container,
+                        model_name=active_model,
+                        response=empty_response,
+                        attempt_num=attempt_num + 1,
+                        run_id=run_id,
+                        iteration=self.iteration,
+                        phase=phase_name,
+                        prompt_type=phase_name,
+                        cognition_path=self.fail_path,
+                        options=options
+                    )
+                    self.failed_calls.append((f"Attempt {attempt_num} Phase: {phase_name} [Thinking Trace] {active_model}", empty_response['message']['thinking']))
+
         if not response:
             print(f"   💀 Critical Failure in {phase_name}: No response received.")
-            return None
+            self.save_report()
+            return sys.exit(1)
 
         # 2. Parse Content (If requested)
         content = response['message']['content']
@@ -84,12 +110,13 @@ class CognitiveNode:
         self._log_interaction(
             phase_name=phase_name,
             response=response,
+            attempt_num=len(empty_responses)+1,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             log_content_for_md=log_content,
             options=options,
             model_override=model_override if model_override else self.model
-        )
+            )
 
         # Return the parsed dict if JSON was requested, otherwise raw text
         return parsed_result if parse_json else content
@@ -98,7 +125,7 @@ class CognitiveNode:
         """Flushes the internal markdown buffer to the workspace file."""
         if self.markdown_buffer:
             # Save the plan for human review
-            plan_path = self.ws.get_path("cognition_markdown", self.iteration, "cognition_record.md")
+            
             final_content = f"# Cognition prompts and calls: Iteration:{self.iteration}\n\n"
             for filename, prompt_obj in self.markdown_buffer:
                 final_content += f"\n" 
@@ -106,15 +133,34 @@ class CognitiveNode:
                 final_content += f"\n"
                 final_content += prompt_obj + f"\n\n"
 
-            with open(plan_path, "w") as f:
+            with open(self.plan_path, "w") as f:
                 f.write(final_content)
-            print(f"📝 Plan saved to {plan_path}") 
+            print(f"📝 Plan saved to {self.plan_path}")
+        
+        if self.failed_calls:
+            # Save the plan for human review
+            final_content = f"# Thinking Traces for Empty Responses: Iteration:{self.iteration}\n\n"
+            for filename, prompt_obj in self.failed_calls:
+                final_content += f"\n" 
+                final_content += f"# {filename}"
+                final_content += f"\n"
+                final_content += prompt_obj + f"\n\n"
 
-    def _robust_api_call(self, system_prompt: str, user_prompt: str, options: Dict,model_override: Optional[str] = None) -> Optional[Any]:
+            with open(self.fail_path, "w") as f:
+                f.write(final_content)
+            print(f"    Thinking Traces of Empty Responses saved to {self.fail_path}") 
+
+    def _robust_api_call(self,
+                         system_prompt: str,
+                         user_prompt: str,
+                         options: Dict,
+                         model_override: Optional[str] = None
+                         ) -> Optional[Any]:
         """Internal loop handling retries, timeouts, and empty responses."""
-        # Check who is speaking, needed for MOE runs
+        # Check who is speaking, needed for 'Mixture of Agents' runs
         active_model = model_override if model_override else self.model
         # print(f"Model listed as 'active_model' inside of '_robust_api_call {active_model}'") # For debugging
+        empty_responses = []
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = ollama.chat(
@@ -129,19 +175,30 @@ class CognitiveNode:
                 # Validation: Check for empty content
                 if not response or 'message' not in response or not response['message']['content'].strip():
                     print(f"   ⚠️ Attempt {attempt}: Received empty response from {active_model}. Retrying...")
+                    thinking_trace = response.get('message', {}).get('thinking', "")
+                    if thinking_trace:
+                        empty_responses.append(response)
                     time.sleep(2**(attempt-1))
                     continue
                     
-                return response
+                return response, empty_responses
 
             except Exception as e:
                 print(f"   ⚠️ Attempt {attempt} Error: {e}")
                 # Exponential Backoff strategy: Wait 2s, 4s, 8s...
                 time.sleep(2 ** attempt)
         
-        return None
+        return None, empty_responses
 
-    def _log_interaction(self, phase_name, response, system_prompt, user_prompt, log_content_for_md, options,model_override: Optional[str] = None):
+    def _log_interaction(self,
+                         phase_name:str, 
+                         response:ChatResponse,
+                         attempt_num:int,
+                         system_prompt:str,
+                         user_prompt:str,
+                         log_content_for_md:str,
+                         options,model_override: Optional[str] = None
+                         )-> None:
         """Encapsulates all side-effect logging to clean up the main logic."""
         run_id = f"Iter_{self.iteration:02d}_{phase_name}"
         active_model = model_override if model_override else self.model
@@ -166,6 +223,7 @@ class CognitiveNode:
                 csv_path=self.csv_container,
                 model_name=active_model,
                 response=response,
+                attempt_num=attempt_num,
                 run_id=run_id,
                 iteration=self.iteration,
                 phase=phase_name,

@@ -40,6 +40,7 @@ class ExperimentWorkspace:
             "cognition": self.model_root_path / "cognition",
             "cognition_json": self.model_root_path / "cognition"/ "json_cognition_records",
             "cognition_markdown": self.model_root_path / "cognition"/ "markdown_cognition_records",
+            "cognition_fails": self.model_root_path / "cognition"/ "failed_calls",
             "code": self.model_root_path / "generated_code",
             "failed_code": self.model_root_path / "generated_code" / "failed_attempts",
             "telemetry_iteration": self.model_root_path / "telemetry" / f"iteration_{int(iteration):02d}",
