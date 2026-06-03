@@ -207,7 +207,7 @@ def _git_provenance() -> dict:
 
 def write_run_manifest(ws) -> dict | None:
     """
-    Write <model_dir>/run_manifest.json once per run.
+    Write <model_dir>/config_snapshot/run_manifest.json once per run.
 
     Called unconditionally each iteration; the skip-if-exists guard makes it
     write only on the first call (iteration 1).  Never aborts the training run.
