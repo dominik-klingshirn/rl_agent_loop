@@ -39,6 +39,8 @@ from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))  # project root for src imports
+
 try:
     from scipy import stats as _scipy_stats
 except ImportError:
@@ -622,6 +624,114 @@ DATA.model_groups.forEach(group=>{
 
 
 # ---------------------------------------------------------------------------
+# Configuration diff header (Tier 3)
+# ---------------------------------------------------------------------------
+
+def _print_config_diff(label_a, comp_a, labs_a, label_b, comp_b, labs_b):
+    """Print a human-readable config diff and axis count between two campaigns."""
+    try:
+        from src.run_manifest import diff_comparability as _diff, short as _short
+    except ImportError:
+        print("\n  [Config diff] src.run_manifest not importable — skipping diff.", file=sys.stderr)
+        return
+
+    _UNAVAIL = {"FORCED_MIXED", None}
+    if comp_a in _UNAVAIL or comp_b in _UNAVAIL:
+        print(f"\n  [Config diff] {label_a} vs {label_b}: comparability data unavailable.", file=sys.stderr)
+        return
+
+    diffs = _diff(comp_a, comp_b)
+    print(f"\n{'='*70}")
+    print(f"  Config diff: {label_a}  vs  {label_b}")
+    print(f"{'='*70}")
+
+    if not diffs:
+        print("  NO CONFIGURATION DIFFERENCES")
+        if comp_a == comp_b:
+            return
+    else:
+        # Classify diffs into axes
+        roles_model_changed: set[str] = set()
+        roles_sampling_changed: set[str] = set()
+        prompt_slots_changed: set[str] = set()
+        code_slots_changed: set[str] = set()
+        experiment_fields_changed: set[str] = set()
+
+        rendered_lines: list[str] = []
+
+        for path, val_a, val_b in diffs:
+            parts = path.split(".")
+            if len(parts) >= 3 and parts[0] == "agents":
+                role, field = parts[1], parts[2]
+                if field == "model":
+                    roles_model_changed.add(role)
+                    rendered_lines.append(f"  {role} model: {val_a}  →  {val_b}")
+                elif field == "sampling":
+                    roles_sampling_changed.add(role)
+                elif field == "prompt_system_hash":
+                    slot = f"{role}_system"
+                    prompt_slots_changed.add(slot)
+                    v_a = labs_a["prompt_versions"].get(slot, "?") if labs_a else "?"
+                    v_b = labs_b["prompt_versions"].get(slot, "?") if labs_b else "?"
+                    rendered_lines.append(f"  {slot}: v{v_a}  →  v{v_b}")
+                elif field == "prompt_user_hash":
+                    slot = f"{role}_user"
+                    prompt_slots_changed.add(slot)
+                    v_a = labs_a["prompt_versions"].get(slot, "?") if labs_a else "?"
+                    v_b = labs_b["prompt_versions"].get(slot, "?") if labs_b else "?"
+                    rendered_lines.append(f"  {slot}: v{v_a}  →  v{v_b}")
+                # model_digest silently follows model — not an independent axis
+            elif len(parts) >= 2 and parts[0] == "code":
+                slot = parts[1].replace("_hash", "")
+                if slot in ("analysis", "ledger"):
+                    code_slots_changed.add(slot)
+                    v_a = labs_a["code_versions"].get(slot, "?") if labs_a else "?"
+                    v_b = labs_b["code_versions"].get(slot, "?") if labs_b else "?"
+                    rendered_lines.append(f"  {slot}: v{v_a}  →  v{v_b}")
+            elif len(parts) >= 2 and parts[0] == "experiment":
+                field = parts[1]
+                experiment_fields_changed.add(field)
+                _va = _short(val_a) if isinstance(val_a, str) and len(val_a) == 64 else val_a
+                _vb = _short(val_b) if isinstance(val_b, str) and len(val_b) == 64 else val_b
+                rendered_lines.append(f"  {field}: {_va}  →  {_vb}")
+
+        # Sampling changes are independent axes only when the model did not change for that role
+        independent_sampling = roles_sampling_changed - roles_model_changed
+        for role in sorted(independent_sampling):
+            sampling_diffs = [(p, a, b) for p, a, b in diffs
+                              if p.startswith(f"agents.{role}.sampling.")]
+            changed_keys = [p.split(".")[-1] for p, _, _ in sampling_diffs]
+            rendered_lines.append(f"  {role} sampling: {{{', '.join(changed_keys)}}} changed")
+
+        # Deduplicate rendered lines (path can produce multiple diff entries for nested dicts)
+        seen: set[str] = set()
+        unique_lines: list[str] = []
+        for ln in rendered_lines:
+            if ln not in seen:
+                seen.add(ln)
+                unique_lines.append(ln)
+
+        for ln in unique_lines:
+            print(ln)
+
+        axis_count = (
+            len(roles_model_changed)
+            + len(independent_sampling)
+            + len(prompt_slots_changed)
+            + len(code_slots_changed)
+            + len(experiment_fields_changed)
+        )
+
+        print()
+        if axis_count == 1:
+            print("  ✓ CLEAN ABLATION (1 variable)")
+        else:
+            print(f"  ✗ CONFOUNDED ({axis_count} variables)")
+
+    print(f"{'='*70}")
+
+
+# ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
 
@@ -689,6 +799,8 @@ def main():
 
     print(f"Loading {len(dirs)} campaign(s)...")
     campaigns = []
+    _campaign_comps: list = []
+    _campaign_labs: list = []
     for d, l in zip(dirs, labels):
         try:
             c = load_campaign(d, l)
@@ -699,6 +811,20 @@ def main():
         except Exception as exc:
             print(f"  ERROR loading {d}: {exc}", file=sys.stderr)
             sys.exit(1)
+
+        # Load comparability stamped by aggregate_runs.py into the audit JSON
+        _comp, _labs = None, None
+        try:
+            _audit_p = d / "aggregated_data.json"
+            if _audit_p.is_file():
+                with _audit_p.open() as _af:
+                    _ad = json.load(_af)
+                _comp = _ad.get("comparability")
+                _labs = _ad.get("labels")
+        except Exception:
+            pass
+        _campaign_comps.append(_comp)
+        _campaign_labs.append(_labs)
 
     payload   = build_payload(campaigns, args.baseline, model_filter=args.model)
     n_groups  = len(payload["model_groups"])
@@ -726,6 +852,15 @@ def main():
     print(f"\nOutputs -> {output_dir}/")
     print(f"  {html_path.name}")
     print(f"  {csv_path.name}")
+
+    # --- Configuration diff header (Tier 3) ---
+    for _ti, (_tc, _tl) in enumerate(zip(_campaign_comps, _campaign_labs)):
+        if _ti == args.baseline:
+            continue
+        _print_config_diff(
+            labels[args.baseline], _campaign_comps[args.baseline], _campaign_labs[args.baseline],
+            labels[_ti],           _tc,                            _tl,
+        )
 
     for g in payload["model_groups"]:
         for cmp in g["comparisons"]:

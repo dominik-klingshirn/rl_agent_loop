@@ -28,6 +28,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))  # project root for src imports
 from extract_cognition import (  # noqa: E402
     AggregationConfig,
     LEDGER_STATUS_VOCAB,
@@ -2537,6 +2538,8 @@ def main():
     ap.add_argument("--recovery_window", type=int, default=0)
     ap.add_argument("--primary-metric", default="psr",
                     choices=["psr", "centered"])
+    ap.add_argument("--force", action="store_true", default=False,
+                    help="Proceed even if runs have mismatched config fingerprints")
     args = ap.parse_args()
 
     label = args.label or args.campaign_glob.replace("*", "X").replace("/", "_")[:60]
@@ -2563,6 +2566,8 @@ def main():
     run_summaries = []
     chat_rows_by_run: dict = {}
     regression_by_tag: dict[str, dict] = {}
+    _run_manifests: list[dict] = []
+
     for c in campaigns:
         try:
             from extract_cognition import RunPaths
@@ -2573,16 +2578,74 @@ def main():
             chat_rows_by_run[c.name] = load_chat_responses(
                 paths.chat_response_path,
                 cognition_json_dir=paths.cognition_json_dir)
-            
+
             print(f"  loaded {c.name}: "
                   f"(iters={summary.iteration_count}, peak_psr={summary.peak_psr}, "
                   f"warnings={summary.iterations_with_warnings})")
         except Exception as exc:
             print(f"  WARNING: skipping {c.name}: {exc}", file=sys.stderr)
 
+        # Read run manifest independently — a missing/broken manifest never skips the run
+        _mdata: dict = {"campaign": c.name, "fingerprint": None, "comparability": None, "labels": None}
+        try:
+            _subdirs = [p for p in c.iterdir() if p.is_dir()]
+            if len(_subdirs) == 1:
+                _mp = _subdirs[0] / "config_snapshot" / "run_manifest.json"
+                if _mp.is_file():
+                    with _mp.open() as _mf:
+                        _m = json.load(_mf)
+                    _mdata = {
+                        "campaign":      c.name,
+                        "fingerprint":   _m.get("config_fingerprint"),
+                        "comparability": _m.get("comparability"),
+                        "labels":        _m.get("labels"),
+                    }
+        except Exception:
+            pass
+        _run_manifests.append(_mdata)
+
     if not run_summaries:
         print("ERROR: no runs loaded successfully.", file=sys.stderr)
         sys.exit(1)
+
+    # --- Comparability gate (Tier 2) ---
+    try:
+        from src.run_manifest import diff_comparability as _diff_comp, short as _short_fp
+        _fingerprints = [m["fingerprint"] for m in _run_manifests]
+        _distinct_fps = set(fp for fp in _fingerprints if fp is not None)
+        _has_none = any(fp is None for fp in _fingerprints)
+        _config_fp_output = None
+        _comparability_output = None
+        _labels_output = None
+
+        if _has_none or len(_distinct_fps) > 1:
+            print("\nERROR: Runs have mismatched or missing config fingerprints!", file=sys.stderr)
+            _ref = next((m for m in _run_manifests if m["comparability"] is not None), None)
+            print(f"  {'Campaign':<45}  {'Fingerprint':>14}  Diff fields", file=sys.stderr)
+            for _m in _run_manifests:
+                _fp_str = _short_fp(_m["fingerprint"]) if _m["fingerprint"] else "MISSING"
+                _diffs = []
+                if _ref and _m["comparability"] is not None and _m is not _ref:
+                    _diffs = _diff_comp(_ref["comparability"], _m["comparability"])
+                _diff_str = ", ".join(d[0] for d in _diffs) if _diffs else ""
+                print(f"  {_m['campaign']:<45}  {_fp_str:>14}  {_diff_str}", file=sys.stderr)
+
+            if not args.force:
+                sys.exit(1)
+            else:
+                print("\nWARNING: --force specified; proceeding with mixed fingerprints.", file=sys.stderr)
+                _config_fp_output = "FORCED_MIXED"
+                _comparability_output = "FORCED_MIXED"
+        else:
+            _config_fp_output = list(_distinct_fps)[0] if _distinct_fps else None
+            _ref = next((m for m in _run_manifests if m["comparability"] is not None), None)
+            if _ref:
+                _comparability_output = _ref["comparability"]
+                _labels_output = _ref["labels"]
+    except ImportError:
+        _config_fp_output = None
+        _comparability_output = None
+        _labels_output = None
 
     # Group by strategist model + campaign signature
     from collections import defaultdict
@@ -2605,6 +2668,21 @@ def main():
     write_runs_csv(model_summaries, runs_path, regression_by_tag)
     write_cross_run_summary_csv(model_summaries, cross_path, regression_by_tag)
     write_audit_json(model_summaries, audit_path)
+
+    # Stamp comparability fingerprint into the audit JSON for downstream consumers
+    if _config_fp_output is not None:
+        try:
+            with audit_path.open() as _af:
+                _audit = json.load(_af)
+            _audit["config_fingerprint"] = _config_fp_output
+            if _comparability_output is not None:
+                _audit["comparability"] = _comparability_output
+            if _labels_output is not None:
+                _audit["labels"] = _labels_output
+            with audit_path.open("w") as _af:
+                json.dump(_audit, _af, indent=2, default=str)
+        except Exception as _stamp_exc:
+            print(f"WARNING: could not stamp fingerprint into audit JSON: {_stamp_exc}", file=sys.stderr)
 
     # Build payload and write dashboards
     payload = build_dashboard_payload(model_summaries, chat_rows_by_run, regression_by_tag)
