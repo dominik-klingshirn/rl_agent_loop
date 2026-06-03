@@ -117,7 +117,7 @@ class Config:
                 # Needs reliable pattern-matching, not creative divergence.
                 # Context: Diagnostic Report + 1 ledger entry (targeted, not full history).
                 # Low temp keeps the post-mortem grounded; slight top_p room for nuanced language.
-                options["temperature"] = 1.0
+                options["temperature"] = 7.0
                 options["top_p"] = 0.95
                 options["num_ctx"] = 16384
                 options["num_predict"] = 4096   # Post-mortem is an essay, not a treatise
@@ -138,7 +138,7 @@ class Config:
                 # Zero creativity required — this is pure structural enforcement.
                 # Context: Just the Strategist's output (smallest meaningful window).
                 # Lower temp than any other role to prevent schema drift.
-                options["temperature"] = 0.4
+                options["temperature"] = 0.55
                 options["top_p"] = 0.85
                 options["num_ctx"] =  16384     # Strategist output only — no history needed
                 options["num_predict"] = 12288   # Bounded by the schema structure itself
@@ -147,7 +147,7 @@ class Config:
                 # Goal: Apply Occam's Razor and select the single most viable hypothesis.
                 # Convergent reasoning — must commit to one choice, not hedge.
                 # Context: Organized proposals + ledger (to avoid repeating prior failures).
-                options["temperature"] = 1.0
+                options["temperature"] = 0.7
                 options["top_p"] = 0.95
                 options["num_ctx"] = 20480      # Proposals + relevant ledger context
                 options["num_predict"] = 8192   
@@ -156,7 +156,7 @@ class Config:
                 # Goal: Split the selected hypothesis into <CODER_PAYLOAD> and <VALIDATOR_PAYLOAD>.
                 # Pure deterministic routing — output is a strict schema split, not generation.
                 # Context: Just the Research Lead's single selected output.
-                options["temperature"] = 0.4
+                options["temperature"] = 0.55
                 options["top_p"] = 0.85
                 options["num_ctx"] = 8192       # Single hypothesis only — smallest window
                 options["num_predict"] = 4096   # Two structured payload blocks, nothing more
