@@ -11,6 +11,7 @@ from src.cognitive_node import CognitiveNode
 from src.config import Config
 from src import utils
 from src.analysis import generate_diagnostic_report, translate_behavior_kinematics
+from src.run_manifest import write_run_manifest
 from src.pipeline_nodes import (
     generate_proposals,
     organize_proposals,
@@ -22,24 +23,7 @@ from src.pipeline_nodes import (
 
 MODEL_NAME = Config.LLM_MODEL
 
-if MODEL_NAME == "gemma4:e4b":
-    model_overrides = {
-        "research_lead":"deepseek-r1:14b",
-        "organizer": "deepseek-r1:14b",
-        "dispatcher":"deepseek-r1:14b",
-        "validator":"deepseek-r1:14b",
-        "coder": "qwen3-coder:30b"
-    }
-
-
-else:
-    model_overrides = {
-            "research_lead":"nemotron-cascade-2",
-            "organizer": "gpt-oss:20b",
-            "dispatcher":"gpt-oss:20b",
-            "validator":"nemotron-cascade-2",
-            "coder": "qwen3-coder:30b"
-        }
+model_overrides = Config.role_model_overrides(MODEL_NAME)
 
 def run_agentic_improvement(iteration: int):
     start_time = time.perf_counter()
@@ -48,15 +32,16 @@ def run_agentic_improvement(iteration: int):
     # 1. INITIALIZATION & STATE LOADING
     # =========================================================
     ws = ExperimentWorkspace(iteration)
+    write_run_manifest(ws)   # writes once (iteration 1) via internal skip-if-exists; never aborts the run
     brain = CognitiveNode(iteration=iteration, workspace=ws, model=MODEL_NAME)
     ledger = ExperimentLedger(ws.model_root_path) 
     # Setting any model overrides for a MOE style run 
-    val_override = model_overrides.get("validator",None)
-    strat_override = model_overrides.get("strategist",None)
-    organ_override = model_overrides.get("organizer",None)
-    lead_override = model_overrides.get("research_lead",None)
+    val_override        = model_overrides.get("validator",None)
+    strat_override      = model_overrides.get("strategist",None)
+    organ_override      = model_overrides.get("organizer",None)
+    lead_override       = model_overrides.get("research_lead",None)
     dispatcher_override = model_overrides.get("dispatcher",None)
-    coder_override = model_overrides.get("coder",None)
+    coder_override      = model_overrides.get("coder",None)
 
 
     print(f"🔵 AGENT (Iter {iteration}): Active in {ws.model_root_path}")

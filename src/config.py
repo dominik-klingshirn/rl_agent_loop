@@ -44,25 +44,11 @@ class Config:
 
     # 4. Code Generation Settings ###############################################################
     # Standard/Non-thinking Models Options
-    standard_options={                       
-        "temperature": 0.85,       
-        "repeat_penalty": 1.1,     
-        "num_predict": 8192,
-        "num_ctx": 16384
-    }
 
-    # Thinking- Model Options
-    think_options={
-        "temperature": 0.7,        
-        "top_p": 0.95,             
-        "repeat_penalty": 1.0,     
-        "num_predict": 8192,       
-        "num_ctx": 16384
-        }
     # gpt_oss has 3 thinking levels : low, medium, high
-    gpt_think_level = "low"
+    gpt_think_level = "medium"
 
-
+    @staticmethod
     def get_inference_options(model_name: str, role: str):
         """
         Returns optimal inference parameters based on Model Architecture AND Cognitive Role.
@@ -78,18 +64,16 @@ class Config:
 
         Context Sizing Philosophy:
             Each role receives only the data it needs (zero-shot, structured prompts).
-            This is what prevents KV cache accumulation across the 20-iteration loop.
-            Organizer and Dispatcher get the smallest windows because their inputs
-            are already the cleaned outputs of the prior stage.
+            This is what prevents KV cache accumulation across the N-iteration loop.
 
         Notes on Reasoning Models (DeepSeek-R1, etc.):
             - Never set repeat_penalty > 1.0: breaks Chain-of-Thought loops
             - Never drop Coder temp below 0.5: causes stuttering/token repetition
-            - Organizer/Dispatcher on reasoning models is wasteful but supported
         """
         model_id = model_name.lower()
         role = role.lower()
-
+        # List model name tags for native reasoning models being utilized
+        # Required for accurate configuration routing
         is_reasoning = any(k in model_id for k in [
             "deepseek-r1", "thinking", "openthinker", "gpt-oss",
             "gemma4","qwen3.6:35b-A3B","nemotron-cascade-2"
@@ -251,6 +235,30 @@ class Config:
                 options["seed"] = 42
 
         return options
+
+    @staticmethod
+    def role_model_overrides(model_name: str) -> dict:
+        """
+        Returns the partial per-role model override dict for a given base model.
+        Strategist is not included — it always falls through to LLM_MODEL.
+        This is the single source of truth for the MoE team configuration.
+        """
+        if model_name == "gemma4:e4b":
+            return {
+                "research_lead": "deepseek-r1:14b",
+                "organizer":     "deepseek-r1:14b",
+                "dispatcher":    "deepseek-r1:14b",
+                "validator":     "deepseek-r1:14b",
+                "coder":         "qwen3-coder:30b",
+            }
+        else:
+            return {
+                "research_lead": "nemotron-cascade-2",
+                "organizer":     "gpt-oss:20b",
+                "dispatcher":    "gpt-oss:20b",
+                "validator":     "nemotron-cascade-2",
+                "coder":         "qwen3-coder:30b",
+            }
 
     # 5. Network Credentials ################################################
     # Saved in .env, raw IPs never see github
