@@ -13,6 +13,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 
 # custom imports
 from src.workspace_manager import ExperimentWorkspace
+from src.schedules import SHAPES
 
 
 # ==========================================
@@ -168,27 +169,18 @@ class MultiEnvEpisodeTracker(BaseCallback):
 # ==========================================
 class EntropyScheduleCallback(BaseCallback):
     """Safe 0.02 -> 0.001 linear entropy schedule for PPO."""
-    def __init__(self, initial_ent_coef=0.02, final_ent_coef=0.001, total_timesteps=1e6, verbose=0):
+    def __init__(self, initial_ent_coef=0.02, final_ent_coef=0.001, total_timesteps=1e6, schedule_type: str = "linear", verbose=0):
         super().__init__(verbose)
         self.initial_ent_coef = initial_ent_coef
         self.final_ent_coef = final_ent_coef
         self.total_timesteps = total_timesteps
+        self._kernel = SHAPES[schedule_type]
 
     def _on_step(self) -> bool:
-        # 1. Calculate "progress_remaining" (1.0 starts, 0.0 ends)
-        # SB3 tracks num_timesteps internally
         progress = max(0.0, 1.0 - self.num_timesteps / self.total_timesteps)
-        
-        # 2. Calculate current entropy value (Linear decay example)
-        current_ent_coef = self.final_ent_coef + (self.initial_ent_coef - self.final_ent_coef) * progress
-        
-        # 3. Inject the new value directly into the model
-        # For PPO/A2C, this attribute controls the loss calculation
+        current_ent_coef = self._kernel(progress, self.initial_ent_coef, self.final_ent_coef)
         self.model.ent_coef = current_ent_coef
-        
-        # Logged to progress_iterXX.csv with other optimization data
         self.logger.record("train/ent_coef", current_ent_coef)
-        
         return True
 
 

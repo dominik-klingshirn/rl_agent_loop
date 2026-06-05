@@ -1,6 +1,7 @@
 
 import re
 import json
+from typing import Optional
 import difflib
 import torch
 import platform
@@ -160,30 +161,6 @@ def save_diff(old_code, new_code, iteration, attempt, base_dir):
             f.write(text)
     return filepath
 # ---------------------------------------------------------
-# Agent's Hyperparameters
-# ---------------------------------------------------------
-def linear_schedule(initial_value: float, final_value: float):
-    """
-    Linear learning rate schedule.
-    :param initial_value: Starting learning rate.
-    :param final_value: Ending learning rate.
-    :return: schedule that computes current lr based on remaining progress
-    """
-    def func(progress_remaining: float) -> float:
-        """
-        Progress will decrease from 1 (beginning) to 0 (end).
-        """
-        lr = final_value + (initial_value - final_value) * progress_remaining
-        #print(f"Progress: {progress_remaining:.3f} → LR: {lr:.6f}")
-        return lr
-
-    return func
-
-# Usage: Decay from 0.001 to 0.0001
-# set when initializing the RL model:
-# lr_schedule = linear_schedule(1e-3, 1e-4)
-
-# ---------------------------------------------------------
 # HARDWARE
 # ---------------------------------------------------------
 def get_parallel_training_config():
@@ -249,8 +226,9 @@ def get_optimized_ppo_params(n_envs, device_type="auto"):
 
     return {"n_steps": n_steps, "batch_size": batch_size, "device": device}
 
-def get_hardware_config():
-    system = platform.system()
+def get_hardware_config(system:Optional[str]|None = None):
+    if not system:
+        system = platform.system()
     if system == "Linux": return 16, "cpu" #"cuda"
     elif system == "Darwin": return 8, "cpu" #"mps"
     return 4, "cpu"
