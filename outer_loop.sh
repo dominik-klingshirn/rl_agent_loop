@@ -85,6 +85,8 @@ esac
 # We check if the tag contains the string "remote"
 if [[ "$TAG" == *"remote"* ]]; then
     echo "📡 ENGINE: Distributed Training (Mac -> Linux)"
+    # Training runs on the Linux node — tell the manifest writer which platform to resolve
+    export TRAIN_PLATFORM=Linux
     # This script runs on Mac but talks to Linux
     TRAINING_SCRIPT="src/remote_train.py"
     if python3 -c "import src.optimize_remote" 2>/dev/null; then
@@ -96,6 +98,8 @@ if [[ "$TAG" == *"remote"* ]]; then
     fi
 else
     echo "💻 ENGINE: Local Training"
+    # Training runs locally — let get_hardware_config resolve the local platform
+    unset TRAIN_PLATFORM
     # This script runs the PPO math locally
     TRAINING_SCRIPT="src/local_train.py"
 fi

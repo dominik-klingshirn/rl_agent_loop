@@ -3,7 +3,7 @@
 venv/
 __pycache__/
 *.pyc
-.DS_Store
+*.DS_Store*
 src/.DS_Store
 
 
@@ -23,6 +23,8 @@ loop_videos.py
 cognitions_for_review/
 post_hoc_analysis/outputs/
 *.json
+!version_registry.json
+
 
 # Unit tests/ experimental /  temp scripts / local development
 *_experimental.py
