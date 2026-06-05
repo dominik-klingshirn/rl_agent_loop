@@ -42,6 +42,37 @@ class Config:
     validator_template = (validator_role,validator_task)
 
 
+    # 3b. RL Training Hyperparameters (fixed across all runs) ######################################
+    # Values sourced from train.py; SB3 defaults used where train.py did not explicitly override.
+    # Hardware-resolved knobs (n_envs, n_steps, batch_size, device) are NOT here — they are
+    # resolved at runtime by get_hardware_config / get_optimized_ppo_params in utils.py.
+
+    # PPO optimizer
+    N_EPOCHS           = 10
+    GAMMA              = 0.99
+    GAE_LAMBDA         = 0.98
+    CLIP_RANGE         = 0.2       # SB3 default
+    VF_COEF            = 0.5       # SB3 default
+    MAX_GRAD_NORM      = 0.5       # SB3 default
+    TARGET_KL          = None      # SB3 default
+    NORMALIZE_ADVANTAGE = True     # SB3 default
+
+    # Policy network (strings; train.py maps to class objects at call site)
+    POLICY             = "MlpPolicy"
+    NET_ARCH           = [64, 64]  # SB3 MlpPolicy default
+    ACTIVATION_FN      = "Tanh"    # SB3 MlpPolicy default
+
+    # Vectorised environment class (string; train.py resolves to class)
+    VEC_ENV_CLS        = "DummyVecEnv"
+
+    # Schedule endpoints (linear, read verbatim from train.py)
+    LR_INITIAL         = 1e-3
+    LR_FINAL           = 3e-4
+    ENT_COEF_INITIAL   = 0.02
+    ENT_COEF_FINAL     = 0.001
+    LR_SCHEDULE_TYPE   = "linear"
+    ENT_SCHEDULE_TYPE  = "linear"
+
     # 4. Code Generation Settings ###############################################################
     # Standard/Non-thinking Models Options
 

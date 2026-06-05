@@ -656,6 +656,7 @@ def _print_config_diff(label_a, comp_a, labs_a, label_b, comp_b, labs_b):
         prompt_slots_changed: set[str] = set()
         code_slots_changed: set[str] = set()
         experiment_fields_changed: set[str] = set()
+        training_fields_changed: set[str] = set()
 
         rendered_lines: list[str] = []
 
@@ -694,6 +695,23 @@ def _print_config_diff(label_a, comp_a, labs_a, label_b, comp_b, labs_b):
                 _va = _short(val_a) if isinstance(val_a, str) and len(val_a) == 64 else val_a
                 _vb = _short(val_b) if isinstance(val_b, str) and len(val_b) == 64 else val_b
                 rendered_lines.append(f"  {field}: {_va}  →  {_vb}")
+            elif parts[0] == "training":
+                if len(parts) >= 3 and parts[1] in ("learning_rate", "ent_coef"):
+                    # Schedule sub-dicts map to the registry code-slots lr_schedule / ent_schedule.
+                    # Whatever subfield differs (type / initial / final / fn_hash), the schedule
+                    # domain counts as exactly ONE axis — the set dedupes the slot.
+                    slot = "lr_schedule" if parts[1] == "learning_rate" else "ent_schedule"
+                    code_slots_changed.add(slot)
+                    if parts[2] == "fn_hash":
+                        v_a = labs_a["code_versions"].get(slot, "?") if labs_a else "?"
+                        v_b = labs_b["code_versions"].get(slot, "?") if labs_b else "?"
+                        rendered_lines.append(f"  {slot}: v{v_a}  →  v{v_b}")
+                    else:
+                        rendered_lines.append(f"  {parts[1]}.{parts[2]}: {val_a}  →  {val_b}")
+                else:
+                    field = parts[1]
+                    training_fields_changed.add(field)
+                    rendered_lines.append(f"  {field}: {val_a}  →  {val_b}")
 
         # Sampling changes are independent axes only when the model did not change for that role
         independent_sampling = roles_sampling_changed - roles_model_changed
@@ -720,6 +738,7 @@ def _print_config_diff(label_a, comp_a, labs_a, label_b, comp_b, labs_b):
             + len(prompt_slots_changed)
             + len(code_slots_changed)
             + len(experiment_fields_changed)
+            + len(training_fields_changed)
         )
 
         print()

@@ -10,7 +10,9 @@ from __future__ import annotations
 import ast
 import hashlib
 import importlib.metadata
+import inspect
 import json
+import os
 import platform
 import socket
 import subprocess
@@ -20,6 +22,8 @@ from typing import Any
 
 from src.config import Config
 from prompts.loader import load_template
+from src.utils import get_hardware_config, get_optimized_ppo_params
+from src.schedules import SHAPES
 
 ROLES = ["strategist", "organizer", "research_lead", "dispatcher", "coder", "validator"]
 
@@ -50,15 +54,34 @@ _SLOT_MAP: dict[str, tuple[str, str, str]] = {
 def sha256_text(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()  # full 64-hex
 
+class _StripDocstrings(ast.NodeTransformer):
+    """Remove docstring nodes before hashing — docstrings don't affect behaviour."""
+    def _strip(self, node):
+        self.generic_visit(node)
+        if (node.body and
+                isinstance(node.body[0], ast.Expr) and
+                isinstance(node.body[0].value, ast.Constant) and
+                isinstance(node.body[0].value.value, str)):
+            node.body = node.body[1:] or [ast.Pass()]
+        return node
+    visit_Module           = _strip
+    visit_FunctionDef      = _strip
+    visit_AsyncFunctionDef = _strip
+    visit_ClassDef         = _strip
+
+def _ast_norm(src: str) -> str:
+    tree = _StripDocstrings().visit(ast.parse(src))
+    return sha256_text(ast.unparse(tree))          # strips comments, normalises formatting
 
 def ast_normalized_hash(path: str) -> str:
-    src = open(path, "r", encoding="utf-8").read()
-    return sha256_text(ast.unparse(ast.parse(src)))  # strips comments, normalises formatting
+    return _ast_norm(open(path, encoding="utf-8").read())
 
+def _schedule_fn_hash(shape_type: str) -> str:
+    """AST-normalized hash of the SELECTED shape kernel (not the whole schedules.py file)."""
+    return _ast_norm(inspect.getsource(SHAPES[shape_type]))
 
 def short(h: str) -> str:
     return h[:12]
-
 
 def compute_fingerprint(comparability: dict) -> str:
     payload = json.dumps(comparability, sort_keys=True, separators=(",", ":"))
@@ -202,6 +225,40 @@ def _git_provenance() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Training regime block
+# ---------------------------------------------------------------------------
+
+def _build_training_block() -> dict:
+    """
+    Resolve the RL training regime for the platform that actually ran training.
+    TRAIN_PLATFORM env var tells us: "Linux" for remote runs, absent for local Mac runs.
+    n_envs and its derived n_steps/batch_size correctly differ per machine — that is correct.
+    """
+    train_platform = os.environ.get("TRAIN_PLATFORM")  # None on local Mac runs
+    n_envs, _device = get_hardware_config(train_platform)
+    ppo = get_optimized_ppo_params(n_envs)  # use n_steps & batch_size only
+    return {
+        "n_envs":               n_envs,
+        "vec_env_cls":          Config.VEC_ENV_CLS,
+        "n_steps":              ppo["n_steps"],
+        "batch_size":           ppo["batch_size"],
+        "n_epochs":             Config.N_EPOCHS,
+        "gamma":                Config.GAMMA,
+        "gae_lambda":           Config.GAE_LAMBDA,
+        "clip_range":           Config.CLIP_RANGE,
+        "vf_coef":              Config.VF_COEF,
+        "max_grad_norm":        Config.MAX_GRAD_NORM,
+        "target_kl":            Config.TARGET_KL,
+        "normalize_advantage":  Config.NORMALIZE_ADVANTAGE,
+        "learning_rate":        {"type": Config.LR_SCHEDULE_TYPE,  "initial": Config.LR_INITIAL,       "final": Config.LR_FINAL,       "fn_hash": _schedule_fn_hash(Config.LR_SCHEDULE_TYPE)},
+        "ent_coef":             {"type": Config.ENT_SCHEDULE_TYPE, "initial": Config.ENT_COEF_INITIAL, "final": Config.ENT_COEF_FINAL, "fn_hash": _schedule_fn_hash(Config.ENT_SCHEDULE_TYPE)},
+        "policy":               Config.POLICY,
+        "net_arch":             Config.NET_ARCH,
+        "activation_fn":        Config.ACTIVATION_FN,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -279,6 +336,7 @@ def write_run_manifest(ws) -> dict | None:
         # ── Comparability dict & fingerprint ─────────────────────────────
         comparability = {
             "experiment": experiment,
+            "training":   _build_training_block(),
             "agents":     agents,
             "code":       code,
         }
@@ -300,11 +358,15 @@ def write_run_manifest(ws) -> dict | None:
 
         analysis_ver = resolve_version(reg, "code_slots", "analysis", analysis_hash, "analysis.py", run_id)
         ledger_ver   = resolve_version(reg, "code_slots", "ledger",   ledger_hash,   "ledger.py",   run_id)
+        lr_fn_hash  = comparability["training"]["learning_rate"]["fn_hash"]
+        ent_fn_hash = comparability["training"]["ent_coef"]["fn_hash"]
+        lr_sched_ver  = resolve_version(reg, "code_slots", "lr_schedule",  lr_fn_hash,  Config.LR_SCHEDULE_TYPE,  run_id)
+        ent_sched_ver = resolve_version(reg, "code_slots", "ent_schedule", ent_fn_hash, Config.ENT_SCHEDULE_TYPE, run_id)
         save_registry(reg)
 
         labels = {
             "prompt_versions": prompt_versions,
-            "code_versions":   {"analysis": analysis_ver, "ledger": ledger_ver},
+            "code_versions":   {"analysis": analysis_ver, "ledger": ledger_ver, "lr_schedule": lr_sched_ver, "ent_schedule": ent_sched_ver},
             "prompt_names":    prompt_names,
         }
 
@@ -328,15 +390,20 @@ def write_run_manifest(ws) -> dict | None:
         except Exception:
             pass
 
+        _train_platform = os.environ.get("TRAIN_PLATFORM")
+        _, _train_device = get_hardware_config(_train_platform)
+
         provenance = {
             "git": _git_provenance(),
             "environment": {
-                "hostname":          socket.gethostname(),
-                "python_version":    platform.python_version(),
-                "stable_baselines3": sb3_ver,
-                "gymnasium":         gym_ver,
-                "ollama_version":    ollama_ver,
-                "created_at":        created_at,
+                "hostname":           socket.gethostname(),
+                "python_version":     platform.python_version(),
+                "stable_baselines3":  sb3_ver,
+                "gymnasium":          gym_ver,
+                "ollama_version":     ollama_ver,
+                "training_platform":  _train_platform or platform.system(),
+                "training_device":    _train_device,
+                "created_at":         created_at,
             },
         }
 

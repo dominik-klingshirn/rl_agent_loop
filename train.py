@@ -5,19 +5,23 @@ import random
 import os
 from datetime import timedelta
 import torch
+import torch.nn as nn
 torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", "4")))
 torch.set_num_interop_threads(1)
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import SubprocVecEnv,VecNormalize, DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize, DummyVecEnv
 from stable_baselines3.common.logger import Logger, make_output_format
+
+_VEC_ENV_CLS_MAP = {"DummyVecEnv": DummyVecEnv, "SubprocVecEnv": SubprocVecEnv}
 
 # -- Custom IMPORTS --
 from src.workspace_manager import ExperimentWorkspace
 from src.utils import *
 from src.callbacks import *
 from src.evaluation import evaluate_agent
-from src.config import Config 
+from src.config import Config
+from src.schedules import make_lr_schedule
 
 
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
@@ -41,8 +45,12 @@ def run_training_cycle(iteration:int, seed_id:int):
     n_envs, device = get_hardware_config()
     ppo_params = get_optimized_ppo_params(n_envs, device)
 
+    # Resolve Config string attributes to runtime objects at the call site
+    _vec_env_cls = _VEC_ENV_CLS_MAP[Config.VEC_ENV_CLS]
+    _activation_fn = getattr(nn, Config.ACTIVATION_FN)
+
     # Create Environment, custom wrapper for injecting new Reward Function
-    env = make_vec_env(lambda: make_env(reward_code_path), n_envs=n_envs, seed=seed_id,vec_env_cls=DummyVecEnv)
+    env = make_vec_env(lambda: make_env(reward_code_path), n_envs=n_envs, seed=seed_id, vec_env_cls=_vec_env_cls)
     
     # Since LLMs are terrible with reward scaling, we are utilizing a running normalization of the reward
     env = VecNormalize(
@@ -58,10 +66,11 @@ def run_training_cycle(iteration:int, seed_id:int):
 
     # Initialize Callbacks
     entropy_callback = EntropyScheduleCallback(
-        initial_ent_coef=0.02,
-        final_ent_coef=0.001,
-        total_timesteps = Config.TOTAL_TIMESTEPS
-        )
+        initial_ent_coef=Config.ENT_COEF_INITIAL,
+        final_ent_coef=Config.ENT_COEF_FINAL,
+        total_timesteps=Config.TOTAL_TIMESTEPS,
+        schedule_type=Config.ENT_SCHEDULE_TYPE,
+    )
 
     behavior_tracker = MultiEnvEpisodeTracker(ws, iteration, seed_id, max_buffer_size=10000)
 
@@ -74,22 +83,28 @@ def run_training_cycle(iteration:int, seed_id:int):
     ]
     logger = Logger(folder=str(logger_dir), output_formats=output_formats)
 
-    lr_schedule = linear_schedule(1e-3, 3e-4)
+    lr_schedule = make_lr_schedule(Config.LR_SCHEDULE_TYPE, Config.LR_INITIAL, Config.LR_FINAL)
     # 6. Train
     print(f"🏋️ Training on {device}")
     model = PPO(
-        "MlpPolicy",
+        Config.POLICY,
         env,
         device=ppo_params['device'],
-        n_steps=ppo_params['n_steps'],                   
+        n_steps=ppo_params['n_steps'],
         batch_size=ppo_params['batch_size'],
         learning_rate=lr_schedule,
-        n_epochs=10,
-        gamma=0.99,
-        gae_lambda=0.98,
-        seed= seed_id,
-        verbose=0
-        )
+        n_epochs=Config.N_EPOCHS,
+        gamma=Config.GAMMA,
+        gae_lambda=Config.GAE_LAMBDA,
+        clip_range=Config.CLIP_RANGE,
+        vf_coef=Config.VF_COEF,
+        max_grad_norm=Config.MAX_GRAD_NORM,
+        target_kl=Config.TARGET_KL,
+        normalize_advantage=Config.NORMALIZE_ADVANTAGE,
+        policy_kwargs={"net_arch": Config.NET_ARCH, "activation_fn": _activation_fn},
+        seed=seed_id,
+        verbose=0,
+    )
     print(f"Model training with n_steps: {ppo_params['n_steps']}, batch_size: {ppo_params['batch_size']}")
     model.set_logger(logger)
     # Training Agent
