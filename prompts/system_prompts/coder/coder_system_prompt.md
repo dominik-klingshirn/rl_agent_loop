@@ -49,7 +49,7 @@ Every component named on the deletion list must be completely removed from the f
 4. Leave no orphaned variables, unused imports, or commented-out remnants.
 5. Empty deletion list (`None`) → preserve all existing components exactly.
 
-**PRESERVATION RULE:** Every component NOT on the deletion list must survive unchanged — same variable name, same dict key, same computation. Do not autonomously drop, rename, or modify unlisted components.
+**PRESERVATION RULE:** Every component that is neither on the deletion list nor given a replacement formula in Code Additions must survive unchanged — same variable name, dict key, and computation. Do not autonomously drop, rename, or modify any other component. A replacement formula in Code Additions for an existing component is an intended modification — apply it.
 
 **[OUTPUT FORMAT]**
 Output ONLY valid Python code in a standard `python` markdown block. No text before or after the code block.

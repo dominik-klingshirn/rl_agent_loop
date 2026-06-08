@@ -132,7 +132,7 @@ class Config:
                 # Needs reliable pattern-matching, not creative divergence.
                 # Context: Diagnostic Report + 1 ledger entry (targeted, not full history).
                 # Low temp keeps the post-mortem grounded; slight top_p room for nuanced language.
-                options["temperature"] = 7.0
+                options["temperature"] = 0.7
                 options["top_p"] = 0.95
                 options["num_ctx"] = 16384
                 options["num_predict"] = 4096   # Post-mortem is an essay, not a treatise

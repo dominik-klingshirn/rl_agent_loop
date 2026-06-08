@@ -19,7 +19,7 @@ These are the explicit mathematical updates you must integrate into the code abo
 
 **EXECUTION CHECKLIST — complete in this order before writing any code:**
 1. Read the deletion list. For each named component: mark its variable, its `components` dict entry, and its section comment for removal.
-2. Confirm every component NOT on the deletion list is preserved with its exact variable name, dict key, and computation unchanged.
+2. Confirm every component not on the deletion list and not redefined in Code Additions is preserved with its exact variable name, dict key, and computation unchanged.
 3. Implement the Code Additions using the specified Scaling & Constraints.
 4. Check the `components` dict: verify no entry is a derived combination (sum or product) of other entries already in the dict.
 
