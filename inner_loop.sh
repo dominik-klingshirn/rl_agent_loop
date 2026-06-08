@@ -5,7 +5,7 @@ set -euo pipefail
 # MAX_LOOPS comes from the first argument passed by outer_loop.sh
 MAX_LOOPS=${1:-10}
 # 2. Capture the controller script name (default to standard.py)
-CONTROLLER_SCRIPT=${2:-"controllers/standard.py"}
+CONTROLLER_SCRIPT=${2:-"src/controllers/standard.py"}
 # 3. Capture the training script name (default to train.py)
 TRAINING_SCRIPT=${3:-"src/train_local.py"}
 NUM_SEEDS=4

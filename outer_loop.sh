@@ -69,16 +69,16 @@ fi
 case "$TAG" in
   *"vision"*)
     echo "👁️  MODE DETECTED: Vision Language Experiment"
-    SELECTED_CONTROLLER="controllers/vision.py"
+    SELECTED_CONTROLLER="src/controllers/vision.py"
     ;;
   *"agentic"*)
     echo "🤖 MODE DETECTED: Agentic Tools Experiment"
-    SELECTED_CONTROLLER="controllers/agentic.py"
+    SELECTED_CONTROLLER="src/controllers/agentic.py"
   ;;
   *)
     echo -e "\n"
     echo "📉 MODE: Standard Text Analysis"
-    SELECTED_CONTROLLER="controllers/standard.py"
+    SELECTED_CONTROLLER="src/controllers/standard.py"
     ;;
 esac
 # 🚀 LOGIC SWITCH 2: Select Training Engine based on Tag
@@ -166,7 +166,7 @@ for model in "${MODELS[@]}"; do
   echo "📂 Target Directory: experiments/$CAMPAIGN_TAG"
   # 1. Generate Initial Reward Function
   echo -e "${GREEN}[Step 0] Populating Experiment Directory With Initial Flawed Reward Function ${NC}"
-  python3 controllers/set_initial_shaping.py --reward "$REWARD_FUNC"
+  python3 src/controllers/set_initial_shaping.py --reward "$REWARD_FUNC"
 
   # 2. RUN THE INNER LOOP
   ./inner_loop.sh "$ITERATIONS" "$SELECTED_CONTROLLER" "$TRAINING_SCRIPT"

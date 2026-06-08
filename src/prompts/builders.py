@@ -1,5 +1,5 @@
 from typing import Tuple
-from prompts.loader import load_template
+from src.prompts.loader import load_template
 
 
 def build_strategist_prompt(

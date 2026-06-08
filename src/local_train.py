@@ -24,7 +24,7 @@ def run_local_cycle(iteration: int, num_seeds: int):
                 for k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS",
                           "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
                     env[k] = str(threads)
-                cmd = f"{sys.executable} train.py --iteration {iteration} --seed_id {seed_id}"
+                cmd = f"{sys.executable} src/train.py --iteration {iteration} --seed_id {seed_id}"
                 if ccx_groups and slot < len(ccx_groups):
                     cmd = f"taskset -c {ccx_groups[slot]} " + cmd
                 procs.append(subprocess.Popen(cmd, shell=True, env=env))

@@ -3,14 +3,21 @@ import re
 from datetime import timedelta 
 
 # custom imports
-import prompts  
+import src.prompts as prompts  
 from src.cognitive_node import CognitiveNode
 from src.config import Config
 from src.code_validation import CodeValidator
 from src.utils import extract_python_code
 
 
-def generate_proposals(brain: CognitiveNode, iteration: int, diagnostic_report: str, current_code: str, expt_ledger: str, model_override:str=None) -> str:
+def generate_proposals(
+        brain: CognitiveNode, 
+        iteration: int, 
+        diagnostic_report: str, 
+        current_code: str, 
+        expt_ledger: str, 
+        model_override:str=None
+        ) -> str:
     """Generate Proposals of Reward Function Modifications based on metrics and history."""
     start_time = time.perf_counter()
 
@@ -41,7 +48,11 @@ def generate_proposals(brain: CognitiveNode, iteration: int, diagnostic_report: 
     print(f"Proposal Generation took: {timedelta(seconds=elapsed_time)}\n")
     return proposals
 
-def organize_proposals(brain: CognitiveNode, proposals: str, model_override:str=None) -> str:
+def organize_proposals(
+        brain: CognitiveNode, 
+        proposals: str, 
+        model_override:str=None
+        ) -> str:
     """Sanitizes and formats the raw output from the Strategist."""
     start_time = time.perf_counter()
     
@@ -68,7 +79,14 @@ def organize_proposals(brain: CognitiveNode, proposals: str, model_override:str=
     print(f"Organizing Proposals took: {timedelta(seconds=elapsed_time)}\n")
     return proposal_report
 
-def choose_proposal(brain: CognitiveNode, iteration: int, diagnostic_report: str, proposal_report: str, expt_ledger: str, model_override:str=None) -> str:
+def choose_proposal(
+        brain: CognitiveNode, 
+        iteration: int, 
+        diagnostic_report: str, 
+        proposal_report: str, 
+        expt_ledger: str, 
+        model_override:str=None
+        ) -> str:
     """Evaluates proposals against the experiment ledger to choose the most viable path."""
     start_time = time.perf_counter()
 
@@ -96,7 +114,11 @@ def choose_proposal(brain: CognitiveNode, iteration: int, diagnostic_report: str
     print(f"Choosing Proposal took: {timedelta(seconds=elapsed_time)}\n")
     return chosen_proposal
 
-def generate_work_order(brain: CognitiveNode, chosen_proposal: str, model_override:str=None) -> str:
+def generate_work_order(
+        brain: CognitiveNode, 
+        chosen_proposal: str, 
+        model_override:str=None
+        ) -> str:
     """Routes the chosen proposal into strict payload formats for downstream nodes."""
     start_time = time.perf_counter()
     
@@ -121,7 +143,13 @@ def generate_work_order(brain: CognitiveNode, chosen_proposal: str, model_overri
     print(f"Work Order Generation took: {timedelta(seconds=elapsed_time)}\n")
     return work_order
 
-def generate_code(brain: CognitiveNode, coder_payload: str, current_code: str, max_retries: int = 3, model_override:str=None) -> str:
+def generate_code(
+        brain: CognitiveNode, 
+        coder_payload: str, 
+        current_code: str, 
+        max_retries: int = 3, 
+        model_override:str=None
+        ) -> str:
     """Translates work orders into executable code with an iterative validation loop."""
     start_time = time.perf_counter()
     

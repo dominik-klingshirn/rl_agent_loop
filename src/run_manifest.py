@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import Config
-from prompts.loader import load_template
+from src.prompts.loader import load_template
 from src.utils import get_hardware_config, get_optimized_ppo_params
 from src.schedules import SHAPES
 

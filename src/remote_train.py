@@ -60,7 +60,7 @@ echo "📡 [Remote-Dispatch] Detected $NUM_CCX CCX groups for {num_seeds} seeds"
 if [ $NUM_CCX -lt 2 ]; then
     echo "   Single CCX or detection failed → sequential dispatch"
     for seed_id in $(seq 0 $(({num_seeds} - 1))); do
-        {Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id $seed_id || exit 1
+        {Config.REMOTE_PYTHON_BIN} -u src/train.py --iteration {iteration} --seed_id $seed_id || exit 1
     done
 else
     echo "   Multi-CCX → parallel dispatch with taskset pinning"
@@ -69,7 +69,7 @@ else
         CCX_IDX=$((seed_id % NUM_CCX))
         echo "   → seed $seed_id pinned to CCX ${{CCX[$CCX_IDX]}}"
         LOG=/tmp/ard_iter{iteration}_seed$seed_id.log
-        taskset -c "${{CCX[$CCX_IDX]}}" {Config.REMOTE_PYTHON_BIN} -u train.py --iteration {iteration} --seed_id $seed_id > "$LOG" 2>&1 &
+        taskset -c "${{CCX[$CCX_IDX]}}" {Config.REMOTE_PYTHON_BIN} -u src/train.py --iteration {iteration} --seed_id $seed_id > "$LOG" 2>&1 &
         PIDS+=($!)
     done
     EXIT_CODE=0
