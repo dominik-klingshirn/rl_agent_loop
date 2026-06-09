@@ -41,7 +41,7 @@ Before the new code is deployed, a deterministic `CodeValidator` compiles the sc
 
 ## 3. State Management
 
-The pipeline relies on two core modules to maintain state across iterations and network boundaries:
+Every LLM inference is a zero-shot prediciton. The pipeline relies on two core modules to maintain state across iterations and network boundaries:
 
 * **Workspace Manager:** Dynamically generates isolated, timestamped directory trees for every campaign, segregating telemetry, generated code, and cognition traces.
 * **Experiment Ledger:** A JSON-backed evolutionary memory. It acts as the "dead drop" where the Dispatcher leaves hypotheses for the Validator to read in the future, preventing the system from falling into cyclical mathematical traps.
