@@ -28,7 +28,7 @@ from src.schedules import SHAPES
 ROLES = ["strategist", "organizer", "research_lead", "dispatcher", "coder", "validator"]
 
 _REPO_ROOT = Path(__file__).parent.parent
-_REGISTRY_PATH = _REPO_ROOT / "prompts" / "version_registry.json"
+_REGISTRY_PATH = _REPO_ROOT / "src"/ "prompts" / "version_registry.json"
 
 # slot → (load_template category, subcategory, Config attribute holding the filename)
 # Attributes and subcategories discovered from src/config.py and prompts/ directory layout.
