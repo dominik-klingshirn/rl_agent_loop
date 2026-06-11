@@ -9,6 +9,10 @@ from src import utils, llm_utils
 from src.config import Config
 from src.workspace_manager import ExperimentWorkspace
 
+# Roles whose total failure degrades gracefully (null result) rather than killing the run.
+# All other roles are load-bearing: 3× failure exits.
+_GRACEFUL_SKIP_PHASES = {"validator"}
+
 
 class CognitiveNode:
     def __init__(self, iteration: int, workspace: ExperimentWorkspace, model: str = Config.LLM_MODEL):
@@ -84,6 +88,10 @@ class CognitiveNode:
                     self.failed_calls.append((f"Attempt {attempt_num} Phase: {phase_name} [Thinking Trace] {active_model}", empty_response['message']['thinking']))
 
         if not response:
+            if phase_name in _GRACEFUL_SKIP_PHASES:
+                print(f"   ⚠️  {phase_name} failed all retries — skipping (off-lineage, run continues).")
+                self.save_report()
+                return None
             print(f"   💀 Critical Failure in {phase_name}: No response received.")
             self.save_report()
             return sys.exit(1)

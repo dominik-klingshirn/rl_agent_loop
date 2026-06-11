@@ -88,7 +88,8 @@ def run_agentic_improvement(iteration: int):
         )
         
         # Lock the post-mortem into the historical record
-        ledger.log_validation(iteration - 1, ledger_entry)
+        if ledger_entry is not None:
+            ledger.log_validation(iteration - 1, ledger_entry)
     else:
         print(f"ℹ️ Iteration {iteration}: No history in Ledger to validate.")
 

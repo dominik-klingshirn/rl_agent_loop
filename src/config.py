@@ -17,7 +17,7 @@ class Config:
     INITIAL_FUNC=os.getenv("INITIAL_FUNC", "spin_crash")
     
     # 3. LLM Prompt Templates ###################################################################
-    strategist_role = "strategist_system_prompt_test"
+    strategist_role = "strategist_system_prompt"
     strategist_task = "strategist_user_prompt"
     strategist_template = (strategist_role,strategist_task)
 
@@ -135,7 +135,7 @@ class Config:
                 options["temperature"] = 0.7
                 options["top_p"] = 0.95
                 options["num_ctx"] = 16384
-                options["num_predict"] = 4096   # Post-mortem is an essay, not a treatise
+                options["num_predict"] = 8192   # Post-mortem is an essay, not a treatise
 
             elif role == "strategist":
                 # Goal: Generate 3 mathematically DISTINCT reward topologies.
@@ -284,10 +284,10 @@ class Config:
             }
         else:
             return {
-                "research_lead": "nemotron-cascade-2",
+                "research_lead": "deepseek-r1:32b",
                 "organizer":     "gpt-oss:20b",
                 "dispatcher":    "gpt-oss:20b",
-                "validator":     "nemotron-cascade-2",
+                "validator":     "deepseek-r1:32b",
                 "coder":         "qwen3-coder:30b",
             }
 
