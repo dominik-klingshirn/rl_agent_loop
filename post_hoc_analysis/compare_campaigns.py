@@ -813,10 +813,10 @@ def main():
         + "_".join(l for i, l in enumerate(labels) if i != args.baseline)
     )[:80].replace(" ", "_")
 
-    output_dir = args.output_dir or Path("post_hoc_analysis") / "comparisons" / slug
+    output_dir = args.output_dir or Path("post_hoc_analysis") / "reports" / "campaign_comparisons" / slug
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {len(dirs)} campaign(s)...")
+    print(f"Loading {len(dirs)} campaign(s)")
     campaigns = []
     _campaign_comps: list = []
     _campaign_labs: list = []

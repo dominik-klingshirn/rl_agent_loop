@@ -21,7 +21,7 @@ plots/
 showcase_videos/
 loop_videos.py
 cognitions_for_review/
-post_hoc_analysis/outputs/
+post_hoc_analysis/reports/
 *.json
 !version_registry.json
 
@@ -46,7 +46,6 @@ CLAUDE.md
 prepare_cognition_for_review.py
 inspect_model.py
 sandbox.ipynb
-post_hoc_analysis/get_campaign_summary.sh
 docs/notes/
 remote_build_demo.py
 bench/

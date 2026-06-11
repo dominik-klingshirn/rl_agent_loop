@@ -2544,7 +2544,7 @@ def main():
 
     label = args.label or args.campaign_glob.replace("*", "X").replace("/", "_")[:60]
     output_dir = args.output_dir or (
-        Path("post_hoc_analysis") / "outputs" / label
+        Path("post_hoc_analysis") / "reports" / "single_campaign" / label
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
