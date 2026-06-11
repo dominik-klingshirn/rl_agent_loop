@@ -45,24 +45,26 @@ You must structure your output in two distinct parts:
 
 **PART 1: SURGICAL EXCISION**
 
-Most components are salvageable through rescaling, sign inversion, or gating — and salvaging preserves shaping information the next iteration cannot recover. Excise only when the *functional form itself* is incoherent with the task. **No flag in the diagnostic table is by itself grounds for excision** — flags describe statistical findings, not actions. The decision to delete versus modify is yours, and must be reasoned from the component's mathematical form against the observed physical failure.
+Components are salvageable through rescaling, sign inversion, or gating — and salvaging preserves shaping information the next iteration cannot recover. Excise only when the *functional form itself* is incoherent with the task. **No flag in the diagnostic table is by itself grounds for excision** — flags describe statistical findings, not actions. The decision to delete versus modify is yours, and must be reasoned from the component's mathematical form against the observed physical failure.
 
 List components you are excising, with one sentence of justification per component stating why no transformation rescues the form.
 
-**PART 2: 3 PROPOSALS (Additions, Modifications, or Synergistic Clusters)**
+**PART 2: 3 PROPOSALS (Additions or Modifications)**
 
-Output exactly **3 distinct proposals**. A proposal may:
-- **Add** a novel term encoding a new physical insight
-- **Modify** an existing term (rescale, invert sign, gate by state, change functional form)
-- Comprise a **synergistic cluster** of cooperating terms when they are mathematically inseparable
+Output exactly **3 distinct proposals**. Every proposal is one of two types:
 
-Modification proposals are not lesser proposals. A well-reasoned sign inversion or gating condition often outperforms a novel addition. Do not artificially atomize a hypothesis into single-term proposals; do not pad a single-term hypothesis into a cluster.
+- **Addition:** introduce a new functional identity — either a single term, or a set of terms whose learning signal emerges only from their combined effect. State the synergy rationale whenever you propose more than one term in a single addition.
+- **Modification:** transform an existing term while preserving its functional identity — rescale, invert sign, gate by state, or change functional form.
+
+A term's **functional identity** is the pairing of (the state variable(s) it reads) with (the agent behavior it targets). A modification may freely change the signal's *shape or strength* — coefficients, exponent, thresholds, clipping — provided both the input and the behavioral purpose survive. If either changes, it is not a modification: express it as an excision (Part 1) plus an Addition. Edge case: when the input is shared but a functional-form change flips the behavioral purpose (e.g. soft damping incentive → hard landing gate), purpose dominates — treat it as remove + add.
+
+Modification proposals are not lesser proposals. A well-reasoned sign inversion or gating condition often outperforms a novel addition. Do not atomize a single hypothesis into separate proposals; do not pad a single-term addition into a multi-term set.
 
 For each proposal, you must clearly provide:
 
 1. **The Conceptual Hypothesis:** Explain the physical or optimization failure and *why* your proposed math fixes it. Think about gravity, momentum, and state-space boundaries.
 
-2. **The Mathematical Formulation:** Define the exact change in LaTeX or Python. For modifications, show the old form and the new form. For clusters, label each term's role (shaping, gating, saturation, etc.) and state what the synergy produces that no single term can. Specify coefficients and clipping boundaries.
+2. **The Mathematical Formulation:** Define the exact change in LaTeX or Python. For modifications, show the old form and the new form. For multi-term additions, label each term's role (shaping, gating, saturation, etc.) and state what the synergy produces that no single term can. Specify coefficients and clipping boundaries.
 
 3. **The Falsifiable Expected Outcome:** State the exact metric from the Diagnostic Report (e.g., `Mean Descent Efficiency`, `Chatter Rate`, `Population Success Rate`) that will improve, and the numerical shift you expect to see in the next iteration.
 
