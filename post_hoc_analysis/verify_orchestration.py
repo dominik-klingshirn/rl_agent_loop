@@ -25,13 +25,50 @@ RELIABILITY (read this):
     Shown for context only and flagged low-confidence. The production path replaces this
     with the cloud Extractor.
 """
-import ast, hashlib, json, re, sys, glob, os, argparse
+import ast, hashlib, json, re, sys, glob, os, argparse, unicodedata, difflib
 from pathlib import Path
 from collections import Counter
 
 PARAMS = {"obs", "prev_obs", "info"}
 MODS = {"np", "math"}
 SINKS = {"components", "total_reward"}
+
+_STRUCTURAL_STOPLIST = {
+    "components", "total_reward", "obs", "info", "prev_obs",
+    "prev_angle", "prev_v_ang", "action", "calculate_reward",
+}
+_ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍﻿"), None)
+
+
+def normalize_deletion_name(raw: str, vocab: dict):
+    """
+    Resolve one candidate deletion token against the prior-iteration vocabulary.
+
+    raw   : candidate name as it appeared in the dispatcher field (one logical name).
+    vocab : {alias_or_key -> canonical_key}; MUST also map each canonical key to itself.
+
+    Returns (canonical_or_None, status):
+      'exact'      matched a known alias/key verbatim
+      'normalized' matched only after unicode/whitespace cleanup  (rescued)
+      'fuzzy'      matched by edit-distance after cleanup          (rescued, low-confidence)
+      'stoplisted' structural identifier -> drop, not a deletion target
+      'unresolved' no match -> excluded from gate denominator, forces INDETERMINATE
+    """
+    if raw in vocab:
+        return vocab[raw], "exact"
+    c = unicodedata.normalize("NFKC", raw)
+    c = c.translate(_ZERO_WIDTH)
+    c = c.replace(" ", " ").replace(" ", " ").replace("‑", "-")
+    c = c.strip().strip("`*-• ").strip()
+    c_ws = "".join(c.split())
+    if c_ws in vocab:
+        return vocab[c_ws], "normalized"
+    if c_ws in _STRUCTURAL_STOPLIST:
+        return None, "stoplisted"
+    hit = difflib.get_close_matches(c_ws, list(vocab.keys()), n=1, cutoff=0.85)
+    if hit:
+        return vocab[hit[0]], "fuzzy"
+    return None, "unresolved"
 
 
 # ----------------------------- AST layer (SOLID) -----------------------------
@@ -133,7 +170,22 @@ def disp_code_deletions(by):
     t = dm.group(1).strip()
     if re.fullmatch(r"(?i)\s*none\s*", t):
         return []
-    return [x for x in re.findall(r"[A-Za-z_]\w*", t.replace("`", " ")) if x.lower() != "none"]
+    candidates = []
+    for line in t.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^[-*•∙‣◦]\s*", "", line).strip()
+        line = line.strip("`* ").strip()
+        if not line or line.lower() == "none":
+            continue
+        parts = [p.strip().strip("`").strip() for p in line.split(",")]
+        parts = [p for p in parts if p and p.lower() != "none"]
+        if len(parts) > 1 and all(len(p.split()) <= 1 for p in parts):
+            candidates.extend(parts)
+        else:
+            candidates.append(line)
+    return candidates
 
 
 def strat_manifest(by):
@@ -174,6 +226,9 @@ def run(model_root: Path):
 
     dishonored_tally = Counter()
     ghost_iters, dbl_iters, trunc_events, missing_events = [], [], [], []
+    indeterminate_iters = []
+    name_normalization_rescued = 0
+    deletion_name_unresolved = 0
     ALLROLES = ["validator", "strategist", "organizer", "research_lead", "dispatcher", "coder"]
 
     print("=" * 100)
@@ -188,18 +243,27 @@ def run(model_root: Path):
 
         # SEAM del_honored (dispatcher Code Deletions field, alias-resolved vs AST)
         a2k = {a: k for k, al in prev["alias"].items() for a in al}
+        vocab = {**a2k, **{k: k for k in prev["keys"]}}
         reqs = disp_code_deletions(by)
-        honored = dishonored = oov = None
+        honored = dishonored = rescued = unresolved = None
         if reqs is not None:
-            honored, dishonored, oov = [], [], []
-            for nm in reqs:
-                k = a2k.get(nm)
-                if k is None:
-                    oov.append(nm)
-                elif k not in cur["keys"]:
-                    honored.append(f"{nm}->{k}")
+            honored, dishonored, rescued, unresolved = [], [], [], []
+            for raw in reqs:
+                canon, status = normalize_deletion_name(raw, vocab)
+                if status == "stoplisted":
+                    continue
+                if status == "unresolved":
+                    unresolved.append(raw)
                 else:
-                    dishonored.append(f"{nm}->{k}"); dishonored_tally[k] += 1
+                    k = canon
+                    if status in ("normalized", "fuzzy"):
+                        rescued.append(f"{raw}->{k}({status})")
+                    if k not in cur["keys"]:
+                        honored.append(f"{raw}->{k}")
+                    else:
+                        dishonored.append(f"{raw}->{k}"); dishonored_tally[k] += 1
+            name_normalization_rescued += len(rescued)
+            deletion_name_unresolved += len(unresolved)
 
         # APPROX strat manifest (context only)
         man, low = strat_manifest(by)
@@ -214,9 +278,20 @@ def run(model_root: Path):
         if cur["dbl"]:
             print(f"  [AST]   DOUBLE-COUNT: {[(a,b,s) for a,b,s in cur['dbl']]}"); dbl_iters.append(i)
         if reqs is not None:
-            gate = "PASS" if (dishonored is not None and not dishonored) else "FAIL"
-            print(f"  [SEAM]  dispatcher Code Deletions -> coder:  honored={honored or '-'}  "
-                  f"DISHONORED={dishonored or '-'}  oov={oov or '-'}  GATE={gate}")
+            if dishonored:
+                gate = "FAIL"
+            elif unresolved:
+                gate = "INDETERMINATE"
+                indeterminate_iters.append(i)
+            else:
+                gate = "PASS"
+            seam_line = (f"  [SEAM]  dispatcher Code Deletions -> coder:  honored={honored or '-'}  "
+                         f"DISHONORED={dishonored or '-'}  GATE={gate}")
+            if rescued:
+                seam_line += f"  rescued={rescued}"
+            if unresolved:
+                seam_line += f"  unresolved={unresolved}"
+            print(seam_line)
         else:
             print(f"  [SEAM]  no dispatcher Code Deletions field (missing/malformed)")
         flag = "  (LOW CONFIDENCE: no backticked names in PART-1)" if low and man != [] else ""
@@ -232,6 +307,7 @@ def run(model_root: Path):
     print(f"  iterations analyzed: {iters}")
     print(f"  ghost-var iterations: {ghost_iters or 'none'}")
     print(f"  double-count iterations: {dbl_iters or 'none'}")
+    print(f"  indeterminate iterations: {indeterminate_iters or 'none'}")
     print(f"  truncation events: {trunc_events or 'none'}")
     print(f"  missing-role events: {missing_events or 'none'}")
     if dishonored_tally:
@@ -240,6 +316,8 @@ def run(model_root: Path):
             print(f"      {k}: {n}")
     else:
         print("  DISHONORED DELETIONS: none  <-- this is the target state after the prompt fix")
+    print(f"  name_normalization_rescued: {name_normalization_rescued}")
+    print(f"  deletion_name_unresolved: {deletion_name_unresolved}")
     print("\n  Headline check: compare the dishonored-deletions list above against the prior run.")
     print("  If it drops to none under a healthy num_predict, the field-name fix resolved it.")
     print("  If a component (e.g. action_spin_bonus) still recurs, the cause is the coder model, not the prompt.")
