@@ -1,21 +1,30 @@
 # ARD Post-Hoc Evaluation Tooling
 
-A complete extraction and aggregation pipeline for analyzing Autonomous Reward Design (ARD) ablation runs. Converts raw JSON/CSV payloads into paper-ready CSVs and interactive HTML dashboards.
+An extraction and aggregation pipeline for analyzing Autonomous Reward Design (ARD) campaign runs. Converts the raw JSON/CSV/`.py` artifacts each run leaves behind into per-iteration CSVs, cross-run summary tables, and interactive HTML dashboards.
+
+> **Scope of this document.** This README covers the **extraction + aggregation** layer only: how raw run artifacts become CSVs and dashboards. The **Tier 1 RunScore** (per-run scoring — PPV, PolicyRetention, TR) and the **Tier 2 Orchestration/Cognition** evaluation framework are documented separately; their design rationale lives in a companion spec next to this file. Where those concerns surface here, they appear as pointers, not specifications.
+
+---
 
 ## What This Does
 
-**In 30 seconds:** You have N ≥ 1 training runs under `experiments/`. Each run produced 10+ iterations of:
-- A deterministic metric payload (`iter{NN}_metric_payload.json`) — RL outcomes
-- An LLM cognition record (`iter{NN}_cognition_record.json`) — proposal types, excisions, selections
-- A structured Validator ledger (`experiment_ledger.json`) — status, hypothesis, post-mortem
-- LLM call logs (`ChatResponse_data.csv`) — tokens, durations per phase
+**In 30 seconds:** You have N ≥ 1 campaign runs under `experiments/`. Each run produced 10+ iterations, and each iteration left behind structured artifacts. This tooling reads **four structured sources per iteration plus the accepted reward code**, stitches them together, and produces paper-ready CSVs and self-contained dashboards.
 
-This tooling **reads all three sources per iteration**, stitches them together without regex, and produces:
-- **Three CSV files** — one row per iteration, one per run, one cross-run summary with mean ± std
-- **One JSON audit trail** — nested structure for debugging
-- **Two interactive HTML dashboards** — no external dependencies, all data embedded, Charts rendered by Chart.js from CDN
+The five inputs per iteration:
 
-**Key design:** All outcome metrics come directly from the payload JSON (no markdown parsing). All Validator verdicts come from the ledger (no regex on the prompt). Cognition records are touched only for proposal-type taxonomy and RL selection — the two things they're uniquely good for.
+- `iter{NN}_metric_payload.json` — deterministic RL outcome metrics (PSR, ρ, terminal distribution, component flags). The ground truth for outcomes.
+- `iter{NN}_cognition_record.json` — the LLM call records (proposal types, RL selection). Text, so regex is used here — but only for LLM-behaviour fields, never for outcome metrics.
+- `experiment_ledger.json` — structured Validator verdicts (status, hypothesis, post-mortem). One file per run.
+- `ChatResponse_data.csv` — per-call token counts and durations across all six phases. One file per run.
+- `iter{NN}_reward.py` + `iter{NN}_changes.patch` — the accepted reward code and its unified diff. Parsed via **AST** for component deltas and structural flags; the patch supplies raw diff size.
+
+Outputs:
+
+- **Three CSV files** — one row per iteration, one per run, one cross-run summary with mean ± std.
+- **One JSON audit trail** — nested structure for debugging any number back to its source.
+- **Three interactive HTML dashboards** — self-contained, all data embedded; charts render client-side via Chart.js from CDN.
+
+**Key design:** Outcome metrics come directly from the payload JSON — no markdown parsing. Validator verdicts come from the ledger — no regex on the prompt. Component excisions/additions come from **AST set-difference between consecutive `reward.py` files**, which overrides the Strategist's self-reported prose (that self-report silently undercounts). Cognition records are touched only for proposal-type taxonomy and RL selection — the two things they are uniquely good for.
 
 ---
 
@@ -23,79 +32,81 @@ This tooling **reads all three sources per iteration**, stitches them together w
 
 ### Core Scripts
 
-**`extract_cognition.py`** — Library for per-iteration extraction
-- `load_metric_payload(path)` → `OutcomeMetrics` — parses payload JSON directly
-- `extract_cognition_record(path)` → `CognitionRecord` — parses cognition JSON for LLM behavior only
-- `load_ledger(path)` → dict[iteration, LedgerEntry] — parses Validator verdicts from ledger
-- `load_run(campaign_path, cfg)` → `RunSummary` — aggregates all iterations in one campaign folder
-- `aggregate_across_runs(runs, sig)` → `ModelSummary` — cross-run mean ± std for one model config
+**`extract_cognition.py`** — Library for per-iteration extraction. Pure stdlib.
+- `load_metric_payload(path)` → `OutcomeMetrics` — parses payload JSON directly.
+- `extract_cognition_record(path)` → `CognitionRecord` — parses cognition JSON for LLM behaviour only.
+- `load_ledger(path)` → `dict[int, LedgerEntry]` — parses Validator verdicts from the ledger.
+- `analyze_reward_ast(path)` — AST analysis of a reward `.py`: component set, double-count flags, ghost vars.
+- `load_run(campaign_path, cfg)` → `RunSummary` — aggregates all iterations in one campaign folder.
+- `aggregate_across_runs(runs, sig)` → `ModelSummary` — cross-run mean ± std for one model configuration.
+- `load_chat_responses(csv_path, cognition_json_dir=…)` — type-cleans ChatResponse data, converts ns → seconds, optionally joins response/thinking text from the cognition records.
+- `RunPaths` — resolves every per-iteration file path under one campaign folder.
+- `AggregationConfig` — tunable thresholds for regression/recovery detection (see Data Flow below).
 
-Also includes:
-- `load_chat_responses(csv_path)` — type-cleans ChatResponse data, converts ns → seconds
-- `AggregationConfig` — tunable thresholds for collapse/recovery detection (default: PSR < 10% = collapse, > 50% = recovery)
+**`analyze_run.py`** — Per-run triage entry point. Pure stdlib (plus `compute_run_score`).
+- Called automatically by `outer_loop.sh` after each campaign completes.
+- Reads one campaign's structured sources via `extract_cognition` and writes, under `{campaign}/{model_dir}/reports/`:
+  - `triage_report.html` — self-contained per-run dashboard
+  - `triage_summary.json` — machine-readable headline stats (regression/recovery counts, verdicts, floor-rule flags, RunScore)
+  - `run_score.json` — the Tier 1 RunScore payload
+- **RunScore and floor-rule internals are out of scope here** — see the companion scoring spec. What matters for this README: `analyze_run.py` must run per campaign **before** cross-run aggregation, because `aggregate_runs.py` reads each run's `triage_summary.json` for regression/recovery counts and run scores.
 
-**`aggregate_runs.py`** — CLI wrapper that orchestrates everything
-- Discovers campaigns matching a glob
-- Loads all runs, aggregates by Strategist model
-- Writes CSVs (long format, runs summary, cross-run)
-- Writes JSON audit dump
-- Renders two HTML dashboards from a single embedded payload
+**`aggregate_runs.py`** — Cross-run CLI wrapper. Pure stdlib.
+- Discovers campaigns matching a glob, loads all runs, aggregates by Strategist model.
+- Writes the three CSVs and the JSON audit dump.
+- Renders the three HTML dashboards from a single embedded payload.
 
-### Sample Outputs
-
-Six files showing the expected output format:
-
-- **`iterations_long.csv`** — One row per (model, campaign_tag, iteration). ~700 cols including all outcomes, terminal distribution, component flags, cognition summaries. For plotting, filtering, detailed analysis.
-- **`runs_summary.csv`** — One row per run. Peak PSR, collapses, recoveries, proposal-type totals, validator-verdict histogram.
-- **`cross_run_summary.csv`** — One row per model configuration. Mean ± std across all runs: peak PSR/centered, final PSR/centered, collapse/recovery counts, proposal types, excisions. **This is the headline table for the paper.**
-- **`aggregated_data.json`** — Nested structure with full per-iteration details, run summaries, and model aggregates. Audit trail if numbers look wrong.
-- **`pipeline_performance.html`** — Interactive dashboard: RL outcomes, terminal distributions, Validator verdicts, proposal types, component flags, optimization metrics. ~60 KB self-contained file.
-- **`compute_cost.html`** — Interactive dashboard: per-phase cost breakdown, prompt size growth, gen tokens/sec by phase. ~50 KB self-contained file.
+> **Pointer — Tier 1 scoring:** `compute_run_score.py` produces the RunScore consumed by `analyze_run.py`. Its components, weights, and floor rules are specified in the companion evaluation-framework spec, not here.
 
 ---
 
 ## Quick Start
 
-### 1. Prerequisites
+### Prerequisites
 
 - Python 3.9+
-- No external dependencies (pure stdlib for the library; the CLI uses only `argparse`, `csv`, `json`)
-- A modern web browser (for the HTML dashboards; tested with recent Chrome, Firefox, Safari)
+- The extraction + aggregation layer (`extract_cognition.py`, `analyze_run.py`, `aggregate_runs.py`) is pure stdlib.
+- A modern browser for the dashboards (charts load Chart.js from CDN; internet needed only on first load).
 
-### 2. Setup
+These scripts live in `post_hoc_analysis/`; there is no install step.
 
-Copy the two scripts into your RL agent loop repo:
+### Step 1 — Per-run triage (auto-run by `outer_loop.sh`)
 
-```bash
-mkdir -p ~/Projects/RL-Lab/rl_agent_loop/post_hoc_analysis
-cp extract_cognition.py ~/Projects/RL-Lab/rl_agent_loop/post_hoc_analysis/
-cp aggregate_runs.py ~/Projects/RL-Lab/rl_agent_loop/post_hoc_analysis/
-```
-
-### 3. Run the aggregator
-
-From the repo root:
+`outer_loop.sh` calls this after each campaign, so usually you don't run it by hand. To regenerate manually:
 
 ```bash
 cd ~/Projects/RL-Lab/rl_agent_loop
 
+python3 post_hoc_analysis/analyze_run.py \
+    --campaign 2026-05-13_spin_crash_10cycles_1MSteps_remote_run1
+```
+
+This writes `triage_report.html`, `triage_summary.json`, and `run_score.json` under that run's `reports/` folder. Run it for every campaign you intend to aggregate.
+
+### Step 2 — Cross-run aggregation
+
+```bash
 python3 post_hoc_analysis/aggregate_runs.py \
     --experiments-root experiments \
-    --campaign-glob '*spin_crash_10cycles_1MSteps*reorderedOldValPrompt*' \
-    --label spin_crash_reorderedOldValPrompt
+    --campaign-glob '*spin_crash_10cycles_1MSteps*remote*' \
+    --label spin_crash_remote
 ```
 
 **Arguments:**
-- `--experiments-root` — Path to your `experiments/` folder (default: `experiments`)
-- `--campaign-glob` — Glob (relative to experiments-root) matching campaigns to aggregate. Example: `'*spin_crash*remote*'` matches all campaigns whose tag contains `spin_crash` and `remote`. **Omit the `_runN` suffix; the glob should match all run folders of the same training configuration together.**
-- `--label` — Label for output files and dashboard titles (default: sanitized version of the glob)
-- `--output-dir` — Output directory (default: `post_hoc_analysis/outputs/{label}/`)
-- `--collapse-threshold` — Fraction 0-1, PSR below which = collapse (default: 0.10)
-- `--recovery-threshold` — Fraction 0-1, PSR above which = recovery (default: 0.50)
-- `--recovery-window` — Max iterations to count recovery after collapse; 0 = unbounded (default: 0)
-- `--primary-landing-metric` — Which metric drives collapse/recovery detection: `psr` or `centered` (default: `psr`)
+- `--experiments-root` — Path to your `experiments/` folder (default: `experiments`).
+- `--campaign-glob` *(required)* — Glob (relative to experiments-root) matching campaigns to aggregate. **Omit the `_runN` suffix** so the glob matches all run folders of the same training configuration together.
+- `--label` — Label for output files and dashboard titles (default: sanitized version of the glob).
+- `--output-dir` — Output directory (default: `post_hoc_analysis/outputs/{label}/`).
+- `--established_floor` — Fraction 0–1; minimum PSR a run must reach before a drop can count as a sharp regression (default: `0.40`).
+- `--regression_k` — Std multiplier for the regression threshold (default: `2.0`).
+- `--regression_min_floor_pp` — Minimum regression threshold in percentage-points regardless of std (default: `10.0`).
+- `--recovery_window` — Max iterations after a regression within which a bounce-back counts as recovery; `0` = unbounded (default: `0`).
+- `--primary-metric` — Which metric drives regression/recovery detection: `psr` or `centered` (default: `psr`).
+- `--force` — Overwrite an existing output directory.
 
-### 4. Outputs
+> Flag-naming note: `analyze_run.py` exposes the same knobs with hyphens (`--established-floor`), while `aggregate_runs.py` uses underscores (`--established_floor`). Mind the difference until they're unified.
+
+### Outputs
 
 Writes to `post_hoc_analysis/outputs/{label}/`:
 
@@ -104,20 +115,20 @@ Writes to `post_hoc_analysis/outputs/{label}/`:
 ├── runs_summary.csv             (one row per run)
 ├── cross_run_summary.csv        (one row per model, mean±std) ← HEADLINE TABLE
 ├── aggregated_data.json         (full nested audit)
-├── pipeline_performance.html    (RL + cognition dashboard)
-└── compute_cost.html            (LLM compute dashboard)
+├── pipeline_performance.html    (dashboard 1 — RL + cognition)
+├── compute_cost.html            (dashboard 2 — LLM compute)
+└── code_evolution.html          (dashboard 3 — reward-code evolution)
 ```
 
-### 5. View dashboards
-
-Open the HTML files in your browser:
+### View dashboards
 
 ```bash
-open post_hoc_analysis/outputs/spin_crash_reorderedOldValPrompt/pipeline_performance.html
-open post_hoc_analysis/outputs/spin_crash_reorderedOldValPrompt/compute_cost.html
+open post_hoc_analysis/outputs/spin_crash_remote/pipeline_performance.html
+open post_hoc_analysis/outputs/spin_crash_remote/compute_cost.html
+open post_hoc_analysis/outputs/spin_crash_remote/code_evolution.html
 ```
 
-All data is embedded in the HTML — no server, no internet required. Charts render client-side using Chart.js loaded from CDN (requires internet only on first load).
+All data is embedded in the HTML — no server required. Chart.js loads from CDN (internet needed only on first load).
 
 ---
 
@@ -125,12 +136,12 @@ All data is embedded in the HTML — no server, no internet required. Charts ren
 
 ### Per-Iteration Assembly
 
-For each iteration, **three structured sources** are stitched together:
+For each iteration, the structured sources are stitched together:
 
 ```
 iter07_metric_payload.json
 ├─ multi_seed_optimization_health
-│  ├─ population_metrics: {cross_seed_snr, mean_final_reward, ...}
+│  ├─ population_metrics: {cross_seed_cv, mean_final_reward, ...}
 │  ├─ critic_robustness: {mean_critic_saturation_index, ...}
 │  └─ learning_dynamics: {mean_trajectory_isomorphism_rho, ...}
 ├─ multi_seed_stochastic_health
@@ -146,72 +157,84 @@ iter07_metric_payload.json
 iter07_cognition_record.json
 ├─ iteration: 7
 ├─ calls: [
-│  ├─ {phase: "strategist", response_content: "...[Proposal 1]...[Proposal 2]..."}
-│  ├─ {phase: "research_lead", response_content: "...**Selected Proposal:** Proposal 1..."}
-│  └─ ...5 other phases...
+│  ├─ {phase: "strategist",     response_content: "...[Proposal 1]...[Proposal 2]..."}
+│  ├─ {phase: "research_lead",  response_content: "...**Selected Proposal:** Proposal 1..."}
+│  └─ ...other phases...
 └─ ...
 
 experiment_ledger.json (one file for the whole run)
 ├─ experiments: [
 │  ├─ {id: 1, hypothesis_payload: "...", validation_post_mortem: "**Status:** Regressed\n..."}
-│  ├─ {id: 7, hypothesis_payload: "...", validation_post_mortem: "**Status:** Regressed\n..."}
+│  ├─ {id: 7, hypothesis_payload: "...", validation_post_mortem: "**Status:** Validated\n..."}
 │  └─ ...
 └─ ...
 
-ChatResponse_data.csv (one file for the whole run, 60 rows for a 10-iter run × 6 phases)
+ChatResponse_data.csv (one file for the whole run; ~6 rows per iteration × phases)
 ├─ iteration,phase,model_name,prompt_eval_count,eval_count,total_duration_ns,...
-├─ 1,strategist,gemma3:27b,3335,1237,93000000000,...
+├─ 1,strategist,gemma4-26b-mlx,3335,1237,93000000000,...
 └─ ...
+
+iter07_reward.py  +  iter07_changes.patch
+├─ reward.py → AST → component set, double-count flags, ghost vars
+└─ changes.patch → raw diff size (lines added/removed, hunk count)
 ```
 
 **Extraction logic:**
-1. Load **payload** → `OutcomeMetrics` with PSR, ρ, SNR, terminal distribution, component flags, etc.
-2. Load **cognition record** → `CognitionRecord` with proposal types (modification/addition/cluster), excision count, selected proposal
-3. Load **ledger** → look up iteration 7 → extract status from `**Status:**` field in post-mortem
-4. Load **chat rows** for this iteration → timestamp them for plotting
+1. Load **payload** → `OutcomeMetrics` (PSR, ρ, terminal distribution, component flags).
+2. Load **cognition record** → `CognitionRecord` (proposal types, selected proposal).
+3. Load **ledger** → look up the iteration → extract status from the `**Status:**` field in the post-mortem.
+4. Load **chat rows** → per-phase tokens and durations for this iteration.
+5. AST-diff **reward.py** against the previous iteration → component delta (excised/added), structural flags.
 
-**Why three sources?**
-- The payload is deterministic, machine-readable, and already exists on disk. It IS the ground truth for outcomes.
-- The cognition record is text (LLM responses), so regex is necessary for proposal types and RL selection — but we skip the outcome metrics parsing that the old code did, which caused an off-by-one bug (the Validator prompt embeds two diagnostics: prior iter's baseline + current results; regex from the top grabbed the wrong one).
-- The ledger has structured verdicts, not markdown parsing.
+**Why these sources?**
+- The payload is deterministic, machine-readable, and already on disk. It *is* the ground truth for outcomes.
+- The cognition record is LLM text; regex is used only for proposal types and RL selection. Outcome-metric parsing is deliberately *not* done here — the Validator prompt embeds two diagnostics (prior iteration's baseline + current results), and a top-down regex would grab the wrong one (the historical off-by-one bug).
+- The ledger carries structured verdicts, not markdown to be scraped.
+- AST set-difference on the reward files is the authoritative source for what actually changed in the dict — it catches silent excisions the Strategist's PART 1 prose misses.
 
 ### Per-Run Aggregation
-
-All iterations for one run are combined:
 
 ```
 IterationRecord[iter1, iter2, ..., iter10]
     ↓
-aggregate_run(cfg: AggregationConfig)
+load_run(cfg: AggregationConfig)
     ├─ Peak PSR / peak centered (max across iters)
     ├─ Final PSR / final centered (last iter)
-    ├─ Collapse count (how many iters had PSR < threshold?)
-    ├─ Recovery count (after a collapse, did PSR bounce back above recovery_threshold?)
+    ├─ Regression / recovery counts (from triage_summary.json, written by analyze_run.py)
     ├─ Stability score (σ of PSR across iters)
-    ├─ Proposal type distributions (total modifications, additions, clusters, unknowns)
+    ├─ Proposal-type distributions (modifications, additions, clusters, unknowns)
     ├─ Validator verdict histogram ({Validated: 2, Regressed: 5, ...})
-    └─ Proposal type mean per iter (for averaging across runs)
+    └─ Excision counts (AST-verified, mean per iter)
     ↓
 RunSummary
 ```
 
 ### Cross-Run Aggregation
 
-All runs of the same model configuration:
-
 ```
 RunSummary[run1, run2, run3]
     ↓
 aggregate_across_runs()
     ├─ peak_psr_mean / peak_psr_std (mean ± std of each run's peak)
-    ├─ collapse_count_mean / collapse_count_std
-    ├─ recovery_count_mean / recovery_count_std
+    ├─ regression_count_mean / recovery_count_mean (± std)
     ├─ stability_score_mean / stability_score_std (σ of run-level σ's)
-    ├─ proposal_type_mean_per_iter (mean modifications per iter, averaged across runs)
-    └─ All run summaries (for detailed drill-down)
+    ├─ proposal_type_mean_per_iter (mean of each type per iter, averaged across runs)
+    └─ All run summaries (for drill-down)
     ↓
-ModelSummary ← This is one row in cross_run_summary.csv
+ModelSummary ← one row in cross_run_summary.csv
 ```
+
+### Regression / Recovery Detection (`AggregationConfig`)
+
+Behavioural events within a run are detected against a regression model, not a fixed collapse/recovery cutoff:
+
+- `established_floor` (0.40) — a run must first reach this PSR before any drop is eligible to count as a sharp regression. Keeps early-training noise from registering as regressions.
+- `regression_k` (2.0) — the regression threshold scales with `regression_k ×` the run's cross-iteration std.
+- `regression_min_floor_pp` (10.0) — a hard floor on that threshold in pp, so a very stable run still needs a meaningful drop to flag.
+- `recovery_window` (0) — how many iterations after a regression a bounce-back may occur and still count as recovery; `0` = unbounded.
+- `primary_landing_metric` (`psr`) — which metric the detection runs on (`psr` or `centered`).
+
+The exact comparison lives in the detection code; these knobs are the tunable surface.
 
 ---
 
@@ -221,233 +244,149 @@ ModelSummary ← This is one row in cross_run_summary.csv
 
 One row per (model, campaign, iteration). Suitable for plotting, filtering, statistical tests.
 
-**Outcome Metrics (all fractions 0–1 unless noted):**
-- `psr` — Population success rate (= `population_mean_success_rate` from payload)
-- `centered_rate` — `landed_centered` from terminal distribution
+**Outcome metrics (fractions 0–1 unless noted):**
+- `psr` — population success rate (`population_mean_success_rate` from payload)
+- `centered_rate` — `landed_centered` from the terminal distribution
 - `objective_alignment_rho`, `survival_hacking_rho` — ρ values from topology analysis
-- `cross_seed_snr` — Signal-to-noise ratio (can be very large)
-- `critic_saturation_index`, `trajectory_isomorphism_rho`, `intra_rollout_cv`, `terminal_entropy_norm` — Optimization/fragility metrics
-- `mean_descent_efficiency`, `actuator_chatter_rate`, `macro_oscillations` — Kinematic metrics
+- `cross_seed_cv` — cross-seed coefficient of variation
+- `critic_saturation_index`, `trajectory_isomorphism_rho`, `intra_rollout_cv`, `terminal_entropy_norm` — optimization / fragility metrics
+- `mean_descent_efficiency`, `actuator_chatter_rate`, `macro_oscillations` — kinematic metrics
 - Terminal distribution: `term_landed_centered`, `term_landed_off_centered`, `term_landed_but_slid_into_valley`, `term_crashed`, `term_out_of_bounds`, `term_hover_timeout`
-- Component rollups: `n_components`, `n_optimal`, `n_traitor`, `n_dead_weight`, `n_hidden_dependency`
+- Component rollups: `n_components`, `n_optimal`, `n_traitor`, `n_dead_weight`, `n_hidden_dependency`, `n_hidden_helper`, `n_high_magnitude_neutral`
 - Flags: `is_lottery_ticket`, `survival_hacking_detected`, `is_initialization_sensitive`, `is_universally_converged`
 
-**Cognition (LLM behavior):**
-- `validator_status` — Extracted from ledger (e.g., `Validated`, `Regressed`, `Goodhart Trap`)
-- `excision_count` — # of components the Strategist excised in PART 1
-- `prop_modification`, `prop_addition`, `prop_cluster`, `prop_unknown` — # of proposals of each type
-- `selected_proposal_index` — Which proposal the Research Lead chose
-- `parse_warnings` — Semicolon-separated list of parsing issues (e.g., `no_proposals_parsed`, `ledger_post_mortem_pending`)
+**Cognition / code (LLM behaviour + ground-truth change):**
+- `validator_status` — from the ledger (e.g. `Validated`, `Regressed`, `Goodhart Trap`)
+- `excision_count` — components removed, **from AST set-difference between consecutive `reward.py` files** (not the Strategist's PART 1 prose, which can undercount)
+- `prop_modification`, `prop_addition`, `prop_cluster`, `prop_unknown` — proposal counts by inferred type
+- `selected_proposal_index` — which proposal the Research Lead chose
+- `parse_warnings` — semicolon-separated parsing issues (e.g. `no_proposals_parsed`, `ledger_post_mortem_pending`)
 
 ### `runs_summary.csv`
 
 One row per run. Suitable for comparing runs of the same model.
 
-**Per-run aggregates:**
-- `iteration_count` — Total iterations in this run
-- `peak_psr`, `peak_centered` — Best PSR/centered across all iters
-- `iter_final_psr`, `iter_final_centered` — PSR/centered in the last iteration
-- `collapse_count`, `recovery_count` — # of collapse/recovery events (using thresholds from cfg)
-- `stability_score` — σ of PSR across iters (how volatile was the run?)
-- `total_excisions`, `mean_excisions_per_iter` — Total excisions and mean per iter
-- `prop_*_total` — Total proposals of each type across all iters
-- `validator_verdicts` — JSON dict of {status: count}, e.g., `{"Regressed": 5, "Mixed": 3, "Validated": 2}`
-- `iterations_with_warnings` — # of iters with parsing warnings
+- `iteration_count` — total iterations
+- `peak_psr`, `peak_centered` — best across all iters
+- `iter_final_psr`, `iter_final_centered` — last iteration
+- `regression_count`, `recovery_count` — event counts (from `triage_summary.json`)
+- `stability_score` — σ of PSR across iters
+- `total_excisions`, `mean_excisions_per_iter` — AST-verified excision totals
+- `prop_*_total` — proposals of each type across all iters
+- `validator_verdicts` — JSON dict `{status: count}`, e.g. `{"Regressed": 5, "Mixed": 3, "Validated": 2}`
+- `iterations_with_warnings` — iters with parsing warnings
 
 ### `cross_run_summary.csv`
 
-One row per model configuration (one Strategist model, one campaign signature). **This is the headline table for your paper.**
+One row per model configuration (one Strategist model, one campaign signature). **This is the headline table for the paper.**
 
-**Cross-run statistics (mean ± std across N runs):**
-- `model` — Strategist model name (e.g., `gemma3:27b`)
-- `campaign_signature` — The glob you passed (useful for filters, e.g., `*spin_crash*`)
-- `n_runs` — Number of runs aggregated
+- `model` — Strategist model name (e.g. `gemma4-26b-mlx`)
+- `campaign_signature` — the glob you passed
+- `n_runs` — number of runs aggregated
 - `peak_psr`, `peak_centered` — `mean ± std` of each run's peak
-- `iter_final_psr`, `iter_final_centered` — `mean ± std` of final PSR/centered
-- `collapse_count`, `recovery_count` — `mean ± std` counts
-- `stability_score` — `mean ± std` of run-level σ's (σ of σ's)
-- `mean_excisions_per_iter` — Average across runs (single number, no std)
-- `mean_modifications_per_iter`, `mean_additions_per_iter`, `mean_clusters_per_iter` — Average proposal type rates per iter
+- `iter_final_psr`, `iter_final_centered` — `mean ± std` of final metrics
+- `regression_count`, `recovery_count` — `mean ± std`
+- `stability_score` — `mean ± std` of run-level σ's
+- `mean_excisions_per_iter` — averaged across runs
+- `mean_modifications_per_iter`, `mean_additions_per_iter`, `mean_clusters_per_iter` — mean proposal-type rates per iter
 
 ---
 
 ## HTML Dashboards
 
-### `pipeline_performance.html`
+### `pipeline_performance.html` — RL outcomes + LLM cognition
 
-**RL outcomes + LLM cognition in one view.**
+- **Cross-run summary** — mean ± std headline table.
+- **Per-metric trajectories** — one chart per metric (PSR, centered, …), one line per run.
+- **Terminal mode distribution per iteration** — stacked bars per run, one bar per iteration.
+- **Validator verdict per iteration** — colored verdict grid (one row per run).
+- **Verdict–Outcome Alignment** — % of iterations where the verdict sign matched the ΔPSR sign.
+- **Proposal types per iteration** — mean across runs (modification / addition / cluster / unknown).
+- **Excisions per iteration (AST-verified)** — line per run.
+- **Objective Alignment ρ** — point-biserial correlation of reward with success.
 
-**Sections:**
+### `compute_cost.html` — LLM compute
 
-1. **Cross-run Summary Table** — Mean ± std for peak PSR, peak centered, final metrics, collapse/recovery counts, stability. One-glance view of model performance.
+- **Per-phase totals** — calls, wall time, prompt/gen tokens, throughput, % of total time, summed across runs and iterations.
+- **Per-run cost summary** — same breakdown per run.
+- **Wall time per PSR-pp delivered** — efficiency (lower = more efficient).
+- **Final PSR vs total wall time** — efficiency scatter (top-left = best).
+- **Total wall time per iteration** — per run + median.
+- **Gen tokens / second per phase** — throughput scatter across all calls.
+- **Phase avg time per iteration** — per run.
+- **Prompt size growth** — mean prompt tokens per phase across iterations (watch for ledger bloat).
+- **Response output size growth** — mean gen tokens per phase across iterations.
 
-2. **Outcome Trajectories** — Two side-by-side charts:
-   - **Population Success Rate** — One line per run, overlaid with cross-run mean band
-   - **Centered Landing Rate** — Same layout
-   - X-axis: iteration; Y-axis: fraction 0–1
+### `code_evolution.html` — reward-code evolution
 
-3. **Terminal Mode Distribution** — Small-multiple stacked bar charts (one per run):
-   - Each bar = one iteration
-   - Stacks: landed_centered (green), landed_off_centered (blue), landed_slid (cyan), crashed (red), out_of_bounds (purple), hover_timeout (orange)
-   - Useful for seeing if the policy is shifting failure modes
-
-4. **Validator Verdict Timeline** — Grid of colored pills:
-   - Rows: one per run
-   - Cols: one per iteration
-   - Colors: Validated/Confirmed (green), Mixed/Pyrrhic/Productive (yellow), Inconclusive (gray), Refuted/Regressed/Goodhart (red)
-
-5. **Proposal Types** — Stacked bar chart of mean proposals per iteration across all runs:
-   - Modification (blue), Addition (green), Cluster (purple), Unknown (gray)
-
-6. **Excisions Per Iteration** — Line chart, one line per run:
-   - Y-axis: # of components excised
-   - Useful for tracking if the Strategist is getting more aggressive
-
-7. **Component Flags** — Stacked bar chart:
-   - One bar per iteration (mean across runs)
-   - Stacks: 🟢 Optimal, 🟡 Dead weight, 🟣 Hidden dependency, 🔴 Traitor
-   - Useful for tracking if the reward function is getting cleaner or more problematic
-
-8. **Optimization Metrics** — Three charts side-by-side:
-   - **Objective Alignment ρ** — Should increase toward 1.0
-   - **SNR** — Log scale, shows signal-to-noise in cross-seed reward
-   - **Intra-rollout CV** — Coefficient of variation of actions (policy stability)
-
-9. **Per-Iteration Detail (Collapsible)** — Table for each run with every iteration's data:
-   - PSR, centered rate, ρ, SNR, validator status, excisions, proposal breakdown, selected proposal, warnings
-   - Useful for debugging when a number looks odd
-
-### `compute_cost.html`
-
-**LLM cost analysis.**
-
-**Sections:**
-
-1. **Per-Phase Cost Summary Table** — Rows are phases (validator, strategist, organizer, research_lead, dispatcher, coder):
-   - Calls — # of LLM calls in this phase
-   - Total time — Wall-clock seconds summed across all calls
-   - Prompt tok, Gen tok — Token counts
-   - Gen tok/s — Throughput (= gen tok / eval time in seconds)
-   - % of total time — Fraction of overall campaign runtime
-
-2. **Per-Iteration Phase-Stacked Time** — Stacked bar chart:
-   - X-axis: iteration (1–10)
-   - Y-axis: total seconds
-   - Stacks: time spent in each phase (colored)
-   - Shows if any phase is becoming a bottleneck as the run progresses
-
-3. **Prompt Size Growth** — Line chart, one line per phase:
-   - X-axis: iteration
-   - Y-axis: mean prompt tokens (averaged across runs)
-   - Useful for detecting if the Strategist's ledger (examples of past proposals) is bloating
-
-4. **Gen Tokens / Second (Scatter)** — Scatter plot by phase:
-   - X-axis: phase (with jitter)
-   - Y-axis: gen tokens per second for each call
-   - Shows throughput distribution — e.g., is the Research Lead faster than the Strategist?
+- **Component Count per Iteration** — how the reward dict grows/shrinks.
+- **Component Churn per Iteration** — excised + added per iteration, per run.
+- **Diff Size per Iteration** — lines changed from `changes.patch`, per run.
+- **Structural Flag Rates per Iteration (AST)** — double-count / ghost-var rates.
+- **Cross-run Summary** — code-evolution headline stats.
+- **Cross-run Convergence** — Jaccard similarity of final component sets across runs.
+- **Productive Churn Ratio** — churn that survived vs. churn later reverted.
+- **Component Survival Curve** — how long components persist once introduced.
 
 ---
 
 ## Troubleshooting
 
 ### "No campaigns matched glob"
+The glob didn't match any folders under `experiments/`. Check `ls experiments/`, confirm the pattern is a valid shell glob (case-sensitive), and remember to omit the `_runN` suffix so all runs of a configuration match together.
 
-**Error:** `No campaigns matched glob '*spin_crash*' under experiments/`
-
-**Cause:** The glob didn't match any folders under `experiments/`. 
-
-**Fix:** 
-1. Check your campaign folder names: `ls experiments/`
-2. Verify the glob pattern is a valid shell glob (remember: globbing is case-sensitive)
-3. Example: if your campaigns are named `2026-05-13_spin_crash_10cycles_1MSteps_remote_reorderedOldValPrompt_run1`, the glob `'*spin_crash*'` should work. But `'*SpinCrash*'` won't.
+### Regression / recovery counts are blank
+These come from each run's `triage_summary.json`. Run `analyze_run.py` for every campaign **before** aggregating; if the summary is missing, those columns are empty.
 
 ### "Missing payload" or "Missing cognition record"
+An iteration is included only if it has **both** a metric payload and a cognition record. Check:
+`experiments/CAMPAIGN/MODEL/telemetry/metric_payloads/iter07_metric_payload.json` and
+`experiments/CAMPAIGN/MODEL/cognition/json_cognition_records/iter07_cognition_record.json`.
+Iterations missing either file are skipped.
 
-**Error:** `FileNotFoundError: Missing payload: ...iter07_metric_payload.json`
-
-**Cause:** The discovered iteration doesn't have both a payload and a cognition record.
-
-**Fix:**
-1. Check that both files exist: `ls experiments/CAMPAIGN/MODEL/telemetry/metric_payloads/iter07_metric_payload.json` and `...cognition/json_cognition_records/iter07_cognition_record.json`
-2. The aggregator requires BOTH for each iteration. If one iteration is missing either file, that iteration is skipped.
-3. Run with `--discover-iterations` (future feature) to see which iterations were found.
-
-### Dashboard shows "—" or "NaN" for many values
-
-**Cause:** Missing or None values in the payload.
-
-**Fix:**
-1. This is usually OK — outcomes metrics can be None if they weren't computed. The CSV will have empty cells; the dashboard renders them as "—".
-2. If a metric is consistently None across all iterations, the payload generation may have failed silently.
-3. Check `aggregated_data.json` for the full per-iteration values — that's the audit trail.
+### Dashboard shows "—" or "NaN"
+Usually fine — outcome metrics can be `None` if they weren't computed, and render as "—". If a metric is `None` across *all* iterations, payload generation may have failed silently; check `aggregated_data.json` for the per-iteration values.
 
 ### Dashboard charts don't render
-
-**Cause:** Chart.js didn't load from CDN, or the data JSON is malformed.
-
-**Fix:**
-1. Check browser console (F12 → Console tab) for errors
-2. Verify you're online (Chart.js loads from CDN)
-3. Try opening one of the sample dashboards — if those render, your browser is OK and the issue is with your generated HTML
-4. Check that `aggregated_data.json` is valid JSON: `python3 -m json.tool aggregated_data.json > /dev/null`
+Chart.js didn't load from CDN, or the embedded JSON is malformed. Check the browser console (F12), confirm you're online, and validate the audit dump: `python3 -m json.tool aggregated_data.json > /dev/null`.
 
 ### Proposal types show as "unknown"
-
-**Cause:** The Strategist's response format doesn't match the regex patterns.
-
-**Fix:**
-1. Check `iterations_long.csv` for the `parse_warnings` column — entries like `proposal_2_type_unknown` indicate which proposals couldn't be classified
-2. Look at the actual Strategist response in the cognition record JSON
-3. Report the proposal text and I'll add a new pattern to `_infer_proposal_type()`
+The Strategist's response didn't match the classifier patterns. Check the `parse_warnings` column for which proposal failed, inspect the response in the cognition record, and extend `_infer_proposal_type()` with a new pattern.
 
 ### Validator status is "Unparsed"
-
-**Cause:** The post-mortem text doesn't start with `**Status:**` in the expected format.
-
-**Fix:**
-1. Check the ledger JSON directly: `experiments/CAMPAIGN/MODEL/cognition/experiment_ledger.json`
-2. Look at the `validation_post_mortem` field for that iteration
-3. The regex looks for `**Status:**` followed by a word in backticks or bare. If the Validator uses a different format, report it and I'll update the regex.
+The post-mortem text didn't carry a recognizable `**Status:**` field. Check the `validation_post_mortem` field in the ledger and adjust the status regex if the Validator used a new format.
 
 ---
 
 ## Advanced Usage
 
-### Custom Aggregation Config
-
-Change collapse/recovery thresholds:
+### Custom regression config
 
 ```bash
 python3 post_hoc_analysis/aggregate_runs.py \
-    --campaign-glob '*spin_crash*' \
-    --collapse-threshold 0.05 \
-    --recovery-threshold 0.60 \
-    --recovery-window 2
+    --campaign-glob '*spin_crash*remote*' \
+    --established_floor 0.50 \
+    --regression_k 2.5 \
+    --regression_min_floor_pp 12.0 \
+    --recovery_window 2
 ```
 
-**Interpretation:**
-- `collapse_threshold=0.05` — PSR < 5% counts as a collapse
-- `recovery_threshold=0.60` — PSR ≥ 60% counts as recovery
-- `recovery_window=2` — Only count recovery if it happens within 2 iterations of the collapse (0 = unbounded)
+Interpretation: a run must reach 50% PSR before drops are eligible; a regression must exceed `max(2.5 × std, 12pp)`; recovery counts only if it lands within 2 iterations.
 
-### Use the library directly (Python)
+### Use the library directly
 
 ```python
 from pathlib import Path
 from post_hoc_analysis.extract_cognition import load_run, aggregate_across_runs
 
-# Load one campaign folder
 run = load_run(Path("experiments/2026-05-13_spin_crash_10cycles_1MSteps_remote_run1"))
 print(f"Peak PSR: {run.peak_psr}")
-print(f"Iterations with warnings: {run.iterations_with_warnings}")
 
-# Iterate over every iteration
 for it in run.iterations:
     print(f"Iter {it.iteration}: PSR={it.outcomes.population_success_rate}, "
           f"ρ={it.outcomes.objective_alignment_rho}, "
           f"validator={it.validator_status}")
 
-# Load and aggregate multiple runs
 runs = [
     load_run(Path("experiments/2026-05-13_spin_crash_10cycles_1MSteps_remote_run1")),
     load_run(Path("experiments/2026-05-13_spin_crash_10cycles_1MSteps_remote_run2")),
@@ -463,41 +402,19 @@ print(f"Peak PSR mean ± std: {summary.peak_psr_mean} ± {summary.peak_psr_std}"
 python3 post_hoc_analysis/extract_cognition.py --smoke-test
 ```
 
-Loads sample data from `/mnt/user-data/uploads/` (iter 1-10 payloads, cognition records, ledger, ChatResponse CSV) and prints per-iteration extraction results. Useful for verifying the library works before running on your full data.
+Loads sample iter payloads, cognition records, ledger, and ChatResponse CSV from a fixed sample directory and prints per-iteration extraction results. Useful for verifying the library parses cleanly before running on full data; adjust the sample path in `__main__` if your fixtures live elsewhere.
 
 ---
 
 ## Architecture Notes
 
-### Why This Design?
+**Structured sources over regex.** Outcome metrics are read from the deterministic payload JSON, verdicts from the structured ledger, and code changes from AST analysis of the reward files. Regex is confined to genuinely unstructured LLM prose — proposal-type classification and RL selection. This isolation is deliberate: an earlier design parsed outcome metrics out of the Validator's post-mortem markdown, and because that prompt embeds two diagnostics (prior baseline + current results), a top-down regex grabbed the wrong one and produced an off-by-one error. Reading from the payload removes that failure mode entirely and keeps the audit trail traceable — any number traces back to a specific source file.
 
-**Problem with the old code:**
-- Parsed outcome metrics from the Validator's post-mortem markdown via regex
-- The prompt embeds TWO diagnostics: prior iteration's baseline (Section 1) + current iteration's results (Section 2)
-- A first-match regex would grab Section 1 → off-by-one bug (iter 7 got iter 6's PSR)
+**AST over self-report.** The Strategist's PART 1 prose can claim "no excisions" while a component was in fact dropped from the dict. Component deltas therefore come from AST set-difference between consecutive `reward.py` files, not from prose.
 
-**Solution:**
-- Load metrics directly from the payload JSON (they're already computed, deterministic, structured)
-- Use the cognition record only for unstructured LLM behavior (proposal types, RL selection)
-- Use the ledger for Validator verdicts (structured `**Status:**` field, not markdown parsing)
+**Data immutability.** Payloads, ledger, and reward files are written by the training loop; the tools never modify them. Outputs are fully regenerable and deterministic — rerunning on the same campaigns yields identical CSVs and dashboards.
 
-**Result:**
-- No more off-by-one bugs
-- Audit trail is clear: trace any number back to its source JSON file
-- Regex is isolated to exactly where it's needed (proposal-type classification, RL selection)
-
-### Data Immutability
-
-- The payloads and ledger are written by the training loop; the tools never modify them
-- Outputs (CSVs, JSON, HTML) can be regenerated from the same input at any time
-- If you rerun `aggregate_runs.py` on the same campaigns, outputs are identical (deterministic)
-
-### Scaling
-
-- The library loads one iteration at a time; memory usage is O(iteration count), not O(dataset size)
-- All computations are simple statistics (mean, std, count) — no matrix operations
-- For 100 runs × 10 iters: ~20 seconds to load + aggregate, ~5 seconds to render dashboards
-- HTML files are self-contained; no server needed to view or share
+**Scaling.** The library loads one iteration at a time, so memory is O(iteration count), not O(dataset size). All computations are simple statistics. HTML files are self-contained and need no server to view or share.
 
 ---
 
@@ -505,32 +422,26 @@ Loads sample data from `/mnt/user-data/uploads/` (iter 1-10 payloads, cognition 
 
 ```
 post_hoc_analysis/
-├── extract_cognition.py              ← Core library (no dependencies)
-├── aggregate_runs.py                 ← CLI wrapper
-├── README.md                         ← This file
-└── outputs/                          ← Generated by aggregate_runs.py
+├── extract_cognition.py          ← Core extraction library (stdlib)
+├── analyze_run.py                ← Per-run triage entry point (called by outer_loop.sh)
+├── aggregate_runs.py             ← Cross-run CLI wrapper
+├── compute_run_score.py          ← Tier 1 RunScore (specified in the companion scoring doc)
+├── README_postHocAnalysis.md     ← This file
+└── outputs/                      ← Generated by aggregate_runs.py
     └── {label}/
         ├── iterations_long.csv       ← Per-iteration details
         ├── runs_summary.csv          ← Per-run aggregates
         ├── cross_run_summary.csv     ← Paper headline table (mean ± std)
         ├── aggregated_data.json      ← Audit dump
-        ├── pipeline_performance.html ← Dashboard 1
-        └── compute_cost.html         ← Dashboard 2
+        ├── pipeline_performance.html ← Dashboard 1 (RL + cognition)
+        ├── compute_cost.html         ← Dashboard 2 (LLM compute)
+        └── code_evolution.html       ← Dashboard 3 (reward-code evolution)
 ```
 
----
-
-## Citation
-
-If you use these tools in a paper, cite the session where they were developed. The design is optimized for the ARD pipeline but generalizes to any LLM-in-the-loop training framework with structured payloads.
+Per-run artifacts (`triage_report.html`, `triage_summary.json`, `run_score.json`) are written by `analyze_run.py` under each run's own `reports/` folder, not into `outputs/`.
 
 ---
 
-## Questions / Feedback
+## See Also
 
-- **Dashboards look crowded?** → Split into three by editing `write_dashboards()` in `aggregate_runs.py` (trivial change, just separate the sections into different HTML files)
-- **Need different metrics plotted?** → Metrics exist in `iterations_long.csv`; open with Pandas/R for custom analysis. Or ask and I can add them to the dashboard.
-- **Proposal type regex doesn't match your format?** → Report the text and I'll add a pattern to `_infer_proposal_type()`
-- **Want time-series training dynamics (entropy, KL divergence)?** → Create a separate `dashboard_training_dynamics.py` that reads `progress_*.csv` files. Current design focuses on outcomes + LLM cost.
-
-Enjoy! 📊
+- **Evaluation-framework spec** *(companion document, next to this README)* — the rationale and full specification for the curated evaluation framework: Tier 1 RunScore (PPV, PolicyRetention, TR) and Tier 2 Orchestration/Cognition fidelity. This README intentionally defers all scoring and orchestration-fidelity semantics there.
