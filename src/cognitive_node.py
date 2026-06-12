@@ -210,7 +210,6 @@ class CognitiveNode:
                 # Validation: Check for empty content
                 if not response or 'message' not in response or not response['message']['content'].strip():
                     print(f"   ⚠️ Attempt {attempt}: Received empty response from {active_model}. Retrying...")
-                    thinking_trace = response.get('message', {}).get('thinking', "")
                     empty_responses.append(response)
                     time.sleep(2**(attempt-1))
                     continue

@@ -192,8 +192,8 @@ def generate_code(
             error_header += f"# {line}\n"
         failed_code_path.write_text(error_header + "\n" + (generated_code or ""), encoding="utf-8")
 
-        if attempt + 1 < max_retries:
-            brain.demote_last_call(validation_result)
+        
+        brain.demote_last_call(validation_result)
 
         user_prompt += (
             f"\n\nYour previous attempt failed validation with the following error:\n"
