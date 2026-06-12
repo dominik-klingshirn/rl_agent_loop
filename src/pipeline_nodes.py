@@ -184,7 +184,17 @@ def generate_code(
             break
             
         print(f"⚠️ Validation Failed: {validation_result}")
-        
+
+        failed_code_path = brain.ws.get_path("failed_code", brain.iteration, f"attempt{attempt+1}_reward.py")
+        failed_code_path.parent.mkdir(parents=True, exist_ok=True)
+        error_header = f"# VALIDATION FAILED (attempt {attempt+1}):\n"
+        for line in validation_result.splitlines():
+            error_header += f"# {line}\n"
+        failed_code_path.write_text(error_header + "\n" + (generated_code or ""), encoding="utf-8")
+
+        if attempt + 1 < max_retries:
+            brain.demote_last_call(validation_result)
+
         user_prompt += (
             f"\n\nYour previous attempt failed validation with the following error:\n"
             f"ERROR: {validation_result}\n"

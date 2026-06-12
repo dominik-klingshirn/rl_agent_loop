@@ -30,6 +30,7 @@ class CognitiveNode:
         # --- Memory & Logging Setup ---
         # 1. JSON History (Full context replay)
         self.cognition_iter = llm_utils.init_cognition_iteration(iteration, model)
+        self.cognition_iter["failed_calls"] = []
         self.json_path = self.ws.get_path("cognition_json", iteration, "cognition_record.json")
         
         # 2. CSV Telemetry (Stats/Metrics)
@@ -40,6 +41,7 @@ class CognitiveNode:
         self.fail_path = self.ws.get_path("cognition_fails", self.iteration, "failed_calls_record.md")
         self.markdown_buffer = []
         self.failed_calls = []
+        self._last_call_buffer_start = None
 
     def chat(self, 
              phase_name: str, 
@@ -85,7 +87,31 @@ class CognitiveNode:
                         cognition_path=self.fail_path,
                         options=options
                     )
-                    self.failed_calls.append((f"Attempt {attempt_num} Phase: {phase_name} [Thinking Trace] {active_model}", empty_response['message']['thinking']))
+
+        if len(empty_responses) > 0:
+            self.failed_calls.append((f"Phase: {phase_name} [User Prompt] {active_model}", user_prompt))
+            for attempt_num, empty_response in enumerate(empty_responses):
+                content = (empty_response.get('message', {}).get('content') or '').strip()
+                thinking = empty_response.get('message', {}).get('thinking') or None
+                if content:
+                    self.failed_calls.append((f"Attempt {attempt_num+1} Phase: {phase_name} [Content] {active_model}", content))
+                if thinking:
+                    self.failed_calls.append((f"Attempt {attempt_num+1} Phase: {phase_name} [Thinking Trace] {active_model}", thinking))
+                if not content and not thinking:
+                    self.failed_calls.append((f"Attempt {attempt_num+1} Phase: {phase_name} [Empty] {active_model}", "<empty response — no content, no thinking trace>"))
+                shim = {"calls": self.cognition_iter["failed_calls"]}
+                llm_utils.add_cognition_call(
+                    cognition_iter=shim,
+                    response=empty_response,
+                    run_id=f"Iter_{self.iteration:02d}_{phase_name}_fail",
+                    phase=phase_name,
+                    system_role=system_prompt,
+                    user_task=user_prompt,
+                    options=options,
+                    model_override=active_model
+                )
+                self.cognition_iter["failed_calls"][-1]["failure_reason"] = "empty_response"
+            llm_utils.save_cognition_iteration(self.cognition_iter, self.json_path)
 
         if not response:
             if phase_name in _GRACEFUL_SKIP_PHASES:
@@ -94,6 +120,7 @@ class CognitiveNode:
                 return None
             print(f"   💀 Critical Failure in {phase_name}: No response received.")
             self.save_report()
+            llm_utils.save_cognition_iteration(self.cognition_iter, self.json_path)
             return sys.exit(1)
 
         # 2. Parse Content (If requested)
@@ -147,7 +174,7 @@ class CognitiveNode:
         
         if self.failed_calls:
             # Save the plan for human review
-            final_content = f"# Thinking Traces for Empty Responses: Iteration:{self.iteration}\n\n"
+            final_content = f"# Failed / Demoted LLM Calls: Iteration:{self.iteration}\n\n"
             for filename, prompt_obj in self.failed_calls:
                 final_content += f"\n" 
                 final_content += f"# {filename}"
@@ -184,8 +211,7 @@ class CognitiveNode:
                 if not response or 'message' not in response or not response['message']['content'].strip():
                     print(f"   ⚠️ Attempt {attempt}: Received empty response from {active_model}. Retrying...")
                     thinking_trace = response.get('message', {}).get('thinking', "")
-                    if thinking_trace:
-                        empty_responses.append(response)
+                    empty_responses.append(response)
                     time.sleep(2**(attempt-1))
                     continue
                     
@@ -198,8 +224,27 @@ class CognitiveNode:
         
         return None, empty_responses
 
+    def demote_last_call(self, reason: str) -> None:
+        """Reclassify the most recent production call as a failed/demoted call."""
+        if not self.cognition_iter["calls"] or self._last_call_buffer_start is None:
+            print(f"⚠️  demote_last_call: nothing to demote (calls empty or no buffer start recorded).")
+            return
+
+        entry = self.cognition_iter["calls"].pop()
+        entry["failure_reason"] = reason
+        self.cognition_iter["failed_calls"].append(entry)
+        llm_utils.save_cognition_iteration(self.cognition_iter, self.json_path)
+
+        phase = entry.get("phase", "unknown")
+        demoted_entries = self.markdown_buffer[self._last_call_buffer_start:]
+        self.failed_calls.extend(demoted_entries)
+        self.markdown_buffer = self.markdown_buffer[:self._last_call_buffer_start]
+        self.failed_calls.append((f"Phase: {phase} [Validation Error]", reason))
+
+        self._last_call_buffer_start = None
+
     def _log_interaction(self,
-                         phase_name:str, 
+                         phase_name:str,
                          response:ChatResponse,
                          attempt_num:int,
                          system_prompt:str,
@@ -208,6 +253,7 @@ class CognitiveNode:
                          options,model_override: Optional[str] = None
                          )-> None:
         """Encapsulates all side-effect logging to clean up the main logic."""
+        self._last_call_buffer_start = len(self.markdown_buffer)
         run_id = f"Iter_{self.iteration:02d}_{phase_name}"
         active_model = model_override if model_override else self.model
         # print(f"Model listed as 'active_model' inside of '_log_iteration' {active_model}'") # For debugging
