@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "prompt_slots": {
+    "strategist_system": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "4f268269c719b85d00672443f8d242439da008fcf61b3c2ab261127085a94548",
+          "source_name": "strategist_system_prompt",
+          "first_seen": "2026-06-11T20:46:17.222074+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "strategist_system_prompt"
+    },
+    "strategist_user": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "bdc11595e328126754cfec8a48a899f3acadb0b1dd4f02b4cdd5e70c0bd02466",
+          "source_name": "strategist_user_prompt",
+          "first_seen": "2026-06-11T20:46:17.222083+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "strategist_user_prompt"
+    },
+    "organizer_system": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "2abb1998bcb4a8fdbc130f09e97b307e6cb11e44007116c228bda13b95ad5a3b",
+          "source_name": "organizer_system_prompt",
+          "first_seen": "2026-06-11T20:46:17.222086+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "organizer_system_prompt"
+    },
+    "organizer_user": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "bc63e157f780731d39a4748d400a77b7979afe09172ecfd9284c19f01b2401b6",
+          "source_name": "organizer_user_prompt",
+          "first_seen": "2026-06-11T20:46:17.222088+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "organizer_user_prompt"
+    },
+    "research_lead_system": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "910e2fbc6cfb1ed127394756e5ef64dcc3d246bede94041fe19a214eff8da297",
+          "source_name": "lead_system_prompt",
+          "first_seen": "2026-06-11T20:46:17.222090+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "lead_system_prompt"
+    },
+    "research_lead_user": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "b6446801f5bde54c71573a48119909d0e432c0fac2c1e13d98e5a52f1cf95f0f",
+          "source_name": "lead_user_prompt",
+          "first_seen": "2026-06-11T20:46:17.222092+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "lead_user_prompt"
+    },
+    "dispatcher_system": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "f386ab09bd550e8b79bcdd8c58dfea486e96d0dcc17e1ad9702af307b83d210a",
+          "source_name": "dispatcher_system_prompt",
+          "first_seen": "2026-06-11T20:46:17.222093+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "dispatcher_system_prompt"
+    },
+    "dispatcher_user": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "8128252bbe48fc98ce7a6a38a66b47bc6689fbb97a8b9f0a859f31acbff8059c",
+          "source_name": "dispatcher_user_prompt",
+          "first_seen": "2026-06-11T20:46:17.222094+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "dispatcher_user_prompt"
+    },
+    "coder_system": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "9553086aae65bb7bb51dabc5cc1b814212cafc9489464a2d2e3ae3bf5c519583",
+          "source_name": "coder_system_prompt",
+          "first_seen": "2026-06-11T20:46:17.222096+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "coder_system_prompt"
+    },
+    "coder_user": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "8084cd6eb8b80cd0a0b0898728b2e84ed97272226ea5f258ae32e2e384e0acc0",
+          "source_name": "coder_user_prompt",
+          "first_seen": "2026-06-11T20:46:17.222097+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "coder_user_prompt"
+    },
+    "validator_system": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "0a20fc09cdd0ec4aaad3c70776c37ff08be0009aea3e67596ba7c3ed57c80a9a",
+          "source_name": "validator_system_prompt",
+          "first_seen": "2026-06-11T20:46:17.222099+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "validator_system_prompt"
+    },
+    "validator_user": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "e636cac66e20f5f29433ebf9ba6bdd5769828567a5d3ecc75a408e99c6ea25ac",
+          "source_name": "validator_user_prompt",
+          "first_seen": "2026-06-11T20:46:17.222100+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ],
+      "current_name": "validator_user_prompt"
+    }
+  },
+  "code_slots": {
+    "analysis": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "7f78f83b15c9a5edf9be195009797cbf8af55d7a03da9897d79a15f65e7582bd",
+          "source_name": "analysis.py",
+          "first_seen": "2026-06-11T20:46:17.222102+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ]
+    },
+    "ledger": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "b2d932f42206ee24e96fe81e0b09dced07e58bd13fa0d1e5b48353737ef75703",
+          "source_name": "ledger.py",
+          "first_seen": "2026-06-11T20:46:17.222103+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ]
+    },
+    "lr_schedule": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "a7acf7f18876c70a1e4a5bbff5dafae3c7dda9580862fc6ff43c4a20e71b4f45",
+          "source_name": "linear",
+          "first_seen": "2026-06-11T20:46:17.222104+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ]
+    },
+    "ent_schedule": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "a7acf7f18876c70a1e4a5bbff5dafae3c7dda9580862fc6ff43c4a20e71b4f45",
+          "source_name": "linear",
+          "first_seen": "2026-06-11T20:46:17.222106+00:00",
+          "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ]
+    }
+  }
+}
