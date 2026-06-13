@@ -107,7 +107,7 @@ class Config:
         # Required for accurate configuration routing
         is_reasoning = any(k in model_id for k in [
             "deepseek-r1", "thinking", "openthinker", "gpt-oss",
-            "gemma4","qwen3.6:35b-A3B","nemotron-cascade-2"
+            "gemma4","qwen3.6:35b-A3B","nemotron-cascade-2","qwen3:30b-a3b-thinking-2507-q4_K_M"
             ])
 
         # Shared baseline — overridden per role below
@@ -184,7 +184,7 @@ class Config:
                 options["temperature"] = 0.55
                 options["top_p"] = 0.9
                 options["num_ctx"] = 16384      # Payload + room for full function output
-                options["num_predict"] = 10000  # Max — complex reward functions can be long
+                options["num_predict"] = 12288  # Max — complex reward functions can be long
 
         # ==============================================================================
         # SCENARIO B: STANDARD MODELS (Llama 3, Mistral, Command R, etc.)
