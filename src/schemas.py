@@ -1,8 +1,3 @@
-from pydantic import BaseModel, Field
-from typing import Literal
-from pydantic import BaseModel
-from typing import Optional, Dict, Union, Any
-
 """
 extractor_schema.py  —  lives in src/schemas.py
 
