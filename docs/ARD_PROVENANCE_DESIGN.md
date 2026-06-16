@@ -197,10 +197,10 @@ On the write, it resolves the per-role models, fetches digests (deduped), resolv
 
 ## 10. Downstream consumers
 
-### 10.1 Tier 2 — `aggregate_runs.py` — comparability gate
+### 10.1 Per-campaign — `aggregate_runs.py` — comparability gate
 Reads each member run's `config_fingerprint`. If all match, it aggregates and stamps the shared fingerprint into the output. If they differ (or any manifest is missing), it prints a per-run table of differing fields (via `diff_comparability`) and exits non-zero — aggregating runs with different configs into one mean±std is the invalid operation being prevented. `--force` overrides, proceeding while stamping the output `"comparability": "FORCED_MIXED"`.
 
-### 10.2 Tier 3 — `compare_campaigns.py` — independent-axis surfacing
+### 10.2 Cross-campaign — `compare_campaigns.py` — independent-axis surfacing
 Loads one representative manifest per campaign and prints a field-level diff as the report header, rendering hash changes via version labels (`analysis: v3 → v4`, `strategist_system: v1 → v2`, `total_timesteps: 500000 → 1000000`), before the Mann-Whitney U / Cliff's δ block.
 
 It counts **independent axes**, treating sampling as dependent on model:
