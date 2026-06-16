@@ -7,6 +7,7 @@
 #
 # To add a shape: define one kernel, register it in SHAPES. Nothing else changes.
 
+# ========================== KERNELS =======================================
 def linear(progress_remaining: float, initial: float, final: float) -> float:
     """Linear interpolation: `initial` at progress_remaining=1, `final` at progress_remaining=0."""
     return final + (initial - final) * progress_remaining
@@ -17,7 +18,7 @@ SHAPES = {
     "linear": linear,
 }
 
-
+# ========================== ADAPTERS ======================================
 def make_lr_schedule(shape_type: str, initial: float, final: float):
     """SB3 learning_rate adapter: wraps a registered kernel into a callable of progress_remaining.
     Pure pass-through — no math here; all shape math lives in the kernel."""

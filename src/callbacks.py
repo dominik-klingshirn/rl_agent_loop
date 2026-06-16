@@ -120,50 +120,7 @@ class MultiEnvEpisodeTracker(BaseCallback):
         # Clear Buffer for next Rollout
         self.episode_buffer.clear()
         self.rollout_counter += 1
-"""     Data analysis scripts for Diagnostician 1 will go below, more streamline to just incoroporate into callback when training ends
-    def _on_training_end(self) -> None:
-        #Final LLM-ready behavior summary
-        if self.master_csv.exists() and self.master_csv.stat().st_size > 0:
-            df_all = pd.read_csv(self.master_csv)
-            summary = self._compress_behavior(df_all)
-            
-            summary_path = self.ws.dirs['telemetry'] / f"behavior_iter{self.iteration:03d}.json"
-            with open(summary_path, 'w') as f:
-                json.dump(summary, f, indent=2)
-            print(f"✅ Behavior summary: {summary_path} ({len(df_all)} episodes)")
-    
-    def _compress_behavior(self, df: pd.DataFrame) -> Dict[str, Any]:
-        #12 physics-based metrics + status dist (reward-invariant!)
-        scores = df['true_score']
-        statuses = df['terminal_status']
-        
-        # Semantic rates 
-        status_dist = statuses.value_counts(normalize=True).to_dict()
-        
-        return {
-            "n_episodes": int(len(df)),
-            "median_score": float(scores.median()),
-            
-            # Physics-based (reward invariant!)
-            "crash_rate": float(status_dist.get('crashed', 0)),
-            "landed_centered_rate": float(status_dist.get('landedcentered', 0)),
-            "landed_offcenter_rate": float(status_dist.get('landedoffcentered', 0)),
-            "hover_timeout_rate": float(status_dist.get('hovertimeout', 0)),
-            "out_of_bounds_rate": float(status_dist.get('outofbounds', 0)),
-            
-            # Stability metrics
-            "wild_oscillation_rate": float((df['terminal_x'].abs() > 0.8).mean()),
-            "spin_rate": float((df['terminal_angle_deg'].abs() > 45).mean()),
-            "x_stability": float(df['terminal_x'].std()),
-            "leg_contact_rate": float(((df['left_leg'] > 0.5) & (df['right_leg'] > 0.5)).mean()),
-            
-            # Durations
-            "avg_crash_length": float(df[statuses == 'crashed']['ep_len'].mean() if 'crashed' in statuses else 0),
-            "avg_hover_length": float(df[statuses == 'hovertimeout']['ep_len'].mean() if 'hovertimeout' in statuses else 0),
-            
-            "terminal_status_dist": {k: float(v) for k, v in status_dist.items()}
-        }
-"""
+
 # ==========================================
 # The Entropy Scheduler (Exploration)
 # ==========================================
