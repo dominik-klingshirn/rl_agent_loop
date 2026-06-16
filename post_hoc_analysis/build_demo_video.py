@@ -1,35 +1,40 @@
 # =============================================================================
-# SCRIPT 2: build_demo_video.py
-# Composites a hero agent clip + diagnostic report panel into a full demo video.
+# build_demo_video.py
+# Composites a hero agent clip + a CURATED telemetry card into a demo video.
 #
-# Layout (1920x1080):
+# The card is built from the structured metric payload (ws.load_metrics), NOT
+# by parsing the rendered Diagnostic Report markdown. This is robust to report
+# wording changes and mirrors the project's "structured sources over prose"
+# principle. The full per-iteration Diagnostic Report lives in the repo
+# (CASE_STUDY_FROM_README/) for curious readers — the video stays lightweight.
+#
+# Layout (1920x1080) — clip-dominant:
 #   ┌────────────────────────────────────────────────────────────────────────┐
-#   │  ITERATION 01                                   [STATUS PILL]          │  <- 96px header
-#   ├──────────────────────────────┬─────────────────────────────────────────┤
-#   │                              │                                         │
-#   │    Hero Agent Clip           │    Diagnostic Report                    │
-#   │    (seed 0, scaled)          │    (Playwright HTML render)             │
-#   │                              │                                         │
-#   └──────────────────────────────┴─────────────────────────────────────────┘
-#   740px (CLIP_AREA_W)            1180px (REPORT_W)
+#   │  ITERATION 05      01 02 03 04 05 · landing 73%        [STATUS PILL]    │  <- 96px header
+#   ├──────────────────────────────────────────────┬─────────────────────────┤
+#   │                                               │  Universal Robustness   │
+#   │            Hero Agent Clip                     │     73.3%               │
+#   │            (seed 0, scaled, dominant)          │  landing success        │
+#   │                                               │  Reward aligned ...     │
+#   │                                               │  [component flag chips] │
+#   └──────────────────────────────────────────────┴─────────────────────────┘
+#   1160px (clip area)                                760px (CARD_W)
 #
 # Usage:
 #   python post_hoc_analysis/build_demo_video.py \
-#       --campaign_tag "2025-01-15_baseline_10cycles_500kSteps" \
-#       --model_name "gpt-4o" \
-#       --iterations 1 2 3 4 5 \
-#       --num_seeds 3 \
-#       --output_name "demo.mp4"
+#       --campaign_tag "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1..." \
+#       --model_name "gemma4:26b-mlx" \
+#       --iterations 1 2 3 4 5 6 7 8 9 10 \
+#       --num_seeds 4 \
+#       --output_name "demo"
 # =============================================================================
 
 import io
 import os
-import re
 import sys
 import argparse
 from pathlib import Path
 
-import markdown
 import numpy as np
 from PIL import Image
 from playwright.sync_api import sync_playwright
@@ -48,15 +53,18 @@ from src.workspace_manager import ExperimentWorkspace
 # --- Layout Constants ---------------------------------------------------------
 CANVAS_W, CANVAS_H = 1920, 1080
 HEADER_H    = 96
-REPORT_W    = 1180
-CLIP_AREA_W = CANVAS_W - REPORT_W
+CARD_W      = 760                       # sparse telemetry card; clip gets the rest
 CONTENT_H   = CANVAS_H - HEADER_H
-MAX_CLIP_DUR, MIN_CLIP_DUR = 12.0, 3.0
 FPS         = 30
 INTRO_DUR, OUTRO_DUR = 4.0, 5.0
 BG_COLOR    = (10, 10, 18)
 HERO_SEED   = 0
-STATUS_STYLE = {"CONVERGED": (90, 220, 130), "UNSTABLE": (255, 90, 90)}
+MAX_COMPONENTS = 8                      # cap chips for legibility; full set is in the repo report
+STATUS_STYLE = {
+    "CONVERGED": (90, 220, 130),
+    "UNSTABLE": (255, 90, 90),
+    "HIGHLY SENSITIVE TO INITIALIZATION": (255, 180, 60),
+}
 BASE_CSS = """
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:#0c0f1c; color:#d2d2dc;
@@ -64,23 +72,19 @@ BASE_CSS = """
 """
 
 
-# --- Utility: Freeze last frame to fill up to max_dur -------------------------
+# --- Utility: Freeze last frame to fill up to a target duration ---------------
 
 def freeze_to_duration(clip: VideoFileClip, max_dur: float) -> VideoFileClip:
-    """
-    If the clip ends before max_dur (agent landed/crashed early), hold the
-    last frame for the remainder. If the clip is longer, hard-trim it.
-    """
+    """Hold the last frame if the clip is shorter than max_dur; hard-trim if longer."""
     if clip.duration >= max_dur:
         return clip.subclipped(0, max_dur)
-
     last_frame  = clip.get_frame(clip.duration - 1 / FPS)
     freeze_dur  = max_dur - clip.duration
     freeze_clip = ImageClip(last_frame, duration=freeze_dur).with_fps(FPS)
     return concatenate_videoclips([clip, freeze_clip])
 
 
-# --- Utility: Shared HTML → NumPy renderer ------------------------------------
+# --- Utility: Shared HTML -> NumPy renderer -----------------------------------
 
 def render_html_to_image(html: str, width: int, height: int) -> np.ndarray:
     with sync_playwright() as p:
@@ -94,75 +98,133 @@ def render_html_to_image(html: str, width: int, height: int) -> np.ndarray:
     return np.array(img)
 
 
-# --- Utility: Preprocessing markdown for correct table rendering --------------
+# =============================================================================
+# Payload readers  (field paths verified against src/analysis.py)
+# =============================================================================
 
-def preprocess_markdown(text: str) -> str:
-    """Ensure blank line before any markdown table block."""
-    lines = text.split('\n')
-    result = []
-    for i, line in enumerate(lines):
-        if (line.startswith('|') and
-                i > 0 and result and
-                result[-1].strip() and
-                not result[-1].strip().startswith('|')):
-            result.append('')
-        result.append(line)
-    return '\n'.join(result)
+def status_from_payload(m: dict):
+    """summary_flags -> status string. Mirrors analysis.translate_optimization_health."""
+    f = m.get("multi_seed_optimization_health", {}).get("summary_flags", {})
+    if f.get("is_initialization_sensitive"):
+        return "HIGHLY SENSITIVE TO INITIALIZATION"
+    if f.get("is_universally_converged"):
+        return "CONVERGED"
+    return "UNSTABLE"
 
 
-# --- Utility: Render markdown report to a NumPy image via Playwright ----------
+def psr_from_payload(m: dict):
+    """Deterministic-eval landing success rate (%). analysis.py:452."""
+    v = (m.get("multi_seed_evaluation_health", {})
+          .get("success_robustness", {})
+          .get("population_mean_success_rate"))
+    return v * 100 if v is not None else None
 
-def markdown_to_image(md_path: Path, width: int, height: int) -> np.ndarray:
-    md_text = preprocess_markdown(md_path.read_text())
-    body = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
+
+def objective_verdict_from_payload(m: dict):
+    """(text, color) for the Oracle-test one-liner. analysis.py:895-905.
+    Inversion flag is sourced from the stochastic payload; Delta from the eval payload."""
+    topo  = m.get("multi_seed_stochastic_health", {}).get("global_reward_topology", {})
+    delta = (m.get("multi_seed_evaluation_health", {})
+              .get("failure_mode_analysis", {})
+              .get("eval_global_conditional_delta"))
+    dtxt = f"\u0394 = {delta:+.2f}" if delta is not None else "\u0394 undefined"
+    if topo.get("topology_is_inverted_flag"):
+        return f"Reward rewards crashing   ({dtxt})", "#ff5a5a"
+    if topo.get("rho_delta_divergence_flag"):
+        return f"Aligned, non-linear   ({dtxt})", "#5ab0ff"
+    if delta is not None and delta > 0:
+        return f"Reward aligned with landing   ({dtxt})", "#5adc82"
+    return f"Alignment indeterminate   ({dtxt})", "#8a90a6"
+
+
+def resolve_component_flag(m: dict):
+    """(short_label, css_color) for a component chip.
+    Mirrors the 8-level priority ladder in analysis.translate_reward_topology
+    (spec: docs/DIAGNOSTIC_TRANSLATION.md flag legend). Numbers omitted for the video."""
+    rho = m.get("alignment_rho", 0.0)
+    if m.get("is_traitor_component") and rho < -0.2: return "NEGATIVELY ALIGNED", "#ff5a5a"
+    if m.get("is_hidden_traitor"):                   return "HIDDEN TRAITOR", "#ff5a5a"
+    if m.get("is_hidden_helper"):                    return "NON-LINEAR HELPER", "#5ab0ff"
+    if m.get("is_hidden_dependency"):                return "HIDDEN DEPENDENCY", "#b97aff"
+    if m.get("is_dead_weight"):                      return "LOW MAGNITUDE", "#e2c14d"
+    if m.get("is_high_magnitude_neutral"):           return "UNRESOLVED", "#ffa24d"
+    if rho < 0.2:                                    return "Neutral", "#8a90a6"
+    return "Optimal", "#5adc82"
+
+
+# --- Utility: Curated telemetry card (from payload) ---------------------------
+
+def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray:
+    comps = metrics.get("multi_seed_stochastic_health", {}).get("dynamic_component_analysis", {})
+    psr = psr_from_payload(metrics)
+    psr_str = f"{psr:.1f}<small>%</small>" if psr is not None else "\u2014"
+    obj_txt, obj_col = objective_verdict_from_payload(metrics)
+
+    rows = []
+    for name, m in list(comps.items())[:MAX_COMPONENTS]:
+        label, col = resolve_component_flag(m)
+        rho = m.get("alignment_rho", 0.0)
+        clean = name.replace("reward_", "", 1)
+        rows.append(
+            f'<div class="row"><span class="cn">{clean}</span>'
+            f'<span class="rho">\u03c1 {rho:+.2f}</span>'
+            f'<span class="chip" style="color:{col};border-color:{col}55;background:{col}1a">{label}</span></div>')
+    rows_html = "".join(rows)
+
     html = f"""<html><head><style>
       {BASE_CSS}
-      body {{ font-size:14px; padding:20px; }}
-      h1 {{ color:#8cd2ff; font-size:17px; margin:10px 0 6px; }}
-      h2 {{ color:#64b9f0; font-size:15px; margin:8px 0 5px; }}
-      h3 {{ color:#50a5e1; font-size:14px; margin:6px 0 4px; }}
-      p, li {{ line-height:1.45; margin:3px 0; }}
-      strong {{ color:#fff; }}
-      table {{ border-collapse:collapse; width:100%; font-size:12px; margin:8px 0; table-layout:fixed; }}
-      td, th {{ border:1px solid #2a2d4a; padding:5px 8px; }}
-      th {{ background:#1a1d32; }}
-      td:last-child {{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-      hr {{ border:none; border-top:1px solid #2a2d4a; margin:8px 0; }}
-      body::after {{ content:''; position:fixed; left:0; right:0; bottom:0; height:80px;
-                     background:linear-gradient(transparent,#0c0f1c); }}
-    </style></head><body>{body}</body></html>"""
+      body {{ height:{height}px; padding:46px 44px; display:flex; flex-direction:column; }}
+      .kicker {{ font-size:15px; letter-spacing:3px; color:#5a6280; text-transform:uppercase; }}
+      .psr {{ font-size:104px; font-weight:800; line-height:1.0; color:#e8e8f0; margin:4px 0 2px; }}
+      .psr small {{ font-size:34px; font-weight:700; color:#5adc82; }}
+      .psrlbl {{ font-size:17px; color:#8a90a6; margin-bottom:32px; }}
+      .obj {{ font-size:25px; font-weight:700; color:{obj_col}; margin-bottom:6px; }}
+      .objlbl {{ font-size:13px; letter-spacing:2px; color:#5a6280; text-transform:uppercase; margin-bottom:30px; }}
+      .cchdr {{ font-size:13px; letter-spacing:2px; color:#5a6280; text-transform:uppercase; margin-bottom:10px; }}
+      .row {{ display:flex; align-items:center; gap:14px; padding:9px 0; border-bottom:1px solid #181b2c; }}
+      .cn {{ font-family:ui-monospace,Menlo,monospace; font-size:19px; color:#c4c8d6; flex:0 0 220px; }}
+      .rho {{ font-family:ui-monospace,Menlo,monospace; font-size:15px; color:#6b7290; flex:0 0 86px; }}
+      .chip {{ font-size:14px; font-weight:700; padding:4px 12px; border-radius:13px; border:1px solid; }}
+    </style></head><body>
+      <div class="kicker">Universal Policy Robustness</div>
+      <div class="psr">{psr_str}</div>
+      <div class="psrlbl">landing success \u00b7 deterministic eval across seeds</div>
+      <div class="obj">{obj_txt}</div>
+      <div class="objlbl">Global Objective Alignment \u00b7 Oracle Test</div>
+      <div class="cchdr">Component Credit Assignment</div>
+      {rows_html}
+    </body></html>"""
     return render_html_to_image(html, width, height)
 
 
-# --- Utility: Parse convergence status from a report -------------------------
+# --- Utility: Header bar (iteration, trajectory, running success, status) -----
 
-def parse_status(report_path: Path):
-    if not report_path.exists():
-        return None
-    m = re.search(r"\*\*Status:\*\*.*?\*\*(CONVERGED|UNSTABLE)", report_path.read_text())
-    return m.group(1) if m else None
-
-
-# --- Utility: Render header bar -----------------------------------------------
-
-def make_header(iteration: int, status, width: int = CANVAS_W, height: int = HEADER_H) -> np.ndarray:
+def make_header(iteration: int, status, iters: list, psr,
+                width: int = CANVAS_W, height: int = HEADER_H) -> np.ndarray:
     pill = ""
     if status in STATUS_STYLE:
         r, g, b = STATUS_STYLE[status]
         rgb = f"rgb({r},{g},{b})"
         pill = (f'<div class="pill"><span class="dot" style="background:{rgb};color:{rgb}">'
                 f'</span><span style="color:{rgb}">{status}</span></div>')
+    traj = " ".join(
+        f'<b style="color:#8cd2ff">{i:02d}</b>' if i == iteration else f'{i:02d}'
+        for i in iters)
+    psr_html = f'<span style="color:#5adc82">{psr:.0f}%</span>' if psr is not None else "\u2014"
     html = f"""<html><head><style>
       {BASE_CSS}
       body {{ background:#10131f; height:{height}px; display:flex; align-items:center;
               justify-content:space-between; padding:0 36px; border-bottom:2px solid #1f2540; }}
       .iter {{ font-size:30px; font-weight:700; letter-spacing:3px; color:#e8e8f0; }}
+      .traj {{ font-size:18px; font-weight:500; color:#4a5070; letter-spacing:2px; }}
       .pill {{ display:flex; align-items:center; gap:12px; font-size:23px; font-weight:700;
                letter-spacing:2px; background:#161a2e; padding:9px 22px; border-radius:24px;
                border:1px solid #262c48; }}
       .dot {{ width:15px; height:15px; border-radius:50%; box-shadow:0 0 12px currentColor; }}
     </style></head><body>
-      <div class="iter">ITERATION {iteration:02d}</div>{pill}
+      <div class="iter">ITERATION {iteration:02d}</div>
+      <div class="traj">{traj}&nbsp;&nbsp;\u00b7&nbsp;&nbsp;landing {psr_html}</div>
+      {pill}
     </body></html>"""
     return render_html_to_image(html, width, height)
 
@@ -180,26 +242,43 @@ def make_intro_card(width: int = CANVAS_W, height: int = CANVAS_H) -> np.ndarray
       .sub {{ font-size:27px; color:#a8b0c8; margin-top:26px; max-width:1100px; line-height:1.5; }}
       .meta {{ font-size:17px; color:#5a6280; margin-top:42px; letter-spacing:3px; }}
     </style></head><body>
-      <div class="title">ARD · Algorithmic Reward Design</div>
+      <div class="title">ARD \u00b7 Algorithmic Reward Design</div>
       <div class="sub">An autonomous multi-agent system where LLMs read RL training telemetry and iteratively redesign the reward function.</div>
-      <div class="meta">LUNARLANDER-V3 · SELF-HOSTED LLMs · CLOSED-LOOP</div>
+      <div class="meta">LUNARLANDER-V3 \u00b7 SELF-HOSTED LLMs \u00b7 CLOSED-LOOP</div>
     </body></html>"""
     return render_html_to_image(html, width, height)
 
 
-def make_outro_card(width: int = CANVAS_W, height: int = CANVAS_H) -> np.ndarray:
+def make_outro_card(final_psr, n_iters: int,
+                    width: int = CANVAS_W, height: int = CANVAS_H) -> np.ndarray:
+    psr_str = f"{final_psr:.0f}%" if final_psr is not None else "\u2014%"
     html = f"""<html><head><style>
       {BASE_CSS}
       body {{ height:{height}px; display:flex; flex-direction:column; align-items:center;
               justify-content:center; text-align:center; }}
-      .result {{ font-size:46px; font-weight:700; color:#e8e8f0; }}
+      .result {{ font-size:46px; font-weight:700; color:#e8e8f0; line-height:1.4; }}
       .hl {{ color:#5adc82; }}
+      .meta {{ font-size:26px; color:#a8b0c8; margin-top:18px; }}
       .repo {{ font-size:24px; color:#64b9f0; margin-top:50px; letter-spacing:1px; }}
     </style></head><body>
-      <div class="result">Crash-dominant &rarr; <span class="hl">73% landing success</span><br>across 5 reward-design iterations</div>
+      <div class="result">Autonomously repaired a broken reward<br>
+        crash-dominant &rarr; <span class="hl">{psr_str} stable landing</span>
+        <div class="meta">{n_iters} iterations \u00b7 zero human reward edits</div>
+      </div>
       <div class="repo">github.com/dominik-klingshirn/rl_agent_loop</div>
     </body></html>"""
     return render_html_to_image(html, width, height)
+
+
+# --- Utility: Dwell duration policy -------------------------------------------
+
+def dwell_for(iteration: int, status, is_first: bool, is_last: bool) -> float:
+    """Before/after spine breathes; the instability beat lingers; middles are quick cuts."""
+    if is_first or is_last:
+        return 9.0
+    if status == "UNSTABLE":
+        return 6.0
+    return 2.5
 
 
 # --- Core: build one iteration's composite clip --------------------------------
@@ -208,72 +287,81 @@ def build_iteration_composite(
     iteration: int,
     ws: ExperimentWorkspace,
     num_seeds: int,
+    iterations: list,
+    is_first: bool,
+    is_last: bool,
 ) -> CompositeVideoClip:
-    videos_dir  = ws.dirs["root"] / "artifacts" / f"iteration{iteration:02d}" / "videos"
-    report_path = ws.dirs["telemetry_reports"] / f"iter{iteration:02d}_report.md"
+    videos_dir = ws.dirs["root"] / "artifacts" / f"iteration{iteration:02d}" / "videos"
 
     hero = min(HERO_SEED, num_seeds - 1)
     clip_path = videos_dir / f"iter{iteration:02d}_seed{hero}.mp4"
     if not clip_path.exists():
         raise FileNotFoundError(f"Missing hero clip: {clip_path}")
     clip = VideoFileClip(str(clip_path))
-    target_dur = max(min(clip.duration, MAX_CLIP_DUR), MIN_CLIP_DUR)
-    clip = freeze_to_duration(clip, target_dur)
 
+    metrics    = ws.load_metrics(iteration)          # <- structured payload, single source of truth
+    status     = status_from_payload(metrics)
+    psr        = psr_from_payload(metrics)
+    target_dur = dwell_for(iteration, status, is_first, is_last)
+    clip       = freeze_to_duration(clip, target_dur)
+
+    # Clip-dominant layout for every iteration (the card is sparse).
+    clip_area_w = CANVAS_W - CARD_W
     margin = 40
-    scale  = min((CLIP_AREA_W - 2*margin) / 600, (CONTENT_H - 2*margin) / 400)
+    scale  = min((clip_area_w - 2*margin) / 600, (CONTENT_H - 2*margin) / 400)
     cw, ch = int(600*scale), int(400*scale)
     clip = clip.resized((cw, ch)).with_position(
-        ((CLIP_AREA_W - cw)//2, HEADER_H + (CONTENT_H - ch)//2))
+        ((clip_area_w - cw)//2, HEADER_H + (CONTENT_H - ch)//2))
 
-    if report_path.exists():
-        report_arr = markdown_to_image(report_path, REPORT_W, CONTENT_H)
-    else:
-        print(f"  WARNING: report missing at {report_path}")
-        report_arr = np.full((CONTENT_H, REPORT_W, 3), BG_COLOR, dtype=np.uint8)
-    report_clip = (ImageClip(report_arr, duration=target_dur)
-                   .with_position((CLIP_AREA_W, HEADER_H))
-                   .with_fps(FPS))
-
-    header_clip = (ImageClip(make_header(iteration, parse_status(report_path)),
+    panel_clip = (ImageClip(payload_panel_to_image(metrics, CARD_W, CONTENT_H),
+                            duration=target_dur)
+                  .with_position((clip_area_w, HEADER_H))
+                  .with_fps(FPS))
+    header_clip = (ImageClip(make_header(iteration, status, iterations, psr),
                              duration=target_dur)
                    .with_position((0, 0))
                    .with_fps(FPS))
     divider = (ImageClip(np.full((CONTENT_H, 2, 3), (40, 50, 80), dtype=np.uint8),
                          duration=target_dur)
-               .with_position((CLIP_AREA_W - 1, HEADER_H))
+               .with_position((clip_area_w - 1, HEADER_H))
                .with_fps(FPS))
     bg = ColorClip(size=(CANVAS_W, CANVAS_H), color=BG_COLOR, duration=target_dur)
 
-    return CompositeVideoClip([bg, clip, divider, report_clip, header_clip],
+    return CompositeVideoClip([bg, clip, divider, panel_clip, header_clip],
                               size=(CANVAS_W, CANVAS_H))
 
 
 # --- Build full demo ----------------------------------------------------------
 
 def build_full_demo(
-    iterations: list[int],
+    iterations: list,
     ws: ExperimentWorkspace,
     num_seeds: int,
     output_name: str,
 ):
     segments = [ImageClip(make_intro_card(), duration=INTRO_DUR).with_fps(FPS)]
-    for iteration in iterations:
+    for i, iteration in enumerate(iterations):
+        is_first = i == 0
+        is_last  = i == len(iterations) - 1
         print(f"\n  Building composite for iteration {iteration:02d}")
-        segments.append(build_iteration_composite(iteration, ws, num_seeds))
-    segments.append(ImageClip(make_outro_card(), duration=OUTRO_DUR).with_fps(FPS))
-    final = concatenate_videoclips(segments, method="compose")
+        segments.append(
+            build_iteration_composite(iteration, ws, num_seeds, iterations, is_first, is_last))
 
+    final_psr = psr_from_payload(ws.load_metrics(iterations[-1]))
+    segments.append(ImageClip(make_outro_card(final_psr, len(iterations)),
+                              duration=OUTRO_DUR).with_fps(FPS))
+
+    final = concatenate_videoclips(segments, method="compose")
     output_path = ws.dirs["root"] / "artifacts" / f"{output_name}.mp4"
     print(f"\n  Exporting to: {output_path}")
     final.write_videofile(
         str(output_path),
         fps=FPS,
         codec="libx264",
-        audio=False,          # no audio yet — voiceover added in CapCut
+        audio=False,          # no audio yet — voiceover added in post
         threads=4,
-        preset="slow",        # better compression; use "fast" if you're impatient
-        ffmpeg_params=["-crf", "18"],  # visually lossless for a portfolio piece
+        preset="slow",        # better compression; use "fast" while iterating
+        ffmpeg_params=["-crf", "18"],
     )
     print("\nDone.")
 
@@ -283,8 +371,8 @@ def main():
     parser.add_argument("--campaign_tag", type=str, required=True)
     parser.add_argument("--model_name",   type=str, required=True)
     parser.add_argument("--iterations",   type=int, nargs="+", required=True,
-                        help="e.g. --iterations 1 2 3 4 5")
-    parser.add_argument("--num_seeds",    type=int, default=3)
+                        help="e.g. --iterations 1 2 3 4 5 6 7 8 9 10")
+    parser.add_argument("--num_seeds",    type=int, default=4)
     parser.add_argument("--output_name",  type=str, default=None,
                         help="Output filename stem (no .mp4). Defaults to "
                              "{campaign_tag}_{model_name} with ':' and '/' replaced by '-'.")
@@ -297,8 +385,8 @@ def main():
     os.environ["CAMPAIGN_TAG"] = args.campaign_tag
     os.environ["LLM_MODEL"]    = args.model_name
 
-    # Workspace only needs a valid iteration number to resolve paths —
-    # use the first iteration since all share the same campaign root
+    # Workspace only needs a valid iteration to resolve the campaign root;
+    # per-iteration payloads are loaded by number inside the build.
     ws = ExperimentWorkspace(iteration=args.iterations[0])
 
     print(f"\nBuilding demo video")
