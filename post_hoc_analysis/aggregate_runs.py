@@ -7,7 +7,7 @@ Inputs:
                        Example: '2026-05-13_spin_crash_10cycles_*reorderedOldValPrompt*'
   --label              Label for output files & dashboards
                        (defaults to a sanitized version of the glob)
-  --output-dir         Output dir (default: post_hoc_analysis/outputs/{label})
+  --output-dir         Output dir (default: post_hoc_analysis/reports/single_campaign/{label})
 
 Outputs (under output-dir):
   iterations_long.csv         one row per (run, iter)
@@ -397,7 +397,22 @@ def build_dashboard_payload(model_summaries, chat_rows_by_run, regression_by_tag
             run_score_data = None
             if run.model_dir_path is not None:
                 rs_path = run.model_dir_path / "reports" / "run_score.json"
-                if rs_path.is_file():
+                ts_path = run.model_dir_path / "reports" / "triage_summary.json"
+                if ts_path.exists() and ts_path.is_file():
+                    try:
+                        import json as _json
+                        with ts_path.open() as _f:
+                            _ts = _json.load(_f)
+                        run_score_data = {
+                            "score": _ts.get("run_score"),
+                            "ppv": _ts["sub_scores"].get("ppv"),
+                            "policy_retention": _ts["sub_scores"].get("policy_retention"),
+                            "tr": _ts["sub_scores"].get("tr"),
+                        }
+                    except Exception:
+                        run_score_data = None
+
+                elif rs_path.exists() and rs_path.is_file():
                     try:
                         import json as _json
                         with rs_path.open() as _f:
@@ -2530,7 +2545,7 @@ def main():
     ap.add_argument("--label", default="",
                     help="Human-readable label (used in filenames + dashboards)")
     ap.add_argument("--output-dir", type=Path, default=None,
-                    help="Output directory (default: post_hoc_analysis/outputs/{label})")
+                    help="Output directory (default: post_hoc_analysis/reports/single_campaign/{label})")
     # Values for AggregationConfig init
     ap.add_argument("--established_floor", type=float, default=0.4)
     ap.add_argument("--regression_k", type=float, default=2.0)

@@ -233,7 +233,7 @@ def compute_run_score(
 
 
 def save_run_score(results: dict, run_dir: Path) -> Path:
-    """Saves the RunScore results JSON alongside the metric_payloads."""
+    """Saves the RunScore results JSON alongside the dashboards."""
     output_path = run_dir / "reports" / "run_score.json"
     with open(output_path, "w") as f:
         json.dump(results, f, indent=4)
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     parser.add_argument("--e_pen_key", type=str, default="population_mean_chatter_rate",
                         help="Key in kinematic_stability payload for E_pen (default: population_mean_chatter_rate). Pass 'none' to disable.")
     parser.add_argument("--save", action="store_true",
-                        help="Save run_score.json to the metric_payloads directory")
+                        help="Save run_score.json to the reports directory next to dashboards")
     args = parser.parse_args()
 
     e_pen_key = None if args.e_pen_key.lower() == "none" else args.e_pen_key
