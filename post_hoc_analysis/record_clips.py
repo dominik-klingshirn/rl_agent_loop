@@ -42,7 +42,7 @@ def record_seed_clip(iteration: int, seed_id: int, ws: ExperimentWorkspace):
     # Load model — SB3 appends .zip automatically if missing
     model_path = ws.get_path("models", iteration, f"model{seed_id}")
     print(f"  Loading model from: {model_path}")
-    model = PPO.load(str(model_path))
+    model = PPO.load(str(model_path),device='cpu')
 
     # Record into a temp dir first, then rename to match our convention.
     # RecordVideo produces names like: {name_prefix}-episode-0.mp4

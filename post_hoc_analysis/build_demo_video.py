@@ -360,8 +360,9 @@ def build_full_demo(
         codec="libx264",
         audio=False,          # no audio yet — voiceover added in post
         threads=4,
-        preset="slow",        # better compression; use "fast" while iterating
+        preset="fast",        # better compression; use "fast" while iterating
         ffmpeg_params=["-crf", "18"],
+        logger=None,
     )
     print("\nDone.")
 
