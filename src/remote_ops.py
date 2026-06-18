@@ -81,7 +81,7 @@ class RemoteManager:
         # 4. Stream stdout line by line with a 5-min wall-clock timeout per read.
         # Prevents indefinite blocking when a remote grandchild holds the fd open.
         while True:
-            ready, _, _ = select.select([process.stdout], [], [], 300)
+            ready, _, _ = select.select([process.stdout], [], [], 600)
             if ready:
                 output = process.stdout.readline()
                 if output == '' and process.poll() is not None:
@@ -91,7 +91,7 @@ class RemoteManager:
             else:
                 if process.poll() is not None:
                     break
-                print("⚠️  [stream_command] No output for 5 min — possible remote hang. Killing.")
+                print("⚠️  [stream_command] No output for 10 min — possible remote hang. Killing.")
                 process.kill()
                 return False
 
