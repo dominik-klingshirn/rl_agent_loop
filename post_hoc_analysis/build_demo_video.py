@@ -30,6 +30,7 @@
 # =============================================================================
 
 import io
+import json
 import os
 import sys
 import argparse
@@ -46,7 +47,8 @@ from moviepy import (
     ColorClip,
 )
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
 from src.workspace_manager import ExperimentWorkspace
 
 
@@ -76,6 +78,15 @@ BASE_CSS = """
   body { background:#0c0f1c; color:#d2d2dc;
          font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
 """
+TERM_MODES = [
+    {"key": "term_centered",             "label": "landed_centered",             "color": "#2ca02c"},
+    {"key": "term_off_centered",         "label": "landed_off_centered",         "color": "#1f77b4"},
+    {"key": "term_off_centered_timeout", "label": "landed_off_centered_timeout", "color": "#186499"},
+    {"key": "term_slid",                 "label": "landed_but_slid",             "color": "#1A6BA4"},
+    {"key": "term_crashed",              "label": "crashed",                     "color": "#d62728"},
+    {"key": "term_oob",                  "label": "out_of_bounds",               "color": "#9467bd"},
+    {"key": "term_hover",                "label": "hover_timeout",               "color": "#ff7f0e"},
+]
 
 
 # --- Utility: Freeze last frame to fill up to a target duration ---------------
@@ -161,10 +172,21 @@ def resolve_component_flag(m: dict):
 # --- Utility: Curated telemetry card (from payload) ---------------------------
 
 def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray:
-    comps = metrics.get("multi_seed_stochastic_health", {}).get("dynamic_component_analysis", {})
-    psr = psr_from_payload(metrics)
-    psr_str = f"{psr:.1f}<small>%</small>" if psr is not None else "\u2014"
+    comps     = metrics.get("multi_seed_stochastic_health", {}).get("dynamic_component_analysis", {})
+    term_dist = metrics.get("multi_seed_stochastic_health", {}).get("population_terminal_distribution", {})
     obj_txt, obj_col = objective_verdict_from_payload(metrics)
+
+    bar_segs, legend_items = [], []
+    for m in TERM_MODES:
+        v = term_dist.get(m["key"], 0.0) or 0.0
+        if v > 0:
+            bar_segs.append(
+                f'<div class="bseg" style="width:{v*100:.2f}%;background:{m["color"]}"></div>')
+            legend_items.append(
+                f'<span class="li"><span class="lswatch" style="background:{m["color"]}"></span>'
+                f'<span class="lt">{m["label"]} {v*100:.0f}%</span></span>')
+    bar_html    = "".join(bar_segs)
+    legend_html = "".join(legend_items)
 
     rows = []
     for name, m in list(comps.items())[:MAX_COMPONENTS]:
@@ -180,10 +202,13 @@ def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray
     html = f"""<html><head><style>
       {BASE_CSS}
       body {{ height:{height}px; padding:46px 44px; display:flex; flex-direction:column; }}
-      .kicker {{ font-size:15px; letter-spacing:3px; color:#5a6280; text-transform:uppercase; }}
-      .psr {{ font-size:104px; font-weight:800; line-height:1.0; color:#e8e8f0; margin:4px 0 2px; }}
-      .psr small {{ font-size:34px; font-weight:700; color:#5adc82; }}
-      .psrlbl {{ font-size:17px; color:#8a90a6; margin-bottom:32px; }}
+      .kicker {{ font-size:15px; letter-spacing:3px; color:#5a6280; text-transform:uppercase; margin-bottom:14px; }}
+      .bar {{ display:flex; width:100%; height:22px; border-radius:4px; overflow:hidden; margin-bottom:12px; }}
+      .bseg {{ height:100%; }}
+      .legend {{ display:flex; flex-wrap:wrap; gap:6px 16px; margin-bottom:28px; }}
+      .li {{ display:flex; align-items:center; gap:6px; }}
+      .lswatch {{ width:11px; height:11px; border-radius:2px; flex-shrink:0; }}
+      .lt {{ font-size:12px; color:#8a90a6; }}
       .obj {{ font-size:25px; font-weight:700; color:{obj_col}; margin-bottom:6px; }}
       .objlbl {{ font-size:13px; letter-spacing:2px; color:#5a6280; text-transform:uppercase; margin-bottom:30px; }}
       .cchdr {{ font-size:13px; letter-spacing:2px; color:#5a6280; text-transform:uppercase; margin-bottom:10px; }}
@@ -192,9 +217,9 @@ def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray
       .rho {{ font-family:ui-monospace,Menlo,monospace; font-size:15px; color:#6b7290; flex:0 0 86px; }}
       .chip {{ font-size:14px; font-weight:700; padding:4px 12px; border-radius:13px; border:1px solid; }}
     </style></head><body>
-      <div class="kicker">Universal Policy Robustness</div>
-      <div class="psr">{psr_str}</div>
-      <div class="psrlbl">landing success \u00b7 deterministic eval across seeds</div>
+      <div class="kicker">Behavior Distribution</div>
+      <div class="bar">{bar_html}</div>
+      <div class="legend">{legend_html}</div>
       <div class="obj">{obj_txt}</div>
       <div class="objlbl">Global Objective Alignment \u00b7 Oracle Test</div>
       <div class="cchdr">Component Credit Assignment</div>
@@ -206,7 +231,8 @@ def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray
 # --- Utility: Header bar (iteration, trajectory, running success, status) -----
 
 def make_header(iteration: int, status, iters: list, psr,
-                width: int = CANVAS_W, height: int = HEADER_H) -> np.ndarray:
+                width: int = CANVAS_W, height: int = HEADER_H,
+                is_curated: bool = False) -> np.ndarray:
     pill = ""
     if status in STATUS_STYLE:
         r, g, b = STATUS_STYLE[status]
@@ -217,6 +243,7 @@ def make_header(iteration: int, status, iters: list, psr,
         f'<b style="color:#8cd2ff">{i:02d}</b>' if i == iteration else f'{i:02d}'
         for i in iters)
     psr_html = f'<span style="color:#5adc82">{psr:.0f}%</span>' if psr is not None else "\u2014"
+    iter_label = f"ITERATION {iteration:02d} \u00b7 CURATED" if is_curated else f"ITERATION {iteration:02d}"
     html = f"""<html><head><style>
       {BASE_CSS}
       body {{ background:#10131f; height:{height}px; display:flex; align-items:center;
@@ -228,7 +255,7 @@ def make_header(iteration: int, status, iters: list, psr,
                border:1px solid #262c48; }}
       .dot {{ width:15px; height:15px; border-radius:50%; box-shadow:0 0 12px currentColor; }}
     </style></head><body>
-      <div class="iter">ITERATION {iteration:02d}</div>
+      <div class="iter">{iter_label}</div>
       <div class="traj">{traj}&nbsp;&nbsp;\u00b7&nbsp;&nbsp;landing {psr_html}</div>
       {pill}
     </body></html>"""
@@ -312,17 +339,31 @@ def build_iteration_composite(
     is_first: bool,
     is_last: bool,
     seed_badges: dict,
+    curated_reward: str = None,
 ) -> CompositeVideoClip:
-    videos_dir = ws.dirs["root"] / "artifacts" / f"iteration{iteration:02d}" / "videos"
+    is_curated_frame = (iteration == 0 and curated_reward is not None)
 
-    metrics = ws.load_metrics(iteration)          # <- structured payload, single source of truth
-    status  = status_from_payload(metrics)
-    psr     = psr_from_payload(metrics)
+    if is_curated_frame:
+        videos_dir   = PROJECT_ROOT / "curated_reward_functions" / "videos"
+        payload_path = PROJECT_ROOT / "curated_reward_functions" / f"{curated_reward}_iter00_payload.json"
+        with open(payload_path) as _f:
+            metrics = json.load(_f)
+    else:
+        videos_dir = ws.dirs["root"] / "artifacts" / f"iteration{iteration:02d}" / "videos"
+        metrics    = ws.load_metrics(iteration)
+
+    status = status_from_payload(metrics)
+    psr    = psr_from_payload(metrics)
+
+    def _clip_name(s: int) -> Path:
+        if is_curated_frame:
+            return videos_dir / f"{curated_reward}_seed{s}.mp4"
+        return videos_dir / f"iter{iteration:02d}_seed{s}.mp4"
 
     # Load all seed clips; tolerate missing seeds
     seed_clips = []
     for s in range(num_seeds):
-        clip_path = videos_dir / f"iter{iteration:02d}_seed{s}.mp4"
+        clip_path = _clip_name(s)
         if clip_path.exists():
             seed_clips.append((s, VideoFileClip(str(clip_path))))
         else:
@@ -379,7 +420,8 @@ def build_iteration_composite(
                             duration=target_dur)
                   .with_position((clip_area_w, HEADER_H))
                   .with_fps(FPS))
-    header_clip = (ImageClip(make_header(iteration, status, iterations, psr),
+    header_clip = (ImageClip(make_header(iteration, status, iterations, psr,
+                                        is_curated=is_curated_frame),
                              duration=target_dur)
                    .with_position((0, 0))
                    .with_fps(FPS))
@@ -401,6 +443,7 @@ def build_full_demo(
     ws: ExperimentWorkspace,
     num_seeds: int,
     output_name: str,
+    curated_reward: str = None,
 ):
     seed_badges = {s: make_seed_badge(s) for s in range(num_seeds)}
     segments = [ImageClip(make_intro_card(), duration=INTRO_DUR).with_fps(FPS)]
@@ -410,7 +453,8 @@ def build_full_demo(
         print(f"\n  Building composite for iteration {iteration:02d}")
         segments.append(
             build_iteration_composite(
-                iteration, ws, num_seeds, iterations, is_first, is_last, seed_badges))
+                iteration, ws, num_seeds, iterations, is_first, is_last, seed_badges,
+                curated_reward=curated_reward))
 
     final_psr = psr_from_payload(ws.load_metrics(iterations[-1]))
     segments.append(ImageClip(make_outro_card(final_psr, len(iterations)),
@@ -442,6 +486,9 @@ def main():
     parser.add_argument("--output_name",  type=str, default=None,
                         help="Output filename stem (no .mp4). Defaults to "
                              "{campaign_tag}_{model_name} with ':' and '/' replaced by '-'.")
+    parser.add_argument("--curated_reward", type=str, default=None,
+                        help="Curated reward name (e.g. spin_crash). When set, iteration 0 "
+                             "sources videos and payload from curated_reward_functions/.")
     args = parser.parse_args()
 
     if args.output_name is None:
@@ -461,7 +508,13 @@ def main():
     print(f"  Iters    : {args.iterations}")
     print(f"  Seeds    : {args.num_seeds}")
 
-    build_full_demo(args.iterations, ws, args.num_seeds, args.output_name)
+    build_full_demo(
+        args.iterations,
+        ws,
+        args.num_seeds,
+        args.output_name,
+        curated_reward=args.curated_reward
+        )
 
 
 if __name__ == "__main__":
