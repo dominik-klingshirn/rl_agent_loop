@@ -60,6 +60,12 @@ INTRO_DUR, OUTRO_DUR = 4.0, 5.0
 BG_COLOR    = (10, 10, 18)
 HERO_SEED   = 0
 MAX_COMPONENTS = 8                      # cap chips for legibility; full set is in the repo report
+GRID_W      = 960     # square block; clamped to clip-area width at use
+GRID_H      = 960     # set != GRID_W to experiment with non-square blocks
+GRID_GUTTER = 16
+SHOW_SEED_LABELS  = True
+SHOW_GRID_DIVIDER = True
+TAIL_HOLD   = 1.0     # seconds of final-frame hold added on top of natural length
 STATUS_STYLE = {
     "CONVERGED": (90, 220, 130),
     "UNSTABLE": (255, 90, 90),
@@ -272,13 +278,28 @@ def make_outro_card(final_psr, n_iters: int,
 
 # --- Utility: Dwell duration policy -------------------------------------------
 
-def dwell_for(iteration: int, status, is_first: bool, is_last: bool) -> float:
-    """Before/after spine breathes; the instability beat lingers; middles are quick cuts."""
+def dwell_for(natural_len, status, is_first, is_last):
+    """Duration policy. natural_len = max clip duration across the iteration's seeds."""
+    target = natural_len + TAIL_HOLD
     if is_first or is_last:
-        return 9.0
+        return min(max(target, 7.0), 11.0)
     if status == "UNSTABLE":
-        return 6.0
-    return 2.5
+        return min(max(target, 6.0), 9.0)   # instability beat lingers
+    return min(max(target, 3.5), 9.0)       # middles: full landing, fast crashes still get 3.5s
+
+
+# --- Utility: Seed badge (PIL only — no Playwright) ---------------------------
+
+def make_seed_badge(seed_id: int, w: int = 120, h: int = 36) -> np.ndarray:
+    from PIL import ImageDraw, ImageFont
+    img = Image.new("RGB", (w, h), (16, 19, 31))
+    d = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 18)
+    except Exception:
+        font = ImageFont.load_default()
+    d.text((14, 8), f"seed {seed_id}", fill=(160, 168, 196), font=font)
+    return np.array(img)
 
 
 # --- Core: build one iteration's composite clip --------------------------------
@@ -290,28 +311,69 @@ def build_iteration_composite(
     iterations: list,
     is_first: bool,
     is_last: bool,
+    seed_badges: dict,
 ) -> CompositeVideoClip:
     videos_dir = ws.dirs["root"] / "artifacts" / f"iteration{iteration:02d}" / "videos"
 
-    hero = min(HERO_SEED, num_seeds - 1)
-    clip_path = videos_dir / f"iter{iteration:02d}_seed{hero}.mp4"
-    if not clip_path.exists():
-        raise FileNotFoundError(f"Missing hero clip: {clip_path}")
-    clip = VideoFileClip(str(clip_path))
+    metrics = ws.load_metrics(iteration)          # <- structured payload, single source of truth
+    status  = status_from_payload(metrics)
+    psr     = psr_from_payload(metrics)
 
-    metrics    = ws.load_metrics(iteration)          # <- structured payload, single source of truth
-    status     = status_from_payload(metrics)
-    psr        = psr_from_payload(metrics)
-    target_dur = dwell_for(iteration, status, is_first, is_last)
-    clip       = freeze_to_duration(clip, target_dur)
+    # Load all seed clips; tolerate missing seeds
+    seed_clips = []
+    for s in range(num_seeds):
+        clip_path = videos_dir / f"iter{iteration:02d}_seed{s}.mp4"
+        if clip_path.exists():
+            seed_clips.append((s, VideoFileClip(str(clip_path))))
+        else:
+            print(f"WARNING: missing clip {clip_path}")
+    if not seed_clips:
+        raise FileNotFoundError(
+            f"No seed clips found for iteration {iteration:02d} in {videos_dir}")
 
-    # Clip-dominant layout for every iteration (the card is sparse).
+    natural_len = max(c.duration for _, c in seed_clips)
+    target_dur  = dwell_for(natural_len, status, is_first, is_last)
+
+    # Geometry from constants
     clip_area_w = CANVAS_W - CARD_W
-    margin = 40
-    scale  = min((clip_area_w - 2*margin) / 600, (CONTENT_H - 2*margin) / 400)
-    cw, ch = int(600*scale), int(400*scale)
-    clip = clip.resized((cw, ch)).with_position(
-        ((clip_area_w - cw)//2, HEADER_H + (CONTENT_H - ch)//2))
+    gw = min(GRID_W, clip_area_w)
+    gh = min(GRID_H, CONTENT_H)
+    block_x = (clip_area_w - gw) // 2
+    block_y = HEADER_H + (CONTENT_H - gh) // 2
+    cell_w = (gw - GRID_GUTTER) // 2
+    cell_h = (gh - GRID_GUTTER) // 2
+
+    cells = []
+    badge_clips = []
+    for s, clip in seed_clips:
+        r, c = s // 2, s % 2
+        clip = freeze_to_duration(clip, target_dur)
+        scale = min(cell_w / clip.w, cell_h / clip.h)
+        cw, ch = int(clip.w * scale), int(clip.h * scale)
+        ox = block_x + c * (cell_w + GRID_GUTTER)
+        oy = block_y + r * (cell_h + GRID_GUTTER)
+        cells.append(clip.resized((cw, ch)).with_position(
+            (ox + (cell_w - cw) // 2, oy + (cell_h - ch) // 2)))
+
+        if SHOW_SEED_LABELS and s in seed_badges:
+            badge_w = 120
+            badge_clips.append(
+                ImageClip(seed_badges[s], duration=target_dur)
+                .with_fps(FPS)
+                .with_position((ox + (cell_w - badge_w) // 2, oy + cell_h - 40)))
+
+    grid_dividers = []
+    if SHOW_GRID_DIVIDER:
+        vbar = np.full((gh, 2, 3), (40, 50, 80), dtype=np.uint8)
+        grid_dividers.append(
+            ImageClip(vbar, duration=target_dur)
+            .with_fps(FPS)
+            .with_position((block_x + cell_w + GRID_GUTTER // 2, block_y)))
+        hbar = np.full((2, gw, 3), (40, 50, 80), dtype=np.uint8)
+        grid_dividers.append(
+            ImageClip(hbar, duration=target_dur)
+            .with_fps(FPS)
+            .with_position((block_x, block_y + cell_h + GRID_GUTTER // 2)))
 
     panel_clip = (ImageClip(payload_panel_to_image(metrics, CARD_W, CONTENT_H),
                             duration=target_dur)
@@ -321,14 +383,15 @@ def build_iteration_composite(
                              duration=target_dur)
                    .with_position((0, 0))
                    .with_fps(FPS))
-    divider = (ImageClip(np.full((CONTENT_H, 2, 3), (40, 50, 80), dtype=np.uint8),
-                         duration=target_dur)
-               .with_position((clip_area_w - 1, HEADER_H))
-               .with_fps(FPS))
+    card_divider = (ImageClip(np.full((CONTENT_H, 2, 3), (40, 50, 80), dtype=np.uint8),
+                              duration=target_dur)
+                    .with_position((clip_area_w - 1, HEADER_H))
+                    .with_fps(FPS))
     bg = ColorClip(size=(CANVAS_W, CANVAS_H), color=BG_COLOR, duration=target_dur)
 
-    return CompositeVideoClip([bg, clip, divider, panel_clip, header_clip],
-                              size=(CANVAS_W, CANVAS_H))
+    return CompositeVideoClip(
+        [bg, *cells, *grid_dividers, *badge_clips, card_divider, panel_clip, header_clip],
+        size=(CANVAS_W, CANVAS_H))
 
 
 # --- Build full demo ----------------------------------------------------------
@@ -339,13 +402,15 @@ def build_full_demo(
     num_seeds: int,
     output_name: str,
 ):
+    seed_badges = {s: make_seed_badge(s) for s in range(num_seeds)}
     segments = [ImageClip(make_intro_card(), duration=INTRO_DUR).with_fps(FPS)]
     for i, iteration in enumerate(iterations):
         is_first = i == 0
         is_last  = i == len(iterations) - 1
         print(f"\n  Building composite for iteration {iteration:02d}")
         segments.append(
-            build_iteration_composite(iteration, ws, num_seeds, iterations, is_first, is_last))
+            build_iteration_composite(
+                iteration, ws, num_seeds, iterations, is_first, is_last, seed_badges))
 
     final_psr = psr_from_payload(ws.load_metrics(iterations[-1]))
     segments.append(ImageClip(make_outro_card(final_psr, len(iterations)),
