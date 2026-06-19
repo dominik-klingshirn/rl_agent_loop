@@ -55,19 +55,19 @@ from src.workspace_manager import ExperimentWorkspace
 # --- Layout Constants ---------------------------------------------------------
 CANVAS_W, CANVAS_H = 1920, 1080
 HEADER_H    = 96
-CARD_W      = 760                       # sparse telemetry card; clip gets the rest
+CARD_W      = 760                        # sparse telemetry card; clip gets the rest
 CONTENT_H   = CANVAS_H - HEADER_H
 FPS         = 30
 INTRO_DUR, OUTRO_DUR = 4.0, 5.0
 BG_COLOR    = (10, 10, 18)
 HERO_SEED   = 0
-MAX_COMPONENTS = 8                      # cap chips for legibility; full set is in the repo report
-GRID_W      = 960     # square block; clamped to clip-area width at use
-GRID_H      = 960     # set != GRID_W to experiment with non-square blocks
+MAX_COMPONENTS = 10                      # cap chips for legibility; full set is in the repo report
+GRID_W      = 960                        # square block; clamped to clip-area width at use
+GRID_H      = 960                        # set != GRID_W to experiment with non-square blocks
 GRID_GUTTER = 16
 SHOW_SEED_LABELS  = True
 SHOW_GRID_DIVIDER = True
-TAIL_HOLD   = 1.0     # seconds of final-frame hold added on top of natural length
+TAIL_HOLD   = 1.0                        # seconds of final-frame hold added on top of natural length
 STATUS_STYLE = {
     "CONVERGED": (90, 220, 130),
     "UNSTABLE": (255, 90, 90),
@@ -199,7 +199,10 @@ def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray
     legend_html = "".join(legend_items)
 
     rows = []
-    for name, m in list(comps.items())[:MAX_COMPONENTS]:
+    for name, m in sorted(comps.items(),
+                      key=lambda kv: kv[1].get("relative_magnitude_pct", 0.0),
+                      reverse=True)[:MAX_COMPONENTS]:
+
         label, col = resolve_component_flag(m)
         rho = m.get("alignment_rho", 0.0)
         clean = name.replace("reward_", "", 1)
