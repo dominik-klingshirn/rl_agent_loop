@@ -145,23 +145,22 @@ def psr_from_payload(m: dict):
           .get("population_mean_success_rate"))
     return v * 100 if v is not None else None
 
-
 def objective_verdict_from_payload(m: dict):
-    """(text, color) for the Oracle-test one-liner. analysis.py:895-905.
-    Inversion flag is sourced from the stochastic payload; Delta from the eval payload."""
-    topo  = m.get("multi_seed_stochastic_health", {}).get("global_reward_topology", {})
-    delta = (m.get("multi_seed_evaluation_health", {})
-              .get("failure_mode_analysis", {})
-              .get("eval_global_conditional_delta"))
-    dtxt = f"\u0394 = {delta:+.2f}" if delta is not None else "\u0394 undefined"
-    if topo.get("topology_is_inverted_flag"):
+    """
+    (text, color) for the Oracle-test one-liner.
+    Both flag and Δ are eval ground truth (analysis.py:431-432). Non-linear
+    nuance still surfaces per-component in the chips (stochastic).
+    """
+    fail  = m.get("multi_seed_evaluation_health", {}).get("failure_mode_analysis", {})
+    delta = fail.get("eval_global_conditional_delta")
+    dtxt  = f"\u0394 = {delta:+.2f}" if delta is not None else "\u0394 undefined"
+    if delta is None:
+        return f"Alignment indeterminate   ({dtxt})", "#8a90a6"
+    if fail.get("eval_topology_inverted_flag"):
         return f"Reward rewards crashing   ({dtxt})", "#ff5a5a"
-    if topo.get("rho_delta_divergence_flag"):
-        return f"Aligned, non-linear   ({dtxt})", "#5ab0ff"
-    if delta is not None and delta > 0:
+    if delta > 0:
         return f"Reward aligned with landing   ({dtxt})", "#5adc82"
     return f"Alignment indeterminate   ({dtxt})", "#8a90a6"
-
 
 def resolve_component_flag(m: dict):
     """(short_label, css_color) for a component chip.
@@ -182,7 +181,9 @@ def resolve_component_flag(m: dict):
 
 def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray:
     comps     = metrics.get("multi_seed_stochastic_health", {}).get("dynamic_component_analysis", {})
-    term_dist = metrics.get("multi_seed_stochastic_health", {}).get("population_terminal_distribution", {})
+    term_dist = (metrics.get("multi_seed_evaluation_health", {})
+                    .get("failure_mode_analysis", {})
+                    .get("population_terminal_distribution", {}))
     obj_txt, obj_col = objective_verdict_from_payload(metrics)
 
     bar_segs, legend_items = [], []
@@ -270,6 +271,30 @@ def make_header(iteration: int, status, iters: list, psr,
     </body></html>"""
     return render_html_to_image(html, width, height)
 
+def dump_stills(iteration: int, ws: ExperimentWorkspace, iterations: list,
+                curated_reward: str = None):
+    """Render only the panel + header PNGs for one iteration, then return.
+    Skips all clip loading / moviepy — sub-second feedback loop for layout work."""
+    is_curated_frame = (iteration == 0 and curated_reward is not None)
+    if is_curated_frame:
+        payload_path = (PROJECT_ROOT / "curated_reward_functions"
+                        / f"{curated_reward}_iter00_payload.json")
+        with open(payload_path) as _f:
+            metrics = json.load(_f)
+    else:
+        metrics = ws.load_metrics(iteration)
+
+    status = status_from_payload(metrics)
+    psr    = psr_from_payload(metrics)
+    panel  = payload_panel_to_image(metrics, CARD_W, CONTENT_H)
+    header = make_header(iteration, status, iterations, psr,
+                         is_curated=is_curated_frame)
+
+    out_dir = ws.dirs["root"] / "artifacts"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(panel).save(out_dir / f"still_panel_iter{iteration:02d}.png")
+    Image.fromarray(header).save(out_dir / f"still_header_iter{iteration:02d}.png")
+    print(f"  Wrote still_panel_iter{iteration:02d}.png + still_header_iter{iteration:02d}.png")
 
 # --- Utility: Intro / outro cards ---------------------------------------------
 
@@ -501,6 +526,8 @@ def main():
     parser.add_argument("--curated_reward", type=str, default=None,
                         help="Curated reward name (e.g. spin_crash). When set, iteration 0 "
                              "sources videos and payload from curated_reward_functions/.")
+    parser.add_argument("--still", type=int, default=None,
+                    help="Render only panel+header PNGs for this iteration, then exit.")
     args = parser.parse_args()
 
     if args.output_name is None:
@@ -520,6 +547,10 @@ def main():
     print(f"  Iters    : {args.iterations}")
     print(f"  Seeds    : {args.num_seeds}")
 
+    if args.still is not None:
+        dump_stills(args.still, ws, args.iterations, curated_reward=args.curated_reward)
+        return
+    
     build_full_demo(
         args.iterations,
         ws,
