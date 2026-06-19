@@ -87,7 +87,16 @@ TERM_MODES = [
     {"key": "term_oob",                  "label": "out_of_bounds",               "color": "#9467bd"},
     {"key": "term_hover",                "label": "hover_timeout",               "color": "#ff7f0e"},
 ]
-
+TERM_STYLE = {
+    "landed_centered":             ("landed_centered",             "#2ca02c"),
+    "landed_off_centered":         ("landed_off_centered",         "#1f77b4"),
+    "landed_off_centered_timeout": ("landed_off_centered_timeout", "#186499"),
+    "landed_but_slid_into_valley": ("landed_but_slid",             "#1A6BA4"),
+    "crashed":                     ("crashed",                     "#d62728"),
+    "out_of_bounds":               ("out_of_bounds",               "#9467bd"),
+    "hover_timeout":               ("hover_timeout",               "#ff7f0e"),
+}
+_ORDER = list(TERM_STYLE)
 
 # --- Utility: Freeze last frame to fill up to a target duration ---------------
 
@@ -177,14 +186,14 @@ def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray
     obj_txt, obj_col = objective_verdict_from_payload(metrics)
 
     bar_segs, legend_items = [], []
-    for m in TERM_MODES:
-        v = term_dist.get(m["key"], 0.0) or 0.0
-        if v > 0:
-            bar_segs.append(
-                f'<div class="bseg" style="width:{v*100:.2f}%;background:{m["color"]}"></div>')
-            legend_items.append(
-                f'<span class="li"><span class="lswatch" style="background:{m["color"]}"></span>'
-                f'<span class="lt">{m["label"]} {v*100:.0f}%</span></span>')
+    present = [(k, v) for k, v in term_dist.items() if v and v > 0]
+    present.sort(key=lambda kv: (_ORDER.index(kv[0]) if kv[0] in _ORDER else 99))
+    for status, v in present:
+        label, color = TERM_STYLE.get(status, (status, "#8a90a6"))
+        bar_segs.append(f'<div class="bseg" style="width:{v*100:.2f}%;background:{color}"></div>')
+        legend_items.append(
+            f'<span class="li"><span class="lswatch" style="background:{color}"></span>'
+            f'<span class="lt">{label} {v*100:.0f}%</span></span>')
     bar_html    = "".join(bar_segs)
     legend_html = "".join(legend_items)
 
@@ -445,9 +454,12 @@ def build_full_demo(
     output_name: str,
     curated_reward: str = None,
 ):
+    real_iters = list(iterations)
+    loop_iters = ([0] + real_iters) if (curated_reward and 0 not in real_iters) else real_iters
+
     seed_badges = {s: make_seed_badge(s) for s in range(num_seeds)}
     segments = [ImageClip(make_intro_card(), duration=INTRO_DUR).with_fps(FPS)]
-    for i, iteration in enumerate(iterations):
+    for i, iteration in enumerate(loop_iters):
         is_first = i == 0
         is_last  = i == len(iterations) - 1
         print(f"\n  Building composite for iteration {iteration:02d}")
@@ -456,8 +468,8 @@ def build_full_demo(
                 iteration, ws, num_seeds, iterations, is_first, is_last, seed_badges,
                 curated_reward=curated_reward))
 
-    final_psr = psr_from_payload(ws.load_metrics(iterations[-1]))
-    segments.append(ImageClip(make_outro_card(final_psr, len(iterations)),
+    final_psr = psr_from_payload(ws.load_metrics(real_iters[-1]))
+    segments.append(ImageClip(make_outro_card(final_psr, len(real_iters)),
                               duration=OUTRO_DUR).with_fps(FPS))
 
     final = concatenate_videoclips(segments, method="compose")
