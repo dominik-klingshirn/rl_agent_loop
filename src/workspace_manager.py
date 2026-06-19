@@ -112,7 +112,10 @@ class ExperimentWorkspace:
         Loads the JSON containing metrics from a specific iteration.
         Returns a Python Dictionary Object
         """
-        filepath = self.get_path("telemetry_payloads", iteration, "metric_payload.json")
+        if iteration == 0:
+            filepath = self.get_path("telemetry_payloads", iteration, "payload.json")
+        else:
+            filepath = self.get_path("telemetry_payloads", iteration, "metric_payload.json")
         if not filepath.exists():
             return None
         
