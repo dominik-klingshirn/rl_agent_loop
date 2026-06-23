@@ -347,7 +347,7 @@ def make_outro_card(init_psr,final_psr, n_iters: int,
       .repo {{ font-size:24px; color:#64b9f0; margin-top:50px; letter-spacing:1px; }}
     </style></head><body>
       <div class="result">Autonomously repaired a broken reward<br>
-        Unstable Behavior,{init_psr_str} landing &rarr; <span class="hl">Improved Stability, {final_psr_str} landing</span>
+        Unstable Behavior, {init_psr_str} landing &rarr; <span class="hl">Improved Stability, {final_psr_str} landing</span>
         <div class="meta">{n_iters} iterations \u00b7 zero human reward edits</div>
       </div>
       <div class="repo">github.com/dominik-klingshirn/rl_agent_loop</div>
