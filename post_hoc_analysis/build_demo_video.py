@@ -146,18 +146,30 @@ def psr_from_payload(m: dict):
     return v * 100 if v is not None else None
 
 def objective_verdict_from_payload(m: dict):
-    """
-    (text, color) for the Oracle-test one-liner.
-    Both flag and Δ are eval ground truth (analysis.py:431-432). Non-linear
-    nuance still surfaces per-component in the chips (stochastic).
-    """
-    fail  = m.get("multi_seed_evaluation_health", {}).get("failure_mode_analysis", {})
-    delta = fail.get("eval_global_conditional_delta")
-    dtxt  = f"\u0394 = {delta:+.2f}" if delta is not None else "\u0394 undefined"
+    """Sourced from the stochastic block so the verdict captions the (stochastic)
+    component table beneath it — flag and Δ from the same rollouts. The eval-side
+    conditional Δ (which inverts on converged runs via hover-timeout reward farming)
+    stays in the full diagnostic report, where there's room to explain it."""
+    topo  = m.get("multi_seed_stochastic_health", {}).get("global_reward_topology", {})
+    delta = topo.get("global_conditional_delta")
     if delta is None:
-        return f"Alignment indeterminate   ({dtxt})", "#8a90a6"
-    if fail.get("eval_topology_inverted_flag"):
+            dtxt = "\u0394 undefined"
+            rates = topo.get("seed_success_rates", [])
+            mean_succ = sum(rates) / len(rates) if rates else None
+            if mean_succ is not None and mean_succ < 0.005:
+                return f"No landings \u00b7 reward unaligned   ({dtxt})", "#ff5a5a"
+            if mean_succ is not None and mean_succ > 0.995:
+                return f"Universal landing   ({dtxt})", "#5adc82"
+            return f"Alignment indeterminate   ({dtxt})", "#8a90a6"
+    else:
+        if delta < 0: dtxt = "\u0394 < 0"
+        elif delta > 0: dtxt = "\u0394 > 0"
+        else: dtxt = "\u0394 = 0"
+
+    if topo.get("topology_is_inverted_flag"):
         return f"Reward rewards crashing   ({dtxt})", "#ff5a5a"
+    if topo.get("rho_delta_divergence_flag"):
+        return f"Aligned, non-linear   ({dtxt})", "#5ab0ff"
     if delta > 0:
         return f"Reward aligned with landing   ({dtxt})", "#5adc82"
     return f"Alignment indeterminate   ({dtxt})", "#8a90a6"
@@ -222,8 +234,9 @@ def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray
       .li {{ display:flex; align-items:center; gap:6px; }}
       .lswatch {{ width:11px; height:11px; border-radius:2px; flex-shrink:0; }}
       .lt {{ font-size:12px; color:#8a90a6; }}
-      .obj {{ font-size:25px; font-weight:700; color:{obj_col}; margin-bottom:6px; }}
-      .objlbl {{ font-size:13px; letter-spacing:2px; color:#5a6280; text-transform:uppercase; margin-bottom:30px; }}
+      .obj {{ font-size:25px; font-weight:700; color:{obj_col}; margin-bottom:30px; }}
+      .objlbl {{ font-size:13px; letter-spacing:2px; color:#5a6280; text-transform:uppercase; margin-bottom:10px; }}
+      .objformula {{ font-family:Georgia,'Times New Roman',serif; font-size:20px; color:#5a6280; margin-bottom:12px; }}
       .cchdr {{ font-size:13px; letter-spacing:2px; color:#5a6280; text-transform:uppercase; margin-bottom:10px; }}
       .row {{ display:flex; align-items:center; gap:14px; padding:9px 0; border-bottom:1px solid #181b2c; }}
       .cn {{ font-family:ui-monospace,Menlo,monospace; font-size:19px; color:#c4c8d6; flex:0 0 220px; }}
@@ -233,8 +246,9 @@ def payload_panel_to_image(metrics: dict, width: int, height: int) -> np.ndarray
       <div class="kicker">Behavior Distribution</div>
       <div class="bar">{bar_html}</div>
       <div class="legend">{legend_html}</div>
-      <div class="obj">{obj_txt}</div>
       <div class="objlbl">Global Objective Alignment \u00b7 Oracle Test</div>
+      <div class="objformula">\u0394 = \U0001D53C[<i>R</i> | land] \u2212 \U0001D53C[<i>R</i> | fail]</div>
+      <div class="obj">{obj_txt}</div>
       <div class="cchdr">Component Credit Assignment</div>
       {rows_html}
     </body></html>"""
