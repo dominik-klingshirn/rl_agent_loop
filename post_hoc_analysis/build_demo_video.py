@@ -333,9 +333,10 @@ def make_intro_card(width: int = CANVAS_W, height: int = CANVAS_H) -> np.ndarray
     return render_html_to_image(html, width, height)
 
 
-def make_outro_card(final_psr, n_iters: int,
+def make_outro_card(init_psr,final_psr, n_iters: int,
                     width: int = CANVAS_W, height: int = CANVAS_H) -> np.ndarray:
-    psr_str = f"{final_psr:.0f}%" if final_psr is not None else "\u2014%"
+    final_psr_str = f"{final_psr:.0f}%" if final_psr is not None else "\u2014%"
+    init_psr_str = f"{init_psr:.0f}%" if init_psr is not None else "\u2014%"
     html = f"""<html><head><style>
       {BASE_CSS}
       body {{ height:{height}px; display:flex; flex-direction:column; align-items:center;
@@ -346,7 +347,7 @@ def make_outro_card(final_psr, n_iters: int,
       .repo {{ font-size:24px; color:#64b9f0; margin-top:50px; letter-spacing:1px; }}
     </style></head><body>
       <div class="result">Autonomously repaired a broken reward<br>
-        crash-dominant &rarr; <span class="hl">{psr_str} stable landing</span>
+        Unstable Behavior,{init_psr_str} landing &rarr; <span class="hl">Improved Stability, {final_psr_str} landing</span>
         <div class="meta">{n_iters} iterations \u00b7 zero human reward edits</div>
       </div>
       <div class="repo">github.com/dominik-klingshirn/rl_agent_loop</div>
@@ -511,8 +512,12 @@ def build_full_demo(
                 curated_reward=curated_reward))
 
     final_psr = psr_from_payload(ws.load_metrics(real_iters[-1]))
-    segments.append(ImageClip(make_outro_card(final_psr, len(real_iters)),
-                              duration=OUTRO_DUR).with_fps(FPS))
+    init_psr = psr_from_payload(ws.load_metrics(loop_iters[0]))
+    segments.append(
+        ImageClip(
+            make_outro_card(init_psr,final_psr,len(real_iters)),
+            duration=OUTRO_DUR
+            ).with_fps(FPS))
 
     final = concatenate_videoclips(segments, method="compose")
     output_path = ws.dirs["root"] / "artifacts" / f"{output_name}.mp4"
