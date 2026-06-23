@@ -4,7 +4,7 @@
 
 The `analysis.py` script implements the **Deterministic Translation Layer (DTL)** — a multi-stage pipeline that transforms raw reinforcement learning telemetry from N trained agents into a structured, semantically-rich **Diagnostic Report** consumed by downstream LLM prompts in the ARD (Autonomous Reward Design) loop.
 
-The pipeline is deterministic by design: every numeric threshold, boolean flag, and classification rule is hard-coded, ensuring zero ambiguity or hallucination risk when the Strategist LLM interprets results. The process flows through three stages:
+The pipeline is deterministic by design: every numeric threshold, boolean flag, and classification rule is hard-coded, ensuring zero ambiguity or hallucination risk when the LLM orchestration pipeline interprets results. The process flows through three stages:
 
 1. **Per-Seed Analysis** — extract low-level metrics from each agent's logs independently
 2. **Cross-Seed Aggregation** — produce population-level robustness metrics across all N seeds
@@ -424,7 +424,7 @@ This pipeline is not just analysis — it is a **translation layer between reinf
 - **Scale-aware dispersion:** Reproducibility is measured with coefficient of variation (bounded at 0, monotonic in instability) rather than SNR, which is undefined as mean reward approaches zero.
 - **Separation of compute and translation:** Analysis and aggregation run on the Linux training node; translation runs on the Mac-side inference pipeline.
 - **Dynamic adaptation:** The active optimization rung (success / impact softness / composite viability) is selected automatically by population success rate, so credit assignment always references a discriminative target.
-- **Closed-loop reward design:** The final Diagnostic Report directly enables the Strategist LLM to make targeted, evidence-based modifications to the reward function in the next ARD iteration.
+- **Closed-loop reward design:** The final Diagnostic Report directly enables the LLM pipeline to make targeted, evidence-based modifications to the reward function in the next ARD iteration.
 
 ---
 
@@ -439,6 +439,6 @@ Metrics or formulations that were present in earlier versions of the pipeline an
 | **ρ-driven `topology_is_inverted_flag`** (reward negatively correlated with `is_success`) | `Δ`-driven (`global_conditional_delta < 0`) | Point-biserial `ρ` reads ≈0 or negative under class imbalance, threshold/saturating rewards, and high variance even when landing strictly dominates. Conditional expectation is sign-stable. |
 | **`mean_objective_alignment_rho` as a flag driver** | Demoted to **narrative descriptor** | Too fragile to gate decisions; retained for human readability and as input to the `rho_delta_divergence_flag` non-linearity signal. |
 | **ρ-driven survival hacking** (flag from `survival_hacking_idx`: `ep_len` vs `ep_rew_total` correlation) | Conditional comparison (`mean(hover_timeout reward) > mean(landing reward)`) | The length-reward correlation conflated legitimate long successful flights with hovering. The conditional comparison asks the question directly. `survival_hacking_idx` retained as a narrative signal. |
-| **Single 🟣 HIDDEN DEPENDENCY flag** (non-linear dependency, undirected) | Direction-resolved trio: 🔴 HIDDEN TRAITOR / 🔵 NON-LINEAR HELPER / 🟣 unresolved | The original flag told the Strategist a component was non-linear but not whether to keep or cut it. The Conditional Direction Delta supplies direction; 🟣 now denotes only the residual case where samples are insufficient to resolve direction. |
+| **Single 🟣 HIDDEN DEPENDENCY flag** (non-linear dependency, undirected) | Direction-resolved trio: 🔴 HIDDEN TRAITOR / 🔵 NON-LINEAR HELPER / 🟣 unresolved | The original flag marked a component was non-linear but not whether to keep or cut it. The Conditional Direction Delta supplies direction; 🟣 now denotes only the residual case where samples are insufficient to resolve direction. |
 | **Macro-Oscillations as a raw count** (count of sign reversals where `\|x_pos\| > 0.2`); flag threshold `> 5.0` | Normalized **rate** (reversals per 100 exposed steps); flag threshold `> 2.0` | Raw counts scaled with episode length, so longer episodes looked more unstable purely by duration. Normalizing by exposed steps makes the metric length-invariant; threshold recalibrated for the rate. |
 | **`entropy_sacrifice_rate`** — `Δentropy / (\|Δkl\| + ε)` *(vestigial)* | *(none — currently unused)* | Still computed as an intermediate column in `analyze_single_seed_progress()` but never written to the payload, so it surfaces nowhere in the report. Candidate to either export (paired with a flag) or remove. |
