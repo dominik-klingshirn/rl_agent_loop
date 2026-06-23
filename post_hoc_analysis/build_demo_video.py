@@ -516,7 +516,7 @@ def build_full_demo(
     with open(init_payload_path) as _f:
         init_metrics = json.load(_f)
 
-    init_psr = psr_from_payload(ws.load_metrics(init_metrics))
+    init_psr = psr_from_payload(init_metrics)
     final_psr = psr_from_payload(ws.load_metrics(real_iters[-1]))
     segments.append(
         ImageClip(
