@@ -511,8 +511,13 @@ def build_full_demo(
                 iteration, ws, num_seeds, iterations, is_first, is_last, seed_badges,
                 curated_reward=curated_reward))
 
+    # Iteration 0 payload is in a different location
+    init_payload_path = PROJECT_ROOT / "curated_reward_functions" / f"{curated_reward}_iter00_payload.json"
+    with open(init_payload_path) as _f:
+        init_metrics = json.load(_f)
+
+    init_psr = psr_from_payload(ws.load_metrics(init_metrics))
     final_psr = psr_from_payload(ws.load_metrics(real_iters[-1]))
-    init_psr = psr_from_payload(ws.load_metrics(loop_iters[0]))
     segments.append(
         ImageClip(
             make_outro_card(init_psr,final_psr,len(real_iters)),
