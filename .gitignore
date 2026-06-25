@@ -42,7 +42,7 @@ CLAUDE.md
 .claudeignore
 .claude
 
-# One-off scripts for my own local development
+# One-off scripts for local development
 prepare_cognition_for_review.py
 inspect_model.py
 sandbox.ipynb
@@ -53,6 +53,8 @@ ARD_WORKSPACE_ROOT/
 results/
 build_diagnostic_video.py
 post_hoc_analysis/generate_iteration_zero.py
+post_hoc_analysis/select_demo_seed.py
+curated_reward_functions/videos
 
 # Local operational infrastructure — not part of the project
 ard_train_start.sh
