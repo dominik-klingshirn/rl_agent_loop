@@ -26,7 +26,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from src.workspace_manager import ExperimentWorkspace
 
 
-def record_seed_clip(iteration: int, seed_id: int, ws: ExperimentWorkspace):
+def record_seed_clip(iteration: int, seed_id: int, ws: ExperimentWorkspace, eval_seed: int, force: bool = False):
     """
     Loads saved model for (iteration, seed_id), runs one deterministic episode
     with rendering, and saves it to artifacts/videos/iter{XX}_seed{X}.mp4.
@@ -35,13 +35,14 @@ def record_seed_clip(iteration: int, seed_id: int, ws: ExperimentWorkspace):
     videos_dir.mkdir(parents=True, exist_ok=True)
 
     dest_path = videos_dir / f"iter{iteration:02d}_seed{seed_id}.mp4"
-    if dest_path.exists():
+    if dest_path.exists() and not force:
         print(f"  Clip already exists, skipping: {dest_path.name}")
         return
 
     # Load model — SB3 appends .zip automatically if missing
     model_path = ws.get_path("models", iteration, f"model{seed_id}")
     print(f"  Loading model from: {model_path}")
+    print(f"  eval_seed={eval_seed}")
     model = PPO.load(str(model_path),device='cpu')
 
     # Record into a temp dir first, then rename to match our convention.
@@ -55,7 +56,7 @@ def record_seed_clip(iteration: int, seed_id: int, ws: ExperimentWorkspace):
             name_prefix=f"iter{iteration:02d}_seed{seed_id}",
         )
 
-        obs, _ = env.reset(seed=seed_id)
+        obs, _ = env.reset(seed=eval_seed)
         done = False
         while not done:
             action, _ = model.predict(obs, deterministic=True)
@@ -79,6 +80,8 @@ def main():
     parser.add_argument("--model_name",   type=str, required=True)
     parser.add_argument("--iteration",    type=int, required=True)
     parser.add_argument("--num_seeds",    type=int, default=3)
+    parser.add_argument("--eval_seed",    type=int, required=True)
+    parser.add_argument("--force",        action="store_true")
     args = parser.parse_args()
 
     # Strip any shell-quoting artifacts that can arrive when called over SSH.
@@ -96,7 +99,8 @@ def main():
 
     for seed_id in range(args.num_seeds):
         print(f"\n  Seed {seed_id}:")
-        record_seed_clip(args.iteration, seed_id, ws)
+        record_seed_clip(args.iteration, seed_id, ws, eval_seed=args.eval_seed, force=args.force)
+
     videos_path = ws.dirs["videos"]
     print(f"\nDone. Clips saved to: {videos_path}")
 
