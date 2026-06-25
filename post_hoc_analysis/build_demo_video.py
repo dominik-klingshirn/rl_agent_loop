@@ -69,7 +69,7 @@ SHOW_SEED_LABELS  = True
 SHOW_GRID_DIVIDER = True
 TAIL_HOLD   = 1.0                        # seconds of final-frame hold added on top of natural length
 STATUS_STYLE = {
-    "CONVERGED": (90, 220, 130),
+    "STABLE": (90, 220, 130),
     "UNSTABLE": (255, 90, 90),
     "HIGHLY SENSITIVE TO INITIALIZATION": (255, 180, 60),
 }
@@ -134,7 +134,7 @@ def status_from_payload(m: dict):
     if f.get("is_initialization_sensitive"):
         return "HIGHLY SENSITIVE TO INITIALIZATION"
     if f.get("is_universally_converged"):
-        return "CONVERGED"
+        return "STABLE"
     return "UNSTABLE"
 
 
@@ -265,7 +265,7 @@ def make_header(iteration: int, status, iters: list, psr,
         r, g, b = STATUS_STYLE[status]
         rgb = f"rgb({r},{g},{b})"
         pill = (f'<div class="pill"><span class="dot" style="background:{rgb};color:{rgb}">'
-                f'</span><span style="color:{rgb}">CROSS-SEED CONSENSUS: {status}</span></div>')
+                f'</span><span style="color:{rgb}">CROSS-SEED REWARD: {status}</span></div>')
     traj = " ".join(
         f'<b style="color:#8cd2ff">{i:02d}</b>' if i == iteration else f'{i:02d}'
         for i in iters)
@@ -533,7 +533,7 @@ def build_full_demo(
         codec="libx264",
         audio=False,          # no audio yet — voiceover added in post
         threads=4,
-        preset="fast",        # better compression; use "fast" while iterating
+        preset="fast",        # "slow" for better compression; use "fast" while iterating
         ffmpeg_params=["-crf", "18"],
         logger=None,
     )
