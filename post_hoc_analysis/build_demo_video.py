@@ -265,7 +265,7 @@ def make_header(iteration: int, status, iters: list, psr,
         r, g, b = STATUS_STYLE[status]
         rgb = f"rgb({r},{g},{b})"
         pill = (f'<div class="pill"><span class="dot" style="background:{rgb};color:{rgb}">'
-                f'</span><span style="color:{rgb}">{status}</span></div>')
+                f'</span><span style="color:{rgb}">CROSS-SEED CONSENSUS: {status}</span></div>')
     traj = " ".join(
         f'<b style="color:#8cd2ff">{i:02d}</b>' if i == iteration else f'{i:02d}'
         for i in iters)
