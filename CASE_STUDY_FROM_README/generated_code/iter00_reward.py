@@ -1,14 +1,14 @@
 """
-spin_crash_reward.py
+sideways_slide_reward.py
 
-Reward function for classic PPO failure mode: SPINNING → CRASH.
-- Rewards high angular velocity at ALL costs
-- Ignores position/legs entirely  
-- Small survival bonus
-- Produces uncontrollable spinning → inevitable crash
+Failure mode: SIDEWAYS SLIDING (horizontal ground sliding, never upright landing).
+- Rewards legs down WHILE moving fast horizontally (vx high)
+- Penalizes upright orientation (prefers tilted/sliding)
+- Bonus for maintaining leg contact + lateral velocity
+- Ignores vertical control (drifts into walls/crashes)
 
-Result: Agent learns to spin wildly, then crashes spectacularly.
-Perfect test for terminal_status='crashed' + high spin_rate detection.
+Produces lander that slides sideways on one leg like a skateboard,
+never achieving stable upright landing.
 """
 
 import numpy as np
@@ -27,52 +27,57 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
     
     x, y, vx, vy, angle, v_ang, leg1, leg2 = obs
     prev_obs = info.get('prev_obs', obs)
-    prev_angle, prev_v_ang = prev_obs[4], prev_obs[5]
+    prev_vx, prev_legs = prev_obs[2], prev_obs[6] + prev_obs[7]
     action = info.get('action', 0)
     
-    # === 1. ANGULAR VELOCITY OBSESSION (primary reward) ===
-    # Massive bonus for HIGH |v_ang| (spinning fast)
-    spin_speed = abs(v_ang)
-    r_spin_speed = 10.0 * np.clip(spin_speed / 3.0, 0, 2.0)  # up to +20!
+    # === 1. LEG CONTACT + HORIZONTAL SLIDE (core reward) ===
+    legs_contact = leg1 + leg2
+    horiz_slide_speed = abs(vx)
     
-    # Bonus for angle magnitude (being rotated)
-    r_spin_angle = 4.0 * np.abs(angle)  # up to ~12 for ±π
+    # Massive bonus for legs down AND sliding fast sideways
+    sliding_legs = legs_contact * horiz_slide_speed
+    r_sliding_legs = 12.0 * np.clip(sliding_legs / 2.0, 0, 1.5)  # up to +18!
     
-    # Angular acceleration bonus (changing spin rate)
-    d_angle = abs(angle - prev_angle)
-    r_spin_accel = 2.0 * np.clip(d_angle / np.pi, 0, 1.0)  # up to +2
+    # === 2. PREFER TILTED ORIENTATION (discourage upright) ===
+    # Reward moderate tilt (easier to slide)
+    r_tilt_preference = 3.0 * np.abs(angle) * 0.5  # up to ~4.5 for π/2 tilt
     
-    # === 2. SPIN DIRECTION CHANGE (alternating spin directions) ===
-    v_ang_sign_flip = (np.sign(v_ang) != np.sign(prev_v_ang)) and abs(v_ang) > 1.0
-    r_spin_flip = 8.0 if v_ang_sign_flip else 0.0
+    # Penalty for perfectly upright (stable landing pose)
+    upright_penalty = -8.0 if abs(angle) < 0.05 else 0.0
     
-    # === 3. ACTION PREFERENCE (thrusters that induce torque) ===
-    # All actions except do-nothing get spin bonus
-    if action == 0:  # do nothing
+    # === 3. HORIZONTAL DIRECTION CHANGES (slalom sliding) ===
+    vx_sign_flip = (np.sign(vx) != np.sign(prev_vx)) and abs(vx) > 0.8
+    r_slalom = 6.0 if vx_sign_flip else 0.0
+    
+    # === 4. SIDE THRUSTER LOVE (lateral control) ===
+    if action in (1, 3):  # left/right thrusters
+        r_action = 2.0
+    elif action == 2:  # main (less useful for sliding)
+        r_action = -0.5
+    else:
         r_action = -1.0
-    else:  # any thrust = torque potential
-        r_action = 0.5
     
-    # === 4. IGNORE LANDING (no leg/position rewards) ===
-    # Mild penalty for legs touching (interrupts spin)
-    r_legs_penalty = -2.0 * (leg1 + leg2)
+    # === 5. GROUND LEVEL PREFERENCE (slide near y=0) ===
+    near_ground = abs(y) < 0.4
+    r_ground_level = 3.0 if near_ground else -1.5
     
-    # === 5. SURVIVAL (allow long spin episodes) ===
-    r_survival = 0.08
+    # === 6. PENALIZE VERTICAL MOTION (stay low) ===
+    r_vertical_penalty = -2.0 * abs(vy)  # Hate up/down
     
-    # === 6. VERTICAL TOLERANCE (don't care much about y/vy) ===
-    # Mild preference for level flight to prolong spinning
-    r_vertical = -0.3 * abs(vy)  # Don't crash vertically too fast
+    # === 7. SURVIVAL + LEG MAINTENANCE ===
+    r_survival = 0.1
+    r_leg_maintenance = 1.0 * legs_contact  # Keep at least one leg down
     
     components = {
-        "spin_speed": float(r_spin_speed),
-        "spin_angle": float(r_spin_angle),
-        "spin_accel": float(r_spin_accel),
-        "spin_direction_flip": float(r_spin_flip),
-        "action_spin_bonus": float(r_action),
-        "legs_interrupt_penalty": float(r_legs_penalty),
+        "sliding_legs": float(r_sliding_legs),
+        "tilt_preference": float(r_tilt_preference),
+        "upright_penalty": float(upright_penalty),
+        "slalom_bonus": float(r_slalom),
+        "side_thruster_bonus": float(r_action),
+        "ground_level": float(r_ground_level),
+        "vertical_penalty": float(r_vertical_penalty),
         "survival": float(r_survival),
-        "vertical_tolerance": float(r_vertical),
+        "leg_maintenance": float(r_leg_maintenance),
     }
     
     total_reward = float(sum(components.values()))

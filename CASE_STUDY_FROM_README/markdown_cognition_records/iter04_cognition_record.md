@@ -11,18 +11,20 @@ Centered Landing > Off-Center Landing > Hover Timeout > Out of Bounds > Crash.
 * Moving Up Hierarchy is behavioral progress.
 * Moving Down Hierarchy is behavioral regression.
 
+**[FLOOR RULES - apply before checking metrics]**
+
+- **FLOOR RULES SUPERSEDE ALL OTHER CHECKS.** Apply these first. If a Floor Rule applies, it determines the verdict boundary and cannot be overridden by the Quantitative, Holistic, or Goodhart checks — those inform the description only.
+- Success Rate Moved up ≥20pp → verdict ∈ {`Validated`, `Productive Deviation`}
+- Success Rate Moved down ≥20pp → verdict at minimum `Regressed`
+- Lateral OR moved up (any size) → `Regressed` prohibited
+- BEHAVIORAL HIERARCHY is primary, metrics secondary. When they conflict, BEHAVIORAL HIERARCHY wins.
+
 **[EVALUATION DIRECTIVES]**
 
 1. **Quantitative Check:** Look at the `Target Metric` from the Hypothesis. Did it achieve the `Expected Change` in the new Diagnostic Report?
 2. **Holistic Check (Goodhart's Law):** Did the agent hack the reward? Even if the specific target metric improved, you must check the `Population Success Rate`, `Terminal Distribution`, and `Objective Alignment ($\rho$)`. 
 3. **Progress-Oriented Evaluation (The Unexpected):** Physical flight dynamics are highly coupled. If the specific target metric was missed, burt the overall `Population Success Rate` or global $\rho$ improved significantly due to emergent, productive behaviors, you must recognize the physical progress. Do not rigidly refute a run that generated a superior flight policy.
 4. **Compression:** Distill the entire experiment into a dense, immutable historical record for the Experiment Ledger.
-
-**[FLOOR RULES — apply before checking metrics]**
-- Success Rate Moved up ≥20pp → verdict ∈ {`Validated`, `Productive Deviation`}
-- Success Rate Moved down ≥20pp → verdict at minimum `Regressed`
-- Lateral OR moved up (any size) → `Regressed` prohibited
-- Behavior is primary, metrics secondary. When they conflict, behavior wins.
 
 **[OUTPUT CONSTRAINTS]**
 You must output EXACTLY two bullet points formatted strictly as follows. Do not include conversational filler, introductory text, or concluding remarks.
@@ -42,12 +44,12 @@ Audit the outcome of the previous reward intervention to update the Intervention
 This was the proposed reward intervention and its predicted effect.
 
 
-**Conceptual Hypothesis:** The `Actuator Chatter Rate` is dangerously high ($0.265$), indicating the agent is oscillating between opposing thruster commands. This suggests the policy is over-reacting to the gradients of the $x$ and $v_x$ penalties. Adding a penalty for high-frequency action changes will smooth the control signal, reducing the "jagged" landscape that causes the high `Intra-Rollout Reward CV`.  
-**Falsifiable Expected Outcome:**  
-* Target Metric: `Actuator Chatter Rate`  
-  * Expected Change: Reduction from $0.265 \to < 0.150$  
-* Target Metric: `Intra-Rollout Reward CV`  
-  * Expected Change: Reduction from $0.232 \to < 0.150$  
+**Conceptual Hypothesis:** The current reward landscape is highly “jagged” because several critical stability components (`orientation_penalty`, `velocity_stability`, and `vertical_penalty`) utilize the \(L_1\)-norm (`abs()`). In optimization, the derivative of \(|x|\) is discontinuous at \(x=0\), creating a “pointy” minimum. This causes the agent to oscillate rapidly around the equilibrium point, leading to the observed high **Actuator Chatter Rate** and high **Intra‑Rollout Reward CV**. By transitioning these terms to a squared \(L_2\)-norm (quadratic), the gradient will smoothly approach zero as the agent stabilizes, allowing for a smooth “settle.”
+**Falsifiable Expected Outcome:** 
+- Target Metric: Actuator Chatter Rate (↓) Expected shift from 0.498 to <0.25  
+- Target Metric: Intra‑Rollout Reward CV (↓) Expected shift from 1.806 to <1.0
+
+* Expected Change: Actuator Chatter Rate <0.25, Intra‑Rollout Reward CV <1.0  
 * Side Effects: None
 
 
@@ -58,110 +60,113 @@ This is the verified diagnostic state of the agent **before** the Iteration `4` 
 
 
 #### A. Universal Policy Robustness
-- **Population Success Rate:** `53.3%`
+- **Population Success Rate:** `64.0%`
 
 #### B. Thermodynamic & Actuator Efficiency
-- **Mean Descent Efficiency:** `0.021`
-- **Actuator Chatter Rate:** `0.265`
+- **Mean Descent Efficiency:** `0.055`
+- **Actuator Chatter Rate:** `0.498`
+  - *Diagnosis:* **High Kinematic Sensitivity.** The physical descent strategy (efficiency/chattering) changes wildly depending on the random seed.
   - *Action Required:* **Severe Actuator Chattering detected.** The agent is rapidly vibrating opposing thrusters. The reward gradient near the decision boundary is too jagged. Consider smoothing penalties or adding a minor action-continuity reward.
-  - *Action Required:* **Macro-Oscillations detected.** The agent is overcorrecting laterally (drifting left/right). Ensure X-velocity and angle penalties are properly balanced.
 
 #### C. Population Terminal Distribution
-- `crashed`: 40.0%
-- `landed_off_centered`: 30.0%
-- `landed_centered`: 20.0%
-- `out_of_bounds`: 3.3%
-- `landed_but_slid_into_valley`: 3.3%
-- `hover_timeout`: 3.3%
+- `landed_centered`: 35.0%
+- `crashed`: 24.0%
+- `landed_off_centered`: 19.0%
+- `out_of_bounds`: 11.0%
+- `landed_but_slid_into_valley`: 8.0%
+- `landed_off_centered_timeout`: 2.0%
+- `hover_timeout`: 1.0%
 
 ### [3. THE ACTUAL RESULTS (AFTER THE CHANGE)]
 
 This is the deterministic, mathematically extracted performance data of the agent trained on that intervention.
 
 ### 1. Optimization Dynamics & Critic Health
-**Status:** 🔴 **UNSTABLE/FAILED**
+**Status:** 🟢 **CONVERGED**
 
-#### A. Cross-Seed Robustness
-- **Signal-to-Noise Ratio (SNR):** `-154.35`
-  - *Diagnosis:* The cross-seed variance exceeds the mean reward. The current reward topology is highly chaotic and fails to enforce a universal policy.
+#### A. Cross-Seed Robustness & Terminal Stationarity
+- **Cross-Seed Reproducibility (CV):** `0.0200`  *(lower = more reproducible)*
+  - *Diagnosis:* Strong cross-seed consistency. The reward landscape is learnable and reproducible.
+- **Within-Seed Terminal Stationarity (CV):** `0.0470`  *(lower = more settled)*
+  - *Diagnosis:* Policy has settled. Final-quartile reward is stationary within each seed.
 
 #### B. Value Network (Critic) Integrity
-- **Critic Saturation Index (CSI):** `0.03`
+- **Critic Saturation Index (CSI):** `0.00`
   - *Diagnosis:* Healthy. The Critic is accurately mapping the advantage landscape.
 
 #### C. Optimization Landscape
-- **Trajectory Isomorphism (Pairwise $\rho$):** `0.053`
-  - *Diagnosis:* The learning curves are completely uncorrelated across seeds. The reward function has created a jagged landscape with multiple competing local minima.
+- **Trajectory Isomorphism (Pairwise $\rho$):** `-0.155`
 ### 2. Kinematic Behavior & Physical Robustness
 
 #### A. Universal Policy Robustness
-- **Population Success Rate:** `80.0%`
+- **Population Success Rate:** `91.0%`
 
 #### B. Thermodynamic & Actuator Efficiency
-- **Mean Descent Efficiency:** `0.047`
-- **Actuator Chatter Rate:** `0.105`
+- **Mean Descent Efficiency:** `0.006`
+- **Actuator Chatter Rate:** `0.499`
+  - *Action Required:* **Severe Actuator Chattering detected.** The agent is rapidly vibrating opposing thrusters. The reward gradient near the decision boundary is too jagged. Consider smoothing penalties or adding a minor action-continuity reward.
+  - *Action Required:* **Macro-Oscillations detected.** The agent is overcorrecting laterally (drifting left/right). Ensure X-velocity and angle penalties are properly balanced.
 
 #### C. Population Terminal Distribution
-- `landed_off_centered`: 43.3%
-- `landed_centered`: 33.3%
-- `crashed`: 20.0%
-- `landed_but_slid_into_valley`: 3.3%
+- `landed_centered`: 58.0%
+- `landed_off_centered`: 25.0%
+- `crashed`: 7.0%
+- `landed_off_centered_timeout`: 6.0%
+- `hover_timeout`: 2.0%
+- `landed_but_slid_into_valley`: 2.0%
 ### 3. Reward Topology & Algorithmic Credit Assignment
 
 #### A. Global Objective Alignment (Oracle Test)
-- **Objective Alignment ($\rho$):** `0.305`
-  - *Diagnosis:* Weak alignment. The shaped reward landscape is poorly correlated with the actual goal of landing.
+- **Global Conditional Delta** $\Delta = \mathbb{E}[R \mid \text{land}] - \mathbb{E}[R \mid \text{fail}]$: `-192.639`  *(ground truth)*
+- **Objective Alignment ($\rho$):** `0.647`  *(narrative descriptor — point-biserial estimator)*
 
 #### B. Component-Level Contribution (Algorithmic Credit Assignment)
 This table isolates the exact mathematical impact of each component you generated.
 This table includes Mutual Information (MI) alongside ρ to surface non-linear dependencies that linear correlation misses.
 | Reward Component | ρ w/ Success | MI w/ Success | Relative Magnitude | Diagnostic Flag |
 |:---|:---:|:---:|:---:|:---|
-| `attitude_penalty` | 0.370 | 0.117 | 21.1% | 🟢 Optimal |
-| `sink_penalty` | 0.153 | 0.023 | 69.9% | ⚪ Neutral/Noisy |
-| `smoothness_penalty` | 0.153 | 0.026 | 9.0% | ⚪ Neutral/Noisy |
+| `ground_level` | 0.480 | 0.137 | 44.2% | 🟢 Optimal |
+| `vertical_penalty` | 0.399 | 0.099 | 4.9% | 🟢 Optimal |
+| `leg_maintenance` | 0.485 | 0.226 | 28.6% | 🟢 Optimal |
+| `orientation_penalty` | 0.273 | 0.109 | 7.1% | 🟢 Optimal |
+| `velocity_stability` | 0.405 | 0.115 | 15.3% | 🟢 Optimal |
 
 #### C. Stochastic Policy Fragility
-- **Intra-Rollout Reward CV:** `0.249` (Variance across seeds with *frozen* weights)
-- **Terminal Mode Entropy:** `0.724`
+- **Intra-Rollout Reward CV:** `0.418` (Variance across seeds with *frozen* weights)
+- **Terminal Mode Entropy:** `0.657`
 
 **ACTION REQUIRED:**
 Audit the intervention outcome against the Baseline and Actual Results. Output the strict 3-bullet-point Intervention Log entry to serve as the evolutionary memory for the next iteration.
 
 
 # Phase: validator [Thinking Trace] deepseek-r1:32b
-Okay, so I'm trying to figure out how to evaluate the intervention for the LunarLander-v3 after Iteration 4. Let me start by understanding the problem and the data given.
 
-First, the Conceptual Hypothesis was that the Actuator Chatter Rate was too high at 0.265, which was causing the agent to oscillate between thrusters. The proposed solution was to add a penalty for high-frequency action changes to smooth the control signal. The expected outcome was a reduction in the Actuator Chatter Rate from 0.265 to below 0.150 and a similar reduction in the Intra-Rollout Reward CV from 0.232 to below 0.150. They also mentioned no side effects were expected.
+Okay, I need to evaluate the outcome of the reward intervention for the LunarLander-v3 system, specifically Iteration 4. Let me go through the process step by step.
 
-Looking at the baseline before Iteration 4, the Population Success Rate was 53.3%, and the Actuator Chatter Rate was 0.265. The terminal distribution showed 40% crashes, 30% off-center landings, 20% centered landings, and smaller percentages for other outcomes.
+First, I'll look at the hypothesis and expected outcomes. The hypothesis was that using L2-norm penalties instead of L1 would reduce actuator chatter and intra-rollout reward variance. The expected targets were Actuator Chatter Rate below 0.25 and Intra-Rollout Reward CV below 1.0.
 
-After the intervention, the results showed a Population Success Rate increase to 80%, which is a significant improvement. The Actuator Chatter Rate did go down to 0.105, which is below the expected target of 0.150. However, the Intra-Rollout Reward CV increased to 0.249, which is worse than the expected reduction. 
+Now, checking the actual results. The Actuator Chatter Rate was 0.498 before the change and is now 0.499. That's almost the same, so the target wasn't met. The Intra-Rollout Reward CV went from 1.806 to 0.418, which is a significant improvement, way below the expected threshold.
 
-Looking at the terminal distribution, there's an increase in off-center landings to 43.3% and centered landings to 33.3%, while crashes decreased to 20%. The Objective Alignment (rho) is 0.305, which is weak, indicating that the reward function isn't well-aligned with the actual goal of landing.
+Next, I need to consider the Floor Rules. The success rate moved up from 64.0% to 91.0%, which is an increase of 27 percentage points. According to Floor Rules, if the success rate increases by ≥20pp, the verdict is either "Validated" or "Productive Deviation." Since the primary target metric (Actuator Chatter Rate) wasn't met, but the secondary metric (Reward CV) improved, and the success rate is up, I think "Productive Deviation" fits here because there's an unexpected improvement in success rate despite missing the target metric.
 
-The optimization dynamics show an unstable status with a negative SNR and low trajectory isomorphism, meaning the learning curves are uncorrelated across seeds, leading to a chaotic reward landscape.
+Looking at the Behavioral Reality, the agent now successfully lands more often, with landed_centered increasing from 35.0% to 58.0% and crashes decreasing from 24.0% to 7.0%. However, there's still actuator chatter and macro-oscillations, so those issues remain.
 
-So, the main points are:
+I should also check for Goodhart's Law. The reward components show high objective alignment, so there's no sign of the agent gaming the reward system. The Holistic Check seems okay.
 
-1. The Actuator Chatter Rate was successfully reduced, which was the primary target.
-2. The Intra-Rollout Reward CV increased, which was not expected.
-3. The Population Success Rate improved, but there's a Goodhart's Law concern because the agent might be exploiting the reward function, leading to more off-center landings and weaker objective alignment.
+Considering the Progress-Oriented Evaluation, even though the target metric wasn't hit, the overall success rate improved, which is positive and shouldn't be overlooked.
 
-Considering the evaluation directives, the quantitative check shows partial success since the target metric was met, but another metric worsened. The holistic check raises concerns about Goodhart's Law because the agent's behavior might not be aligned with the actual goal. The success rate improved, but the distribution shows more off-center landings, which is a lower priority than crashes but still a regression in behavior.
-
-The verdict needs to consider whether the improvement in success rate and reduction in crashes outweigh the other metrics. However, the Goodhart's Law aspect is significant because even though some metrics improved, the overall behavior might not be desirable.
-
-So, putting it all together, the intervention partially succeeded in reducing the chatter rate but introduced unintended consequences like increased variance and misaligned behavior. The verdict should reflect that it's a Goodhart Trap because the agent is exploiting the reward function, leading to improved metrics but not the intended behavior.
+So, putting it all together, the verdict is "Productive Deviation" because of the significant increase in success rate, even though the primary target wasn't met. The Behavioral Reality reflects the improved landing success but persistent issues with actuator behavior.
 
 
 
 # Phase: validator [Output] deepseek-r1:32b
-* **Status:** `Goodhart Trap` - The `Actuator Chatter Rate` was reduced from 0.265 to 0.105, meeting the target, but the `Intra-Rollout Reward CV` increased from 0.232 to 0.249, and the `Objective Alignment ($\rho$)` is weak at 0.305, indicating the reward function may be exploited rather than guiding optimal behavior.
-* **Behavioral Reality:** The agent exhibits smoother control actions but with increased off-center landings (43.3%) and crashes (20%), suggesting a misalignment between reward signals and desired outcomes. The reward topology is chaotic, leading to unstable optimization dynamics.
 
 
-# Phase: strategist [System] gemma4:26b
+* **Status:** `Productive Deviation` - The target metric for `Actuator Chatter Rate` (expected <0.25) was not achieved (0.499), but the `Intra-Rollout Reward CV` improved significantly from 1.806 to 0.418, and the `Population Success Rate` increased by 27 percentage points (64.0% → 91.0%).  
+* **Behavioral Reality:** The agent now successfully lands in the center 58.0% of the time (up from 35.0%), with a marked reduction in crashes (24.0% → 7.0%). However, severe actuator chattering persists, and macro-oscillations have emerged, indicating continued instability in the reward landscape.
+
+
+# Phase: strategist [System] gemma4:26b-mlx
 <|think|>
 **[ROLE AND OBJECTIVE]**
 You are the Lead Algorithmic Reward Designer (Strategist) for an autonomous Reinforcement Learning pipeline solving the LunarLander-v3 environment (an underactuated, continuous/discrete control task).
@@ -209,31 +214,33 @@ You must structure your output in two distinct parts:
 
 **PART 1: SURGICAL EXCISION**
 
-Most components are salvageable through rescaling, sign inversion, or gating — and salvaging preserves shaping information the next iteration cannot recover. Excise only when the *functional form itself* is incoherent with the task. **No flag in the diagnostic table is by itself grounds for excision** — flags describe statistical findings, not actions. The decision to delete versus modify is yours, and must be reasoned from the component's mathematical form against the observed physical failure.
+Components are salvageable through rescaling, sign inversion, or gating — and salvaging preserves shaping information the next iteration cannot recover. Excise only when the *functional form itself* is incoherent with the task. **No flag in the diagnostic table is by itself grounds for excision** — flags describe statistical findings, not actions. The decision to delete versus modify is yours, and must be reasoned from the component's mathematical form against the observed physical failure.
 
 List components you are excising, with one sentence of justification per component stating why no transformation rescues the form.
 
-**PART 2: 3 PROPOSALS (Additions, Modifications, or Synergistic Clusters)**
+**PART 2: 3 PROPOSALS (Additions or Modifications)**
 
-Output exactly **3 distinct proposals**. A proposal may:
-- **Add** a novel term encoding a new physical insight
-- **Modify** an existing term (rescale, invert sign, gate by state, change functional form)
-- Comprise a **synergistic cluster** of cooperating terms when they are mathematically inseparable
+Output exactly **3 distinct proposals**. Every proposal is one of two types:
 
-Modification proposals are not lesser proposals. A well-reasoned sign inversion or gating condition often outperforms a novel addition. Do not artificially atomize a hypothesis into single-term proposals; do not pad a single-term hypothesis into a cluster.
+- **Addition:** introduce a new functional identity — either a single term, or a set of terms whose learning signal emerges only from their combined effect. State the synergy rationale whenever you propose more than one term in a single addition.
+- **Modification:** transform an existing term while preserving its functional identity — rescale, invert sign, gate by state, or change functional form.
+
+A term's **functional identity** is the pairing of (the state variable(s) it reads) with (the agent behavior it targets). A modification may freely change the signal's *shape or strength* — coefficients, exponent, thresholds, clipping — provided both the input and the behavioral purpose survive. If either changes, it is not a modification: express it as an excision (Part 1) plus an Addition. Edge case: when the input is shared but a functional-form change flips the behavioral purpose (e.g. soft damping incentive → hard landing gate), purpose dominates — treat it as remove + add.
+
+Modification proposals are not lesser proposals. A well-reasoned sign inversion or gating condition often outperforms a novel addition. Do not atomize a single hypothesis into separate proposals; do not pad a single-term addition into a multi-term set.
 
 For each proposal, you must clearly provide:
 
 1. **The Conceptual Hypothesis:** Explain the physical or optimization failure and *why* your proposed math fixes it. Think about gravity, momentum, and state-space boundaries.
 
-2. **The Mathematical Formulation:** Define the exact change in LaTeX or Python. For modifications, show the old form and the new form. For clusters, label each term's role (shaping, gating, saturation, etc.) and state what the synergy produces that no single term can. Specify coefficients and clipping boundaries.
+2. **The Mathematical Formulation:** Define the exact change in LaTeX or Python. For modifications, show the old form and the new form. For multi-term additions, label each term's role (shaping, gating, saturation, etc.) and state what the synergy produces that no single term can. Specify coefficients and clipping boundaries.
 
 3. **The Falsifiable Expected Outcome:** State the exact metric from the Diagnostic Report (e.g., `Mean Descent Efficiency`, `Chatter Rate`, `Population Success Rate`) that will improve, and the numerical shift you expect to see in the next iteration.
 
 Explore the state space deeply. Do not propose the same idea three times with slightly different coefficients.
 
 
-# Phase: strategist [User] gemma4:26b
+# Phase: strategist [User] gemma4:26b-mlx
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT ITERATION:** `4`
 
@@ -261,28 +268,39 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
     
     x, y, vx, vy, angle, v_ang, leg1, leg2 = obs
     prev_obs = info.get('prev_obs', obs)
-    prev_angle, prev_v_ang = prev_obs[4], prev_obs[5]
+    prev_vx, prev_legs = prev_obs[2], prev_obs[6] + prev_obs[7]
     action = info.get('action', 0)
     
-    # === 1. ATTITUDE PENALTY (new addition) ===
-    w_att = 1.5
-    r_attitude = -w_att * (angle**2 + v_ang**2)
+    # === 1. LEG CONTACT + HORIZONTAL SLIDE (core reward) ===
+    legs_contact = leg1 + leg2
+    horiz_slide_speed = abs(vx)
     
-    # === 2. SINK PENALTY (new addition) ===
-    w_x = 0.5
-    w_y = 0.5
-    w_v = 0.2
-    r_sink = -(w_x * np.abs(x) + w_y * np.abs(y) + w_v * (vy**2))
+    # === 3. HORIZONTAL DIRECTION CHANGES (slalom sliding) ===
+    vx_sign_flip = (np.sign(vx) != np.sign(prev_vx)) and abs(vx) > 0.8
     
-    # === 3. SMOOTHNESS PENALTY (new addition) ===
-    w_smooth = 0.1
-    prev_action = info.get('prev_action', 0)
-    r_smooth = -w_smooth * np.abs(action - prev_action)
+    # === 5. GROUND LEVEL PREFERENCE (slide near y=0) ===
+    near_ground = abs(y) < 0.4
+    r_ground_level = 3.0 if near_ground else -1.5
+    
+    # === 7. SURVIVAL + LEG MAINTENANCE ===
+    r_survival = 0.1
+    r_leg_maintenance = 1.0 * legs_contact  # Keep at least one leg down
+    
+    # === 8. ORIENTATION PENALTY ===
+    r_orientation = -(10.0 * angle**2 + 2.0 * v_ang**2)
+    
+    # === 9. VELOCITY STABILITY PENALTY ===
+    r_velocity_stability = -(3.0 * vy**2 + 10.0 * vx**2)
+    
+    # === 6. PENALIZE VERTICAL MOTION (stay low) ===
+    r_vertical_penalty = -2.0 * vy**2
     
     components = {
-        "attitude_penalty": float(r_attitude),
-        "sink_penalty": float(r_sink),
-        "smoothness_penalty": float(r_smooth),
+        "ground_level": float(r_ground_level),
+        "vertical_penalty": float(r_vertical_penalty),
+        "leg_maintenance": float(r_leg_maintenance),
+        "orientation_penalty": float(r_orientation),
+        "velocity_stability": float(r_velocity_stability),
     }
     
     total_reward = float(sum(components.values()))
@@ -296,281 +314,481 @@ Review these past iterations to avoid repeating failed hypotheses.
 ### Iteration 1 Historical Record
 **The Proposed Intervention:**
 
-**Conceptual Hypothesis:** The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. Replacing the spin-centric cluster with a quadratic penalty cluster will provide a smooth gradient near the target state, reducing oscillations and critic saturation.
-**Falsifiable Expected Outcome:** - Target Metric: Critic Saturation Index (CSI)
+**Conceptual Hypothesis:** The current orientation signal is both incorrectly signed and non-smooth. By transforming the angle-based term into a continuous quadratic penalty that includes angular velocity, we provide a smooth gradient toward angle=0 and prevent the high-frequency oscillations caused by the previous threshold-based upright_penalty.
+**Falsifiable Expected Outcome:** - Target Metric: Population Success Rate
 
-* Expected Change: Reduction from $45.74 \to < 10.0$
+* Expected Change: increase
 * Side Effects: None
 
 
 **The Physical Outcome & Lesson:**
-* **Status:** `Regressed` - [Cite the exact expected metric vs. the actual metric achieved. If using Productive Deviation, explicitly state the unexpected global improvement that saved the run].  
-* **Behavioral Reality:** [Describe the actual physical outcome and diagnostic shifts].
+
+
+* **Status:** `Regressed` - The Population Success Rate did not increase as expected and showed significant issues with policy fragility and unintended behaviors.
+* **Behavioral Reality:** The agent exhibits high actuator chatter, policy fragility, and a strong tendency to crash (43.0%) or land off-center (17.0%), with low alignment between reward components and success.
 ----------------------------------------
 
 ### Iteration 2 Historical Record
 **The Proposed Intervention:**
 
-**Conceptual Hypothesis:** The current reward landscape lacks a "gravity well" to pull the agent from the high-altitude hover state toward the landing pad. By removing the positive `survival` reward and replacing it with a multi-variable sink, we create a continuous gradient that rewards the reduction of both potential energy (altitude $y$) and lateral error ($x$), while simultaneously penalizing high-velocity impacts ($v_y$). This forces the agent to prioritize the origin $(0,0)$ as the global optimum.
-**Falsifiable Expected Outcome:** - Target Metric: Objective Alignment ($\rho$)
+**Conceptual Hypothesis:** The agent is currently suffering from “skidding” and macro-oscillations because the positive reward for $v_x$ (`sliding_legs`) is fighting the vertical stabilization. By transforming the vertical penalty into a two-axis stability penalty that heavily penalizes horizontal velocity, we provide a continuous, non-adversarial gradient that encourages the agent to settle both vertically and laterally before/during contact.
+**Falsifiable Expected Outcome:** - Target Metric: Mean Descent Efficiency, Population Success Rate, landed_off_centered
 
-* Expected Change: Increase from $0.000 \to >0.450$
-* Side Effects: Decrease in `hover_timeout` percentage
+* Expected Change: Decrease magnitude of v_x at touchdown, increase Population Success Rate, significant decrease landed_off_centered
+* Side Effects: None
 
 
 **The Physical Outcome & Lesson:**
-* **Status:** `Productive Deviation` - [Objective Alignment ($\rho$) expected >0.450 vs. actual 0.200, but Population Success Rate improved from 0.0% to 53.3%].  
-* **Behavioral Reality:** [The agent now crashes (40.0%) or lands off-center (30.0%), replacing the previous hover_timeout (73.3%). Actuator chatter improved (0.265 vs. 0.755), but macro-oscillations persist].
+
+
+* **Status:** `Validated` - [Population Success Rate increased by 34pp (30.0% to 64.0%), Mean Descent Efficiency improved 10x (0.005 to 0.055)].  
+* **Behavioral Reality:** The agent achieved a significant increase in Centered Landings (1.0% to 35.0%), with a corresponding decrease in crashes (43.0% to 24.0%), though landed_off_centered slightly increased (17.0% to 19.0%).  
+
+* **Status:** `Productive Deviation` - [Despite expected landed_off_centered decrease not materializing, the overall Population Success Rate and Centered Landing improvements indicate a successful policy shift].  
+* **Behavioral Reality:** The agent demonstrated improved stability and reduced skidding, with a notable increase in Centered Landings, though some off-center landings persisted.  
+
+* **Status:** `Mixed` - [Population Success Rate increased (30.0% to 64.0%), but landed_off_centered did not decrease as expected (17.0% to 19.0%)].  
+* **Behavioral Reality:** The agent showed progress in Centered Landings (1.0% to 35.0%) and reduced crashes (43.0% to 24.0%), but landed_off_centered remained stable.  
+
+* **Status:** `Goodhart Trap` - [While Population Success Rate increased (30.0% to 64.0%), the terminal distribution shows a concerning increase in landed_off_centered (17.0% to 19.0%)].  
+* **Behavioral Reality:** The agent achieved more Centered Landings (1.0% to 35.0%), but the increase in off-center landings suggests a potential reward hacking issue.  
+
+* **Status:** `Regressed` - [Population Success Rate decreased (30.0% to 64.0%)].  
+* **Behavioral Reality:** The agent showed significant improvement in Centered Landings (1.0% to 35.0%), but the increase in landed_off_centered (17.0% to 19.0%) indicates a potential regression.
 ----------------------------------------
 
 ### Iteration 3 Historical Record
 **The Proposed Intervention:**
 
-**Conceptual Hypothesis:** The `Actuator Chatter Rate` is dangerously high ($0.265$), indicating the agent is oscillating between opposing thruster commands. This suggests the policy is over-reacting to the gradients of the $x$ and $v_x$ penalties. Adding a penalty for high-frequency action changes will smooth the control signal, reducing the "jagged" landscape that causes the high `Intra-Rollout Reward CV`.  
-**Falsifiable Expected Outcome:**  
-* Target Metric: `Actuator Chatter Rate`  
-  * Expected Change: Reduction from $0.265 \to < 0.150$  
-* Target Metric: `Intra-Rollout Reward CV`  
-  * Expected Change: Reduction from $0.232 \to < 0.150$  
+**Conceptual Hypothesis:** The current reward landscape is highly “jagged” because several critical stability components (`orientation_penalty`, `velocity_stability`, and `vertical_penalty`) utilize the \(L_1\)-norm (`abs()`). In optimization, the derivative of \(|x|\) is discontinuous at \(x=0\), creating a “pointy” minimum. This causes the agent to oscillate rapidly around the equilibrium point, leading to the observed high **Actuator Chatter Rate** and high **Intra‑Rollout Reward CV**. By transitioning these terms to a squared \(L_2\)-norm (quadratic), the gradient will smoothly approach zero as the agent stabilizes, allowing for a smooth “settle.”
+**Falsifiable Expected Outcome:** 
+- Target Metric: Actuator Chatter Rate (↓) Expected shift from 0.498 to <0.25  
+- Target Metric: Intra‑Rollout Reward CV (↓) Expected shift from 1.806 to <1.0
+
+* Expected Change: Actuator Chatter Rate <0.25, Intra‑Rollout Reward CV <1.0  
 * Side Effects: None
 
 
 **The Physical Outcome & Lesson:**
-* **Status:** `Goodhart Trap` - The `Actuator Chatter Rate` was reduced from 0.265 to 0.105, meeting the target, but the `Intra-Rollout Reward CV` increased from 0.232 to 0.249, and the `Objective Alignment ($\rho$)` is weak at 0.305, indicating the reward function may be exploited rather than guiding optimal behavior.
-* **Behavioral Reality:** The agent exhibits smoother control actions but with increased off-center landings (43.3%) and crashes (20%), suggesting a misalignment between reward signals and desired outcomes. The reward topology is chaotic, leading to unstable optimization dynamics.
+
+
+* **Status:** `Productive Deviation` - The target metric for `Actuator Chatter Rate` (expected <0.25) was not achieved (0.499), but the `Intra-Rollout Reward CV` improved significantly from 1.806 to 0.418, and the `Population Success Rate` increased by 27 percentage points (64.0% → 91.0%).  
+* **Behavioral Reality:** The agent now successfully lands in the center 58.0% of the time (up from 35.0%), with a marked reduction in crashes (24.0% → 7.0%). However, severe actuator chattering persists, and macro-oscillations have emerged, indicating continued instability in the reward landscape.
 ----------------------------------------
 
 ### [3. DIAGNOSTIC REPORT]
 
 This is the deterministic, mathematically extracted performance data from the most recent training runs across multiple random seeds.
 ### 1. Optimization Dynamics & Critic Health
-**Status:** 🔴 **UNSTABLE/FAILED**
+**Status:** 🟢 **CONVERGED**
 
-#### A. Cross-Seed Robustness
-- **Signal-to-Noise Ratio (SNR):** `-154.35`
-  - *Diagnosis:* The cross-seed variance exceeds the mean reward. The current reward topology is highly chaotic and fails to enforce a universal policy.
+#### A. Cross-Seed Robustness & Terminal Stationarity
+- **Cross-Seed Reproducibility (CV):** `0.0200`  *(lower = more reproducible)*
+  - *Diagnosis:* Strong cross-seed consistency. The reward landscape is learnable and reproducible.
+- **Within-Seed Terminal Stationarity (CV):** `0.0470`  *(lower = more settled)*
+  - *Diagnosis:* Policy has settled. Final-quartile reward is stationary within each seed.
 
 #### B. Value Network (Critic) Integrity
-- **Critic Saturation Index (CSI):** `0.03`
+- **Critic Saturation Index (CSI):** `0.00`
   - *Diagnosis:* Healthy. The Critic is accurately mapping the advantage landscape.
 
 #### C. Optimization Landscape
-- **Trajectory Isomorphism (Pairwise $\rho$):** `0.053`
-  - *Diagnosis:* The learning curves are completely uncorrelated across seeds. The reward function has created a jagged landscape with multiple competing local minima.
+- **Trajectory Isomorphism (Pairwise $\rho$):** `-0.155`
 ### 2. Kinematic Behavior & Physical Robustness
 
 #### A. Universal Policy Robustness
-- **Population Success Rate:** `80.0%`
+- **Population Success Rate:** `91.0%`
 
 #### B. Thermodynamic & Actuator Efficiency
-- **Mean Descent Efficiency:** `0.047`
-- **Actuator Chatter Rate:** `0.105`
+- **Mean Descent Efficiency:** `0.006`
+- **Actuator Chatter Rate:** `0.499`
+  - *Action Required:* **Severe Actuator Chattering detected.** The agent is rapidly vibrating opposing thrusters. The reward gradient near the decision boundary is too jagged. Consider smoothing penalties or adding a minor action-continuity reward.
+  - *Action Required:* **Macro-Oscillations detected.** The agent is overcorrecting laterally (drifting left/right). Ensure X-velocity and angle penalties are properly balanced.
 
 #### C. Population Terminal Distribution
-- `landed_off_centered`: 43.3%
-- `landed_centered`: 33.3%
-- `crashed`: 20.0%
-- `landed_but_slid_into_valley`: 3.3%
+- `landed_centered`: 58.0%
+- `landed_off_centered`: 25.0%
+- `crashed`: 7.0%
+- `landed_off_centered_timeout`: 6.0%
+- `hover_timeout`: 2.0%
+- `landed_but_slid_into_valley`: 2.0%
 ### 3. Reward Topology & Algorithmic Credit Assignment
 
 #### A. Global Objective Alignment (Oracle Test)
-- **Objective Alignment ($\rho$):** `0.305`
-  - *Diagnosis:* Weak alignment. The shaped reward landscape is poorly correlated with the actual goal of landing.
+- **Global Conditional Delta** $\Delta = \mathbb{E}[R \mid \text{land}] - \mathbb{E}[R \mid \text{fail}]$: `-192.639`  *(ground truth)*
+- **Objective Alignment ($\rho$):** `0.647`  *(narrative descriptor — point-biserial estimator)*
 
 #### B. Component-Level Contribution (Algorithmic Credit Assignment)
 This table isolates the exact mathematical impact of each component you generated.
 This table includes Mutual Information (MI) alongside ρ to surface non-linear dependencies that linear correlation misses.
 | Reward Component | ρ w/ Success | MI w/ Success | Relative Magnitude | Diagnostic Flag |
 |:---|:---:|:---:|:---:|:---|
-| `attitude_penalty` | 0.370 | 0.117 | 21.1% | 🟢 Optimal |
-| `sink_penalty` | 0.153 | 0.023 | 69.9% | ⚪ Neutral/Noisy |
-| `smoothness_penalty` | 0.153 | 0.026 | 9.0% | ⚪ Neutral/Noisy |
+| `ground_level` | 0.480 | 0.137 | 44.2% | 🟢 Optimal |
+| `vertical_penalty` | 0.399 | 0.099 | 4.9% | 🟢 Optimal |
+| `leg_maintenance` | 0.485 | 0.226 | 28.6% | 🟢 Optimal |
+| `orientation_penalty` | 0.273 | 0.109 | 7.1% | 🟢 Optimal |
+| `velocity_stability` | 0.405 | 0.115 | 15.3% | 🟢 Optimal |
 
 #### C. Stochastic Policy Fragility
-- **Intra-Rollout Reward CV:** `0.249` (Variance across seeds with *frozen* weights)
-- **Terminal Mode Entropy:** `0.724`
+- **Intra-Rollout Reward CV:** `0.418` (Variance across seeds with *frozen* weights)
+- **Terminal Mode Entropy:** `0.657`
 
 **ACTION REQUIRED:**
 Generate your 3 distinct proposals (Hypothesis, Mathematical Formulation, and Falsifiable Expected Outcome).
 
 
-# Phase: strategist [Thinking Trace] gemma4:26b
-Lead Algorithmic Reward Designer.
-LunarLander-v3 (continuous/discrete, underactuated).
-Design dense reward functions for stable, efficient, robust flight.
+# Phase: strategist [Thinking Trace] gemma4:26b-mlx
+*   Environment: `LunarLander-v3` (continuous control, underactuated).
+    *   Current Goal: High success rate, stable landing (centered), low chatter, low oscillations.
+    -   *Current State:*
+        *   Success Rate: 91% (Very high).
+        *   Landed Centered: 58% (Room for improvement).
+        *   Landed Off-Centered: 25%.
+        *   Crashed: 7%.
+        *   Actuator Chatter Rate: 0.499 (Too high, target <0.25).
+        *   Macro-Oscillations: Detected (Lateral drift).
+        *   Mean Descent Efficiency: 0.006 (Extremely low).
+    -   *Current Reward Structure Analysis:*
+        *   `ground_level`: `3.0` if `abs(y) < 0.4` else `-1.5`. This is a huge discontinuous jump (discontinuous boundary at $y=0.4$). This is likely a major source of "jaggedness" and macro-oscillations as the agent approaches the ground.
+        *   `vertical_penalty`: `-2.0 * vy**2`.
+        *   `leg_maintenance`: `1.0 * (leg1 + leg2)`. This encourages the agent to stay on the ground once it touches, but doesn't provide a descent gradient.
+        *   `orientation_penalty`: `-(10.0 * angle**2 + 2.0 * v_ang**2)`. Smooth quadratic.
+        *   `velocity_stability`: `-(3.0 * vy**2 + 10.0 * vx**2)`. Smooth quadratic.
+        *   *Crucial Observation:* The `ground_level` component is a step function. It jumps from -1.5 to 3.0 at $y=0.4$. This creates a massive reward spike as soon as the lander enters the "landing zone". This induces high-velocity descent or oscillating behavior as it approaches the boundary.
 
-        *   `attitude_penalty`: $\rho=0.370$, MI=0.117 (Optimal).
-        *   `sink_penalty`: $\rho=0.153$, MI=0.023 (Neutral/Noisy).
-        *   `smoothness_penalty`: $\rho=0.153$, MI=0.026 (Neutral/Noisy).
-        *   *Overall:* $\rho=0.305$ (Weak), SNR=-154.35 (Chaotic), Trajectory Isomorphism=0.053 (Uncorrelated across seeds).
-        *   *Physical:* 80% Success Rate (High!), but 43.3% off-center, 20% crashed.
-        *   *Efficiency:* Mean Descent Efficiency=0.047 (Extremely low).
-        *   *Actuator:* Chatter=0.105 (Good - improved from Iteration 2/3).
+    *   *Targeting Actuator Chatter:* The `ground_level` discontinuity is the primary suspect. Also, the `velocity_stability` and `orientation_penalty` are quadratics, which are smooth at zero but high-gradient when far from zero. However, the `ground_level` jump is likely the most "violent" gradient in the system.
+    *   *Targeting Macro-Oscillations (Lateral Drift):* The `velocity_stability` uses $10.0 \times v_x^2$. This is strong, but if $v_x$ is large, the penalty is huge. The current `ground_level` doesn't care about $x$, only $y$.
+    *   *Targeting Descent Efficiency:* The agent is likely "hovering" or performing strange maneuvers because it wants to hit that $y=0.4$ mark without too much vertical speed, but the `ground_level` reward is a flat +3.0 once inside. There is no incentive to descend *efficiently* or *smoothly* through the air.
 
-    *   *The Paradox:* The success rate is high (80%), but the alignment ($\rho$) is low (0.305). This means the agent *is* landing, but the reward function isn't actually rewarding the "goodness" of the landing (centering, velocity, etc.). The agent is finding a way to satisfy the `attitude_penalty` and `smoothness_penalty` while ignoring the `sink_penalty`.
-    *   *The Sink Penalty Problem:* `sink_penalty` is the largest component (69.9% magnitude) but has very low $\rho$ and MI. It's effectively noise. The formula `-(w_x * |x| + w_y * |y| + w_v * vy^2)` is a massive, un-gated penalty. As the agent descends, $|y|$ decreases, but the penalty is always pulling it towards the origin. However, if the agent is high up, $|y|$ is huge, creating massive gradients that might be overwhelming the $x$ and $v_y$ signals.
-    *   *The Descent Efficiency Problem:* 0.047 is abysmal. The agent is likely "hovering" or taking an incredibly long, winding path to avoid the $v_y^2$ and $|y|$ penalties, or it's simply not being incentivized to descend *efficiently*.
-    *   *The Off-Center Problem:* 43.3% landed off-center. This means the $x$ and $v_x$ components of the `sink_penalty` are not providing enough corrective force or are being drowned out by the $y$ and $y$-velocity terms.
-    *   *The Trajectory Isomorphism Problem:* The low isomorphism (0.053) and high SNR (-154.35) mean the reward function is "jittery" across seeds. This usually happens when a reward term has massive, un-scaled values that change drastically depending on the starting position or random trajectory.
+    *   **Proposal 1: Smoothing the Ground/Descent Transition (Addressing `ground_level` and Macro-Oscillations).**
+        *   *Problem:* The `ground_level` component is a discrete step function (`3.0` vs `-1.5`). This causes a sudden "reward shock" when $y < 0.4$.
+        *   *Fix:* Replace the step function with a continuous, smooth function that rewards being near $y=0$ (the ground) but provides a gradual gradient as the lander descends. Instead of a jump at 0.4, use a function that scales with altitude or velocity.
+        *   *Refined Idea:* A "Soft Landing Zone". Use a Gaussian or a smooth curve that peaks at $y=0$ and reaches a plateau or high value at a certain height. Actually, let's look at the "vertical penalty". It's `-(2.0 * vy**2)`.
+        *   *Let's target the `ground_level` directly.* It's currently a hard threshold. Let's make it a smooth function of $y$ that rewards being low but avoids the discontinuity. Or better, integrate the descent.
+        *   *Wait, let's look at `leg_maintenance`.* It's $1.0 \times$ legs. It doesn't help with *getting* to the ground.
+        *   *Idea:* Replace `ground_level` with a continuous $y$-dependent reward and a $v_y$ damping term that works together.
 
-    *   *Idea 1: Fixing the Sink Penalty (The Gating/Rescaling approach).*
-        The `sink_penalty` is too large and un-gated. It's punishing the agent for being at high altitude, but it's not helping it *land* precisely. We need to transition from a "global" penalty to a "landing-zone" precision reward.
-        *   *Modification:* Instead of a global $|x|$ and $|y|$ penalty, let's use a Gaussian or quadratic-centered-at-target that *increases* in importance as the agent approaches the ground. Or, better yet, a "Precision Landing" term that scales with $1/y$ (but we can't use time, so we use $y$ as a proxy for proximity).
-        *   *Refinement:* Let's focus on the "Landing Precision" (the $x$ error) and "Impact Velocity" (the $v_y$ error). The current `sink_penalty` is too much about "don't be far from origin" and not enough about "be precise at the moment of contact."
-        *   *Actually, looking at the numbers:* The $x$ and $y$ components are the main culprits. Let's introduce a *Radial Error* term that becomes much more aggressive as $y \to 0$.
+    *   **Proposal 2: Lateral Stability / Centered Landing (Addressing `landed_off_centered`).**
+        *   *Problem:* $x$ is only controlled by $v_x$ (via `velocity_stability`). There is no explicit penalty for $x$-position (distance from center). The agent can land far away as long as its $v_x$ is low.
+        *   *Fix:* Add a term that penalizes $|x|$. This provides a "centering" force. Since we can't use time, we use position.
+        *   *Mathematical Form:* $-(k \cdot x^2)$. This is a classic spring-like centering penalty.
 
-    *   *Idea 2: Addressing Descent Efficiency (The "Velocity-Alignment" approach).*
-        The agent is likely "drifting" or "stalling." We need to incentivize a descent vector that points toward the origin.
-        *   *Mathematical Concept:* The dot product between the velocity vector $\vec{v}$ and the position vector $\vec{s}$ (relative to origin). If $\vec{v} \cdot \vec{s} < 0$, the agent is moving toward the origin.
-        *   *Constraint Check:* We can use $x, y, vx, vy$.
-        *   *Implementation:* A term that rewards $\vec{v} \cdot \text{target\_direction}$. Specifically, we want $v_y$ to be negative (descending) and $v_x$ to be directed toward $x=0$.
+    *   **Proposal 3: Smoothing the Actuator Chatter (Action Continuity).**
+        *   *Problem:* High chatter is often caused by the lack of a penalty for high-frequency changes in control or high-velocity state transitions.
+        *   *Fix:* Smooth the transition into the landing phase. The `orientation_penalty` and `velocity_stability` are already quadratic (smooth), so the chatter likely comes from the `ground_level` jump.
+        *   *Actually, let's rethink.* The prompt mentions "The reward gradient near the decision boundary is too jagged." The boundary in `ground_level` is $y=0.4$.
+        *   *Let's try a different angle for Proposal 3: Descent/Vertical Control.*
+        *   The current `vertical_penalty` is `-(2.0 * vy**2)`. It penalizes *any* vertical motion. This makes the agent want to stop moving vertically entirely, which is good for landing but bad for the actual descent process. It's essentially a damping term.
+        *   *Let's replace `ground_level` with a "Landing Smoothness" term.*
 
-    *   *Idea 3: Stabilizing the Landscape (The "Smoothness/Precision" cluster).*
-        The `attitude_penalty` is working well (Optimal). The `smoothness_penalty` is neutral. The `sink_penalty` is noise.
-        Let's create a "Terminal Precision" cluster. When $y$ is low (near ground), we trigger a high-precision penalty on $x, angle, v_x, v_y$. This prevents the "off-center" and "crash" modes by only applying the heavy "precision" pressure when it actually matters for the landing, preventing the "chaos" in the high-altitude regime.
+    *   *Proposal 1: Replace `ground_level` (The Step Function).*
+        The `ground_level` term is a discrete jump ($y < 0.4 \implies +3.0$, else $-1.5$). This is a massive discontinuity in the reward gradient.
+        Replace with a continuous function: $R_{ground}(y) = \text{scale} \cdot \exp(-y^2 / \sigma^2)$ or a smooth quadratic.
+        Let's use a shape that rewards being near $y=0$ but is smooth.
+        $R_{ground} = 3.0 \cdot \text{sech}(y/\text{scale})$ or something similar.
+        Actually, let's stick to the prompt's complexity.
+        Let's define a *Smooth Ground Affinity* term.
+        $R_{affinity} = 3.0 \cdot \exp(-|y|/0.4)$? No, too sharp.
+        Let's use $R_{affinity} = 3.0 \cdot (1 - \text{clamp}(y/0.4, 0, 1))$. This is a linear ramp.
+        Wait, even better: A term that combines $y$ and $v_y$ to ensure a "soft touchdown".
+        *Actually, the most direct fix for the "jaggedness" is the `ground_level` term.*
 
-    *   *Proposal 1 (Modification): The "Adaptive Precision Sink".*
-        *   *Current:* `-(w_x * |x| + w_y * |y| + w_v * vy^2)`
-        *   *Problem:* It's too much "global" noise.
-        *   *New:* Use a gating function based on $y$. When $y$ is high, the penalty is low (let the agent move). When $y$ is low, the penalty on $x$ and $v_y$ grows exponentially/quadratically. This focuses the gradient on the landing phase.
-        *   *Formulation:* $R_{precision} = -\exp(-y/k) \cdot (w_x x^2 + w_{vy} v_y^_2)$.
+    *   *Proposal 2: Centering Penalty (The "Spring" term).*
+        Target: `landed_off_centered`.
+        The agent has no incentive to be at $x=0$ when it lands, only to have $v_x=0$.
+        Add $R_{center} = -C \cdot x^2$.
 
-    *   *Proposal 2 (Addition): The "Descent Vector Alignment" (DVA).*
-        *   *Concept:* To fix the 0.047 efficiency, we need to reward the agent for pointing its velocity vector toward the origin.
-        *   *Formulation:* $R_{dva} = w_{dva} \cdot \frac{-(x \cdot v_x + y \cdot v_y)}{\sqrt{x^2 + y^2 + \epsilon}}$. This is essentially a negative dot product of normalized position and velocity. It rewards "moving toward the center."
+    *   *Proposal 3: Vertical Velocity/Altitude Synergy (The "Soft Landing" term).*
+        Target: `Mean Descent Efficiency` and `Chatter`.
+        The current $v_y$ penalty is just $-(2.0 \cdot v_y^2)$. This penalizes descent speed.
+        If we combine $y$ (altitude) and $v_y$ (vertical speed), we can create a term that encourages a controlled descent.
+        $R_{descent} = -(k_1 \cdot y^2 + k_2 \cdot v_y^2)$.
+        Wait, that's basically what `velocity_stability` is doing for $v_x$.
 
-    *   *Proposal 3 (Modification/Cluster): The "Landing Stability" Cluster.*
-        *   *Concept:* The $x$-error is causing the 43.3% off-center landings. We need to couple $x$ and $v_x$ with the $angle$ to ensure the agent isn't just "sliding" in.
-        *   *Formulation:* A cluster that penalizes $x$ and $v_x$ weighted by the $angle$. If the angle is non-zero, the $x$-penalty is amplified. This forces the agent to upright itself *specifically* to stop the lateral drift.
+    *   **Revised Proposal Strategy:**
 
-    *   *Wait, let's refine Proposal 1:* The `sink_penalty` is 69.9% of the reward but has 0.153 $\rho$. It's a massive, useless weight. I should *replace* it with something that has high $\rho$.
-    *   *Refining Proposal 3:* Let's look at the `attitude_penalty`. It's 21.1% and "Optimal". I should keep it but perhaps *gate* the $x$-precision by the attitude.
+        **Proposal 1: Smooth Ground Affinity (Modification of `ground_level`)**
+        *   *Current:* `3.0 if abs(y) < 0.4 else -1.5` (Discontinuous).
+        *   *New:* A smooth, continuous function that provides a gradient toward $y=0$. Let's use a quadratic/exponential curve. $R_{ground} = 3.0 \cdot \exp(-y^2 / 0.16) - 1.5$.
+        *   *Wait, let's keep it simpler to ensure the agent can learn it.* $R_{ground} = 3.0 \cdot (1 - \text{clamp}(|y|/0.4, 0, 1))$. This is a continuous ramp. Or even better, a quadratic: $R_{ground} = 3.0 \cdot (1 - (y/0.4)^2)$.
+        *   *Wait*, the `ground_level` is actually the biggest source of noise. Let's replace it with a smooth term.
 
-    *   *Final Selection:*
-        1.  **Proposal 1: The "Proximity-Gated Precision" (Modification of `sink_penalty`).** Replaces the global, noisy sink with a $y$-dependent precision term. This addresses the "Neutral/No-isy" flag and the 43.3% off-center rate.
-        2.  **Proposal 2: The "Kinematic Convergence" term (Addition).** A dot-product term to drive the 0.047 efficiency.
-        3.  **Proposal 3: The "Angular-Lateral Coupling" (Modification of `attitude_penalty` + `sink_penalty` cluster).** Connects the $x$-error to the $angle$ to prevent the "sliding" into the valley.
+        **Proposal 2: Lateral Centering (Addition)**
+        *   *Concept:* Add a position-based penalty to drive the agent toward $x=0$.
+        *   *Math:* $r_{centering} = -5.0 \cdot x^2$.
 
-    *   *Self-Correction on Proposal 1:* I must be careful not to introduce time-based penalties. $y$ is a state variable, so it's allowed.
-    *   *Check against "No Excision" rule:* The `sink_penalty` is not incoherent; it's just poorly scaled and un-gated. I will modify it. `smoothness_penalty` is also neutral; I will modify it. `attitude_penalty` is good; I will leave it or slightly augment it.
+        **Proposal 3: Descent Damping (Modification of `vertical_penalty` and `velocity_stability`)**
+        *   *Current:* `r_vertical_penalty = -2.0 * vy**2` and `r_velocity_stability` includes `-3.0 * vy**2`.
+        *   *Problem:* These are purely velocity-based. They don't care about where you are.
+        *   *New:* A "Landing Gear" synergy. A term that rewards low $v_y$ *specifically* when $y$ is low. This provides a "soft landing" gradient.
+        *   *Math:* $r_{soft\_landing} = -k \cdot y \cdot v_y^2$. No, that's not quite right.
+        *   Let's go with: **Smooth Vertical Descent (Modification of `vertical_penalty`)**.
+        *   Transform `r_vertical_penalty` from a pure $v_y$ penalty into a term that scales with altitude $y$. This forces the agent to prioritize stabilizing $v_y$ as it approaches the ground.
+        *   $r_{vertical\_penalty\_new} = -(2.0 \cdot v_y^2) \cdot (1 + \text{clamp}(1 - y/0.5, 0, 1))$. (This is a bit complex).
 
-    *   *Drafting Proposal 1:*
-        *   Old: `-(w_x * |x| + w_y * |y| + w_v * (vy**2))`
-        *   New: `-w_p * ( (x/y_scale)^2 + (v_y/v_scale)^2 )` where $y_{scale}$ is a function of $y$.
-        *   Actually, let's go with: $R_{precision} = -w_{prec} \cdot \exp(-y / \sigma) \cdot (x^2 + v_y^2)$.
-        *   Effect: As $y \to 0$, the penalty for $x$ and $v_y$ becomes the dominant signal.
+    *   *Let's simplify.*
 
-    *   *Drafting Proposal 2:*
-        *   $R_{convergence} = w_{conv} \cdot \text{sgn}(x \cdot v_x + y \cdot v_y) \cdot \text{magnitude}$.
-        *   Wait, simpler: $R_{convergence} = w_{conv} \cdot \frac{x \cdot v_x + y \cdot v_y}{\sqrt{x^2 + y^2 + 1}}$.
-        *   If $x$ and $v_x$ have opposite signs, this is negative. If they have same signs, it's positive. We want them to have opposite signs (moving toward zero). So $R_{convergence} = -w_{conv} \cdot (x \cdot v_x + y \cdot v_y)$.
-        *   Wait, $x \cdot v_x$ is negative when moving toward center. So $R = -w(x \cdot v_x + y \cdot v_y)$ is actually a *positive* reward when moving toward center.
+    *   **Final Proposal Selection:**
 
-    *   *Drafting Proposal 3:*
-        *   The `smoothness_penalty` is 9.0% and neutral. Let's transform it into a "Control Stability" cluster.
-        *   Cluster: `smoothness_penalty` + `angular_damping`.
-        *   $R_{stability} = -w_{smooth} \cdot (\text{action\_diff}) - w_{damp} \cdot (v_{ang}^2 \cdot \text{magnitude}(x))$.
-        *   This penalizes high angular velocity specifically when $x$ is large, preventing the "wobble" that leads to off-center landings.
+        *   **Proposal 1: Smooth Ground Affinity (Modification of `ground_level`)**
+            *   *Hypothesis:* The hard step function at $y=0.4$ causes a massive reward discontinuity, creating a "wall" that induces high-frequency oscillations and actuator chatter as the lander approaches. Replacing this with a smooth, continuous function will provide a stable gradient for descent.
+            *   *Math:* `r_ground_level = 3.0 * (1.0 - (y / 0.4)**2)` if `abs(y) < 0.4` else `-1.5`.
+            *   *Wait*, that's still a discontinuity at 0.4.
+            *   Let's use: `r_ground_level = 3.0 * (1.0 - clip(abs(y)/0.4, 0, 1))`? No, still a jump.
+            *   Let's use: `r_ground_level = 3.0 * exp(-(y**2)/0.16) - 1.5`.
+            *   Actually, let's use a very simple: `r_ground_level = 3.0 * (1.0 - abs(y)/0.4)` for `abs(y) < 0.4` and `-1.5` otherwise. At $y=0.4$, the value is $3.0 * (0) = 0$. The transition is from $0$ to $-1.5$. Still a jump.
+            *   Okay, let's make the `ground_level` function: `r_ground_level = 3.0 * (1.0 - clamp(abs(y)/0.4, 0, 1))` and the "else" part is simply $0$.
+            *   Let's try: `r_ground_level = 3.0 * (1.0 - abs(y)/0.4)` if `abs(y) < 0.4` else `0`.
+            *   Wait, the current implementation has `r_ground_level = 3.0 if near_ground else -1.5`.
+            *   Let's propose: `r_ground_level = 3.0 * (1.0 - abs(y)/0.4)` if `abs(y) < 0.4` else `-1.5`.
+            *   Wait, at $y=0.4$, $1-0.4/0.4 = 0$. So it goes from $0$ to $-1.5$.
+            *   Let's just do: `r_ground_level = 3.0 * (1.0 - abs(y)/0.4)` for $y < 0.4$. At $y=0.4$, the reward is $0$. At $y=0$, it is $3.0$. This is a smooth ramp.
 
-    *   *Final Polish of the 3 Proposals:*
-        1.  **Proposal 1: The "Hyperbolic Precision Sink" (Modification of `sink_penalty`).**
-        2.  **Proposal 2: The "Radial Velocity Alignment" (New Term).**
-        3.  **Proposal 3: The "Attitude-Lateral Coupling Cluster" (Synergistic Cluster).**
+        *   **Proposal 2: Lateral Centering (Addition)**
+            *   *Hypothesis:* The agent lacks a position-based incentive to return to the center, resulting in `landed_off_centered` outcomes. Adding a quadratic penalty based on $x$-position will create a restorative force toward the center.
+            *   *Math:* `r_centering = -5.0 * x**2`.
 
-    *   *Check constraints:*
-        *   `x, y, vx, vy, angle, v_ang, leg1, leg2` available.
-        *   No time-based penalties.
-        *   $\rho$ and MI are used for reasoning.
-        *   Targeting: `Mean Descent Efficiency`, `Landed Off-Center`, `Objective Alignment`.
+        *   **Proposal 3: Vertical Velocity Smoothing (Modification of `vertical_penalty`)**
+            *   *Hypothesis:* The `vertical_penalty` is purely kinetic (based on $v_y$), providing no distinction between high-altitude descent and low-altitude settling. By coupling the $v_y$ penalty with altitude $y$, we create a "soft landing" regime where the agent is incentivally driven to reduce vertical velocity specifically as it approaches the ground.
+            *   *Math:* `r_vertical_penalty = -(2.0 * vy**2) * (1.0 + (1.0 - abs(y)/0.5))`... no, that's too complex.
+            *   How about: `r_vertical_penalty = -(2.0 * vy**2) - (5.0 * y * abs(vy))`? No.
+            *   Let's go with: `r_vertical_penalty = -(2.0 * vy**2 + 5.0 * y * vy**2)`. This is essentially $-(2 + 5y)v_y^2$. As $y \to 0$, the penalty stays $2v_y^2$. As $y$ increases, the penalty increases. That's the opposite of what we want. We want it to be more important at the bottom.
+            *   Let's try: `r_vertical_penalty = -(2.0 * vy**2) * (1.0 + (1.0 - abs(y)/0.4))`... no.
+            *   Let's just do: `r_vertical_penalty = -2.0 * vy**2 - 10.0 * y * abs(vy)`. This penalizes vertical velocity more heavily as altitude increases? No.
+            *   Let's try: `r_vertical_penalty = -2.0 * vy**2 - 5.0 * abs(vy) / (abs(y) + 0.1)`. No, that's a singularity.
 
-    *   *Wait, one more check:* The `sink_penalty` in the current code is: `-(w_x * np.abs(x) + w_y * np.abs(y) + w_v * (vy**2))`.
-    *   The $y$ term is actually *penalizing* the agent for being at high altitude. This is why the efficiency is low! It's trying to crash as fast as possible to stop the $y$ penalty, but the $v_y^2$ penalty stops it. This is a classic "deadlock" in reward design. I must remove the $|y|$ penalty or make it positive (incentivize descent).
-    *   Actually, a better way: Reward the *reduction* of $y$. But we can't use time. So we reward $v_y < 0$.
+            *   Let's rethink Proposal 3. The "Actuator Chatter" is the main problem.
+            *   Maybe the chatter is caused by `r_orientation` or `r_velocity_stability`?
+            *   Wait, the `orientation_penalty` is `-(10.0 * angle**2 + 2.0 * v_ang**2)`. This is already very smooth.
+            *   The `velocity_stability` is `-(3.0 * vy**2 + 10.0 * vx**2)`. Also smooth.
+            *   The `ground_level` jump is definitely the culprit.
 
-    *   *Final Plan for Proposal 1:* Replace `sink_penalty` with a "Terminal Precision" term that only activates when $y < \text{threshold}$. This removes the "anti-altitude" bias that causes low efficiency.
+            *   Let's look at Proposal 3 again. What if we add a **Control Smoothness** term?
+            *   `r_smooth_action = -0.5 * (action_t - action_t-1)**2`. But we don't have `action_t-1` in the `obs`. We have `prev_obs`. We can derive it? No.
+            thought: The user is the "Lead Algorithmic Reward Designer". The goal is to solve the physical failures.
 
-    *   *Final Plan for Proposal 2:* The "Radial Convergence" term. $R = -w(x \cdot v_x + y \cdot v_y)$. This rewards moving toward $(0,0)$.
+            *   Failure 1: Actuator Chatter. Cause: `ground_level` discontinuity.
+            *   Failure 2: Macro-Oscillations/Lateral Drift. Cause: Lack of $x$-position centering.
+            *   Failure 3: Descent Efficiency/Vertical Stability.
 
-    *   *Final Plan for $\rho$ and MI logic:*
-        `sink_penalty` is 69.9% magnitude but 0.153 $\rho$. It's a massive, unaligned anchor. It's not being "excised" because the form is salvageable (just needs a sign/gating change), but it's the primary target for modification.
+            Let's refine Proposal 3: **Vertical Landing Damping (Modification of `vertical_penalty`)**.
+            Instead of just $v_y^2$, let's include a $y$ term that creates a "gravity-aware" descent.
+            Actually, let's just focus on the most effective fixes.
 
-    *   *Let's re-verify the "Sink Penalty" logic:*
-        If $y$ is large, $R_{sink}$ is very negative. To maximize $R$, the agent must minimize $y$. This forces $y \to 0$ as fast as possible. But if $v_y$ is large, $v_y^2$ is large and $R$ becomes even more negative.
-        Result: The agent wants $y$ small and $v_y$ small. This means it wants to "hover" at $y=0$ or move extremely slowly. This is why efficiency is 0.047. It's a "Stall" incentive.
+            1. **Smooth Ground Transition (Modification of `ground_level`)** - Fixes Chatter.
+            2. **Lateral Centering (Addition of `r_centering`)** - Fixes Off-center landings.
+            3. **Vertical Descent Shaping (Modification of `vertical_penalty`)** - Fixes Descent Efficiency.
+            *Wait, let's make Proposal 3 a "Vertical Velocity Gate".*
+            If $y$ is small, we want $v_y$ to be very small.
+            `r_vertical_penalty = -(2.0 * vy**2) - (10.0 * (1.0 - abs(y)/0.4) * abs(vy))`? No.
 
-    *   *Okay, let's write the proposals.*
+            Let's try:
+            `r_vertical_penalty = -(2.0 * vy**2) - (5.0 * (1.0 - abs(y)/0.4) * vy**2)`?
+            At $y=0.4$, penalty is $2v_y^2$. At $y=0$, penalty is $7v_y^2$.
+            This creates a "braking" effect as you get closer to the ground.
+
+            *Final Plan:*
+            P1: `ground_level` (Step -> Smooth Ramp).
+            P2: `centering` (New term: $-5x^2$).
+            P3: `vertical_penalty` (Velocity-only -> Velocity-Altitude Coupling).
+
+            *Wait, one check:* Is $x$ in `obs`? Yes. `x, y, vx, vy, angle, v_ang, leg1, leg2 = obs`.
+            Is $v_x$ in `obs`? Yes.
+
+            *Refining P1 Math:*
+            Current: `r_ground_level = 3.0 if abs(y) < 0.4 else -1.5`
+            Proposed: `r_ground_level = 3.0 * (1.0 - abs(y)/0.4) if abs(y) < 0.4 else -1.5`
+            Wait, at $y=0.4$, the value is $0$. The jump is from $0$ to $-1.5$. This is still a jump.
+            To make it continuous:
+            `r_ground_level = 3.0 * (1.0 - abs(y)/0.4)` if `abs(y) < 0.4` else `-1.5`... no.
+            Let's do: `r_ground_level = 3.0 * (1.0 - abs(y)/0.4)` if `abs(y) < 0.4` else `0`.
+            Wait, if the lander is high up, $R=0$. As it drops below $0.4$, it gets positive reward. This is a smooth gradient.
+
+            *Wait*, the current implementation has `r_ground_level = s_val if near_ground else -1.5`.
+            If I change it to `3.0 * (1.0 - abs(y)/0.4)`, the agent sees $0$ at $y=0.4$ and $3.0$ at $y=0$.
+            The transition from $y=0.5$ (reward $0$) to $y=0.39$ (reward $\approx 3.0$) is a jump.
+            I must ensure the $y=0.4$ boundary is smooth.
+            If $y=0.4$, $R = 3(1-1) = 0$.
+            If $y=0.41$, $R = -1.5$ (current).
+            The jump is from $-1.5$ to $0$. Still a jump.
+
+            *Correct approach for P1:*
+            Make the function defined for all $y$.
+            `r_ground_level = 3.0 * (1.0 - abs(y)/0.4) * (abs(y) < 0.4) + (-1.5 * (abs(y) >= 0.4))`... No.
+            Let's use a Gaussian: $R = 3.0 \cdot \exp(-y^2 / 0.05) - 1.5$.
+            This is smooth everywhere! As $y \to \infty$, $R \to -1.5$. As $y \to 0$, $R \to 1.5$.
+            This is perfect.
+
+            *Let's check the `vertical_penalty` again.*
+            `r_vertical_penalty = -2.0 * vy**2`.
+            If I add a term that scales with $y$, I provide a vertical control gradient.
+
+            *Let's finalize the 3 proposals.*
+
+            P1: **Smooth Ground Affinity (Modification of `ground_level`)**
+            Replace step function with a smooth Gaussian.
+            $R = 3.0 \cdot \exp(-y^2 / 0.04) - 1.5$.
+            *Correction:* The user's `ground_level` was $3.0$ if near. My Gaussian is $1.5$ at peak. Let's adjust: $R = 4.5 \cdot \exp(-y^2 / 0.04) - 1.5$. At $y=0$, $R=3.0$. At $y \to \infty$, $R=-1.5$. This preserves the exact magnitude requested.
+
+            P2: **Lateral Centering (Addition)**
+            $R = -5.0 \cdot x^2$.
+
+            P3: **Vertical Braking (Modification of `vertical_penalty`)**
+            $R = -(2.0 \cdot v_y^2) \cdot (1.0 + 5.0 \cdot \text{clamp}(1 - |y|/0.4, 0, 1))$.
+            This makes $v_y$ very expensive near the ground.
+
+            *Wait*, the `vertical_penalty` currently is $-(2.0 \cdot v_y^2)$.
+            The new one: $-(2.0 \cdot v_y^2) \cdot (1 + 5(1 - |y|/0.4))$... No, that's too heavy.
+            Let's just do: `r_vertical_penalty = -2.0 * vy**2 - 10.0 * (1.0 - abs(y)/0.4) * abs(vy)`? No, let's keep it simple.
+
+            Let's try this for P3:
+            **Vertical Stability Coupling (Modification of `vertical_penalty`)**
+            Current: `r_vertical_penalty = -2.0 * vy**2`
+            New: `r_vertical_penalty = -(2.0 * vy**2) * (1.0 + 2.0 * (1.0 - abs(y)/0.4))`... No, let's use a power.
+            Actually, the simplest $v_y$ fix is to make the penalty depend on $y$.
+            Let's do: `r_vertical_penalty = -(2.0 * vy**2) - (5.0 * (1.0 - abs(y)/0.4) * abs(vy))`.
+            Wait, the `abs(vy)` term is $L_1$. The prompt says the $L_2$ (quadratic) was used to fix $L_1$.
+            Let's stick to $L_2$.
+            `r_vertical_penalty = -(2.0 * vy**2) * (1.0 + 4.0 * (1.0 - abs(y)/0.4))` for $y < 0.4$.
+            This means at $y=0.4$, penalty is $2v_y^2$. At $y=0$, penalty is $6v_y^2$.
+            It's smooth and provides a "braking" signal.
+
+            *Wait*, I just realized: the current `ground_level` is `3.0 if near_ground else -1.5`.
+            If I replace it with a Gaussian, I fix the chatter.
+            If I add $x^2$, I fix the centering.
+            If I modify $v_y$ to be $y$-dependent, I fix the descent.
+
+            *One last look at the logic:*
+            - Chatter (P1)
+            - Off-center (P2)
+            - Descent (P3)
+            This covers all diagnostic requirements.
+
+            *Wait*, the `ground_level` component in the table has $\rho=0.48$ and $MI=0.13$. This is "Optimal". It's not the *only* thing causing chatter, but it's a major contributor.
+            The `orientation_penalty` is also 7.1% magnitude.
+
+            *Actually, I will refine P3 to be more mathematically sound:*
+            **Dynamic Vertical Damping (Modification of `vertical_penalty`)**
+            Current: `-(2.0 * vy**2)`
+            New: `-(2.0 * vy**2) * (1.0 + 5.0 * (1.0 - abs(y)/0.4))` for $y < 0.4$.
+            This is a smooth transition of the coefficient.
+
+            Wait, a simple linear ramp is easier to explain.
+            $C(y) = 2.0 + 5.0 \cdot (1.0 - |y|/0.4)$ for $y < 0.4$.
+            At $y=0.4, C=2$. At $y=0, C=7$.
+
+            Let's double check the current $v_y$ penalty in `velocity_stability`.
+            `r_velocity_stability = -(3.0 * vy**2 + 10.0 * vx**2)`.
+            So the $v_y$ penalty is actually being applied twice!
+            `r_vertical_penalty` (-2) + `r_velocity_stability` (-3) = -5 total.
+            This is fine.
+
+            Let's re-verify Proposal 1 (The most important one).
+            A Gaussian $R(y) = A \cdot e^{-y^2/2\sigma^2} + B$.
+            To keep $R(0)=3.0$ and $R(\infty)=-1.5$:
+            $A - 1.5 = 3.0 \implies A = 4.5$.
+            $R(y) = 4.5 \cdot e^{-y^2 / 2\sigma^2} - 1.5$.
+            If we want the width to be roughly $0.4$, let's set $\sigma = 0.2$.
+            $R(y) = 4.5 \cdot e^{-y^2 / 0.08} - 1.5$.
+
+            This is much more robust.
+
+            *Final check of the rules:*
+            - "No time-based penalties." (Check: $y, v_y, x, v_x$ are all state).
+            - "3 distinct proposals." (Check).
+            - "Exact metric... and numerical shift." (Check).
+
+            Metrics:
+            - P1 -> `Actuator Chatter Rate` (↓)
+            - P2 -> `landed_off_centered` (↓)
+            - P3 -> `Mean Descent Efficiency` (↑)
+
+            *Wait*, I should check if the `ground_level` being `3.0 if near_ground else -1.5` is what's causing the descent efficiency problem.
+            If the agent is at $y=0.5$, it gets $-1.5$. If it drops to $0.39$, it suddenly gets $+3.0$.
+            This "jump" makes the agent want to "dive" into the $0.4$ boundary.
+            The Gaussian will make the descent much more "intentional" and smooth.
+
+            One detail: The `ground_level` in the code is:
+            `near_ground = abs(y) < 0.4`
+            `r_ground_level = 3.0 if near_ground else -1.5`
+            If I replace this, I must ensure the transition at $y=0.4$ is handled.
+            If I use a Gaussian that goes to $-1.5$ at infinity, I don't even need the `if` statement.
+
+            *Final structure of P1:*
+            - Modify `ground_level` from a hard-threshold jump to a smooth Gaussian affinity.
+            - This eliminates the $y=0.4$ reward shock.
+
+            *Final structure of P2:*
+            - Add `r_centering = -5.0 * x**2`.
+
+            *Final structure of P3:*
+            - Modify `vertical_penalty` to be $y$-dependent.
+            - `r_vertical_penalty = -(2.0 * vy**2) * (1.0 + 5.0 * (1.0 - abs(y)/0.4))` for $y < 0.4$ else `-(2.0 * vy**2)`.
+
+            Actually, let's make P3 simpler for the agent:
+            $r_{vertical\_penalty} = -2.0 \cdot v_y^2 - 10.0 \cdot (1.0 - \text{clamp}(|y|/0.4, 0, 1)) \cdot |v_y|$.
+            No, that's $L_1$. Let's stick to the coefficient scaling. It's cleaner.
+
+            Wait, I'll use:
+            `r_vertical_penalty = -(2.0 * vy**2) * (1.0 + 5.0 * (1.0 - abs(y)/0.4))` for `abs(y) < 0.4`.
+            This is a smooth transition. At $y=0.4$, the multiplier is $1.0$. At $y=0$, it is $6.0$.
+
+            Final thought on P2: $x$ can be negative. $x^2$ is always positive. $-5x^2$ is always negative. Correct.
 
 
-# Phase: strategist [Output] gemma4:26b
+# Phase: strategist [Output] gemma4:26b-mlx
 **PART 1: SURGICAL EXCISION**
 
-*   **No components are being excised.** The `attitude_penalty` is currently performing optimally ($\rho=0.370$); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
-
-***
+* **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high-frequency noise into the gradient, making smooth descent impossible.
 
 **PART 2: 3 PROPOSALS**
 
-### Proposal 1: The "Hyperbolic Precision Sink" (Modification)
+**Proposal 1: Smooth Ground Affinity (Modification)**
 
-**1. The Conceptual Hypothesis:**
-The current `sink_penalty` is the primary driver of the abysmal `Mean Descent Efficiency` (0.047). By penalizing $|y|$, the reward function creates a "stalling" incentive: the agent is punished for being at high altitude but also punished for the high $v_y$ required to descend quickly. This creates a mathematical deadlock where the agent prefers to hover or descend at an infinitesimally slow rate to minimize $v_y^2$, effectively "starving" the gradient for descent. I will replace this with a $y$-gated precision term that only penalizes lateral error ($x$) and impact velocity ($v_y$) as the agent approaches the landing pad, removing the anti-altitude bias.
+1. **The Conceptual Hypothesis:** The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro-oscillations and high-frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks.
 
-**2. The Mathematical Formulation:**
-**Old Form:**
-`r_sink = -(w_x * np.abs(s) + w_y * np.abs(y) + w_v * (vy**2))`
+2. **The Mathematical Formulation:**
+   - **Old Form:** `r_ground_level = 3.0 if abs(y) < 0.4 else -1.5`
+   - **New Form:** 
+     $r_{ground\_level} = 4.5 \cdot \exp\left(-\frac{y^2}{0.08}\right) - 1.5$
+   *(Note: This Gaussian is tuned so that $R(0)=3.0$ and $R(\infty)=-1.5$, maintaining the intended magnitude while providing a smooth, continuous descent gradient.)*
 
-**New Form:**
-Let $y_{threshold} = 0.5$.
-$$R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)$$
-*Where $w_x = 2.0$ and $w_{v_y} = 1.5$.*
-*This term is near-zero when $y \gg y_{threshold}$ (allowing free descent) and becomes an aggressive quadratic penalty as $y \to 0$.*
-
-**3. The Falsifiable Expected Outcome:**
-*   **Target Metric:** `Mean Descent Efficiency`
-*   **Expected Change:** Increase from $0.047 \to >0.400$
-*   **Side Effect:** Reduction in `landed_off_centered` rate.
+3. **The Falsifiable Expected Outcome:**
+   - **Target Metric:** `Actuator Chatter Rate` (↓)
+   - **Expected Shift:** Decrease from $0.499$ to $<0.20$.
 
 ***
 
-### Proposal 2: The "Radial Convergence" Term (Addition)
+**Proposal 2: Lateral Centering (Addition)**
 
-**1. The Conceptual Hypothesis:**
-The low `Trajectory Isomorphism` (0.053) and chaotic `SNR` (-154.35) suggest the agent lacks a global directional compass. The agent knows where it *shouldn't* be (the origin is a sink), but it doesn't know which direction to move to get there. By adding a term that rewards the alignment of the velocity vector $\vec{v}$ with the negative position vector $-\vec{s}$, we provide a consistent, monotonic gradient toward the origin $(0,0)$ that is independent of altitude, effectively "priming" the optimization landscape across all seeds.
+1. **The Conceptual Hypothesis:** The agent currently experiences high `landed_off_centered` rates because the reward landscape is purely velocity-dependent ($v_x \to 0$); there is no spatial incentive to reach the center ($x=0$). By adding a quadratic position-based penalty, we create a "restorative spring" effect that penalizes lateral displacement, forcing the agent to prioritize centered landings during its descent.
 
-**2. The Mathematical Formulation:**
-$$R_{convergence} = -w_{conv} \cdot \left( \frac{x \cdot v_x + y \cdot v_y}{\sqrt{x^2 + y^2 + \epsilon}} \right)$$
-*Where $w_{conv} = 0.8$ and $\epsilon = 1e-6$.*
-*This is the negative dot product of the normalized position and velocity. When the agent moves toward the origin, $x \cdot v_x + y \cdot v_y < 0$, making $R_{convergence}$ positive. This creates a "gravity well" effect without using time-based variables.*
+2. **The Mathematical Formulation:**
+   - **Addition:** `r_centering = -5.0 * x**2`
+   - **Synergy:** This term acts as a global spatial anchor, working alongside the `velocity_stability` component to ensure the agent is not just moving slowly, but is moving toward the actual landing target.
 
-**3. The Falsifiable Expected Outcome:**
-*   **Target Metric:** `Trajectory Isomorphism (Pairwise $\rho$)`
-*   **Expected Change:** Increase from $0.053 \to >0.300$
-*   **Target Metric:** `Signal-to-Noise Ratio (SNR)`
-*   **Expected Change:** Increase from $-154.35 \to > -10.0$
+3. **The Falsifiable Expected Outcome:**
+   - **Target Metric:** `landed_off_centered` (↓)
+   - **Expected Shift:** Decrease from $25.0\%$ to $<10.0\%$.
 
 ***
 
-### Proposal 3: The "Landing Stability" Cluster (Synergistic Cluster)
+**Proposal 3: Dynamic Vertical Damping (Modification)**
 
-**1. The Conceptual Hypothesis:**
-The 43.3% `landed_off_centered` rate indicates that the agent's lateral control is decoupled from its attitude control during the critical landing phase. The current `smoothness_penalty` is "Neutral/Noisy" because it penalizes all action changes equally. I propose a cluster that couples `smoothness` with `attitude`. This cluster will penalize high-frequency control changes *only* when the agent's angle is non-zero, forcing the agent to prioritize "uprighting" the craft as the primary prerequisite for smooth, stable lateral deceleration.
+1. **The Conceptual Hypothesis:** The current `vertical_penalty` is purely kinetic, treating all vertical motion equally regardless of altitude. This provides no specific incentive to "brake" or settle more carefully as the lander approaches the surface. By coupling the $v_y$ penalty to the altitude $y$, we create a "soft landing" regime: the damping becomes increasingly aggressive as $y \to 0$, teaching the agent to minimize vertical velocity precisely at the moment of contact.
 
-**2. The Mathematical Formulation:**
-This cluster consists of two interacting terms:
-*   **Term A (Gated Smoothness):** $R_{smooth} = -w_{smooth} \cdot \text{abs}(\Delta \text{action}) \cdot (1 + |\text{angle}|)$
-*   **Term B (Angular Damping):** $R_{damp} = -w_{damp} \cdot (v_{ang}^2 \cdot \text{exp}(-y))$
+2. **The Mathematical Formulation:**
+   - **Old Form:** `r_vertical_penalty = -2.0 * vy**2`
+   - **New Form:** 
+     $r_{vertical\_penalty} = -(2.0 \cdot v_y^2) \cdot \left(1.0 + 5.0 \cdot \max\left(0, 1 - \frac{|y|}{0.4}\right)\right)$
+   *(Note: This scales the coefficient from $2.0$ at the boundary $y=0.4$ up to $7.0$ at the ground $y=0$, providing a smooth, heightened damping gradient during the critical landing phase.)*
 
-**Synergy:**
-As $y \to 0$, the `smoothness` penalty is amplified by the `angle` error, and the `angular_damping` vanishes (allowing for necessary high-torque maneuvers during descent). However, as the agent nears the ground, the `smoothness` penalty forces the agent to stabilize its `angle` to avoid massive penalties, effectively linking attitude stability to lateral precision.
-
-**3. The Falsifiable Expected Outcome:**
-*   **Target Metric:** `landed_off_centered`
-*   **Expected Change:** Reduction from $43.3\% \to < 20.0\%$
-*   **Target Metric:** `Actuator Chatter Rate`
-*   **Expected Change:** Reduction from $0.105 \to < 0.080$ (due to the reduction in high-frequency oscillations near the landing boundary).
+3. **The Falsifiable Expected Outcome:**
+   - **Target Metric:** `Mean Descent Efficiency` (↑)
+   - **Expected Shift:** Increase from $0.006$ to $>0.04$.
 
 
-# Phase: organizer [System] deepseek-r1:32b
+# Phase: organizer [System] gpt-oss:20b
 **[ROLE AND OBJECTIVE]**
 You are the Technical Organizer for an autonomous Reinforcement Learning pipeline. Your role is data extraction and formatting.
 You sit between the "Strategist" (who generates raw mathematical proposals for reward functions) and the "Research Lead" (who evaluates them).
@@ -581,7 +799,7 @@ Your objective is to take the Strategist's raw, unformatted, or loosely formatte
 1. **Zero Data Loss:** You must preserve the exact mathematical formulas, Python snippets, coefficients, and physical reasoning provided by the Strategist. Do not alter the underlying logic.
 2. **No Hallucination:** Do not invent new proposals. If the Strategist provided 3 proposals, you output exactly 3 formatted proposals.
 3. **Extraction & Mapping:** The Strategist might blend its scaling constraints into its math formulation, or its hypothesis into its expected outcome. You must meticulously extract the information and place it into the correct sections of the template.
-4. **Global Excision Routing:** The Strategist will output a "Global Excision Manifesto" at the top of its response. You must extract this list of deletions and insert it verbatim into the `Code Deletions/Modifications` bullet point for ALL THREE formatted proposals.
+4. **Global Excision Routing:** The Strategist will output a "Global Excision Manifesto" at the top of its response. You must extract this list of deletions and insert it verbatim into the `Code Deletions` bullet point for ALL THREE formatted proposals.
 5. **Formatting:** You must strictly use the exact Markdown headers and sub-bullets provided in the template below.
 
 **[TARGET OUTPUT TEMPLATE]**
@@ -593,7 +811,7 @@ For each proposal found in the Strategist's output, generate the following exact
 
 **2. Mathematical Formulation:**
 * **Code Additions:** [The exact LaTeX math or Python snippet proposed to be added.]
-* **Code Deletions/Modifications:** [INSERT THE GLOBAL EXCISION MANIFESTO LIST HERE. You must explicitly list the manifesto items in this bullet point for every proposal. Do not write "None explicitly stated" if a manifesto exists.]
+* **Code Deletions:** [INSERT THE GLOBAL EXCISION MANIFESTO LIST HERE. You must explicitly list the manifesto items in this bullet point for every proposal. Do not write "None explicitly stated" if a manifesto exists.]
 
 **3. Reward Scaling & Constraints:**
 
@@ -607,7 +825,7 @@ For each proposal found in the Strategist's output, generate the following exact
 * **Expected Change:** [The numerical shift expected]
 
 
-# Phase: organizer [User] deepseek-r1:32b
+# Phase: organizer [User] gpt-oss:20b
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT TASK:** Format Strategist Output
 
@@ -617,209 +835,187 @@ Parse the following raw output from the Strategist and convert it strictly into 
 
 **PART 1: SURGICAL EXCISION**
 
-*   **No components are being excised.** The `attitude_penalty` is currently performing optimally ($\rho=0.370$); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
-
-***
+* **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high-frequency noise into the gradient, making smooth descent impossible.
 
 **PART 2: 3 PROPOSALS**
 
-### Proposal 1: The "Hyperbolic Precision Sink" (Modification)
+**Proposal 1: Smooth Ground Affinity (Modification)**
 
-**1. The Conceptual Hypothesis:**
-The current `sink_penalty` is the primary driver of the abysmal `Mean Descent Efficiency` (0.047). By penalizing $|y|$, the reward function creates a "stalling" incentive: the agent is punished for being at high altitude but also punished for the high $v_y$ required to descend quickly. This creates a mathematical deadlock where the agent prefers to hover or descend at an infinitesimally slow rate to minimize $v_y^2$, effectively "starving" the gradient for descent. I will replace this with a $y$-gated precision term that only penalizes lateral error ($x$) and impact velocity ($v_y$) as the agent approaches the landing pad, removing the anti-altitude bias.
+1. **The Conceptual Hypothesis:** The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro-oscillations and high-frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks.
 
-**2. The Mathematical Formulation:**
-**Old Form:**
-`r_sink = -(w_x * np.abs(s) + w_y * np.abs(y) + w_v * (vy**2))`
+2. **The Mathematical Formulation:**
+   - **Old Form:** `r_ground_level = 3.0 if abs(y) < 0.4 else -1.5`
+   - **New Form:** 
+     $r_{ground\_level} = 4.5 \cdot \exp\left(-\frac{y^2}{0.08}\right) - 1.5$
+   *(Note: This Gaussian is tuned so that $R(0)=3.0$ and $R(\infty)=-1.5$, maintaining the intended magnitude while providing a smooth, continuous descent gradient.)*
 
-**New Form:**
-Let $y_{threshold} = 0.5$.
-$$R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)$$
-*Where $w_x = 2.0$ and $w_{v_y} = 1.5$.*
-*This term is near-zero when $y \gg y_{threshold}$ (allowing free descent) and becomes an aggressive quadratic penalty as $y \to 0$.*
-
-**3. The Falsifiable Expected Outcome:**
-*   **Target Metric:** `Mean Descent Efficiency`
-*   **Expected Change:** Increase from $0.047 \to >0.400$
-*   **Side Effect:** Reduction in `landed_off_centered` rate.
+3. **The Falsifiable Expected Outcome:**
+   - **Target Metric:** `Actuator Chatter Rate` (↓)
+   - **Expected Shift:** Decrease from $0.499$ to $<0.20$.
 
 ***
 
-### Proposal 2: The "Radial Convergence" Term (Addition)
+**Proposal 2: Lateral Centering (Addition)**
 
-**1. The Conceptual Hypothesis:**
-The low `Trajectory Isomorphism` (0.053) and chaotic `SNR` (-154.35) suggest the agent lacks a global directional compass. The agent knows where it *shouldn't* be (the origin is a sink), but it doesn't know which direction to move to get there. By adding a term that rewards the alignment of the velocity vector $\vec{v}$ with the negative position vector $-\vec{s}$, we provide a consistent, monotonic gradient toward the origin $(0,0)$ that is independent of altitude, effectively "priming" the optimization landscape across all seeds.
+1. **The Conceptual Hypothesis:** The agent currently experiences high `landed_off_centered` rates because the reward landscape is purely velocity-dependent ($v_x \to 0$); there is no spatial incentive to reach the center ($x=0$). By adding a quadratic position-based penalty, we create a "restorative spring" effect that penalizes lateral displacement, forcing the agent to prioritize centered landings during its descent.
 
-**2. The Mathematical Formulation:**
-$$R_{convergence} = -w_{conv} \cdot \left( \frac{x \cdot v_x + y \cdot v_y}{\sqrt{x^2 + y^2 + \epsilon}} \right)$$
-*Where $w_{conv} = 0.8$ and $\epsilon = 1e-6$.*
-*This is the negative dot product of the normalized position and velocity. When the agent moves toward the origin, $x \cdot v_x + y \cdot v_y < 0$, making $R_{convergence}$ positive. This creates a "gravity well" effect without using time-based variables.*
+2. **The Mathematical Formulation:**
+   - **Addition:** `r_centering = -5.0 * x**2`
+   - **Synergy:** This term acts as a global spatial anchor, working alongside the `velocity_stability` component to ensure the agent is not just moving slowly, but is moving toward the actual landing target.
 
-**3. The Falsifiable Expected Outcome:**
-*   **Target Metric:** `Trajectory Isomorphism (Pairwise $\rho$)`
-*   **Expected Change:** Increase from $0.053 \to >0.300$
-*   **Target Metric:** `Signal-to-Noise Ratio (SNR)`
-*   **Expected Change:** Increase from $-154.35 \to > -10.0$
+3. **The Falsifiable Expected Outcome:**
+   - **Target Metric:** `landed_off_centered` (↓)
+   - **Expected Shift:** Decrease from $25.0\%$ to $<10.0\%$.
 
 ***
 
-### Proposal 3: The "Landing Stability" Cluster (Synergistic Cluster)
+**Proposal 3: Dynamic Vertical Damping (Modification)**
 
-**1. The Conceptual Hypothesis:**
-The 43.3% `landed_off_centered` rate indicates that the agent's lateral control is decoupled from its attitude control during the critical landing phase. The current `smoothness_penalty` is "Neutral/Noisy" because it penalizes all action changes equally. I propose a cluster that couples `smoothness` with `attitude`. This cluster will penalize high-frequency control changes *only* when the agent's angle is non-zero, forcing the agent to prioritize "uprighting" the craft as the primary prerequisite for smooth, stable lateral deceleration.
+1. **The Conceptual Hypothesis:** The current `vertical_penalty` is purely kinetic, treating all vertical motion equally regardless of altitude. This provides no specific incentive to "brake" or settle more carefully as the lander approaches the surface. By coupling the $v_y$ penalty to the altitude $y$, we create a "soft landing" regime: the damping becomes increasingly aggressive as $y \to 0$, teaching the agent to minimize vertical velocity precisely at the moment of contact.
 
-**2. The Mathematical Formulation:**
-This cluster consists of two interacting terms:
-*   **Term A (Gated Smoothness):** $R_{smooth} = -w_{smooth} \cdot \text{abs}(\Delta \text{action}) \cdot (1 + |\text{angle}|)$
-*   **Term B (Angular Damping):** $R_{damp} = -w_{damp} \cdot (v_{ang}^2 \cdot \text{exp}(-y))$
+2. **The Mathematical Formulation:**
+   - **Old Form:** `r_vertical_penalty = -2.0 * vy**2`
+   - **New Form:** 
+     $r_{vertical\_penalty} = -(2.0 \cdot v_y^2) \cdot \left(1.0 + 5.0 \cdot \max\left(0, 1 - \frac{|y|}{0.4}\right)\right)$
+   *(Note: This scales the coefficient from $2.0$ at the boundary $y=0.4$ up to $7.0$ at the ground $y=0$, providing a smooth, heightened damping gradient during the critical landing phase.)*
 
-**Synergy:**
-As $y \to 0$, the `smoothness` penalty is amplified by the `angle` error, and the `angular_damping` vanishes (allowing for necessary high-torque maneuvers during descent). However, as the agent nears the ground, the `smoothness` penalty forces the agent to stabilize its `angle` to avoid massive penalties, effectively linking attitude stability to lateral precision.
-
-**3. The Falsifiable Expected Outcome:**
-*   **Target Metric:** `landed_off_centered`
-*   **Expected Change:** Reduction from $43.3\% \to < 20.0\%$
-*   **Target Metric:** `Actuator Chatter Rate`
-*   **Expected Change:** Reduction from $0.105 \to < 0.080$ (due to the reduction in high-frequency oscillations near the landing boundary).
+3. **The Falsifiable Expected Outcome:**
+   - **Target Metric:** `Mean Descent Efficiency` (↑)
+   - **Expected Shift:** Increase from $0.006$ to $>0.04$.
 
 **ACTION REQUIRED:**
 Extract the core reasoning, math, and expected outcomes from the raw text above. Output the completely sanitized and formatted proposals using your system template. Do not include any introductory or concluding conversational text.
 
 
-# Phase: organizer [Thinking Trace] deepseek-r1:32b
-Okay, so I need to help format the Strategist's output into a Mathematical Contract. Let me go through the process step by step.
+# Phase: organizer [Thinking Trace] gpt-oss:20b
+We need to produce for each proposal the structure:
 
-First, I see that the Strategist provided three proposals. My job is to take each of these and structure them according to the specified template. The main sections I need to fill out for each proposal are: Conceptual Hypothesis, Mathematical Formulation (including Code Additions and Code Deletions/Modifications), Reward Scaling & Constraints, and Falsifiable Expected Outcome.
+### Proposal [Number]: [Title extracted or inferred from the Strategist]
 
-Looking at the raw output, I notice that there's a "Global Excision Manifesto" at the top. It says that no components are being excised. I need to make sure that this is included verbatim in the Code Deletions/Modifications section for each proposal. So, for each proposal, under that bullet point, I'll write exactly what's stated in the manifesto.
-
-Now, for each proposal, I'll extract the necessary information. Let's start with Proposal 1.
-
-Proposal 1's title is "The 'Hyperbolic Precision Sink' (Modification)". The Conceptual Hypothesis explains that the current sink_penalty is causing issues with descent efficiency because it penalizes both altitude and velocity. The solution is to replace it with a y-gated precision term that only penalizes lateral error and impact velocity as the agent approaches the landing pad.
-
-In the Mathematical Formulation, the old code is given, and the new form is a LaTeX equation. I need to extract the code additions and note that the old form is being replaced. The coefficients are w_x = 2.0 and w_vy = 1.5.
-
-For Reward Scaling & Constraints, the coefficient is 2.0 and 1.5, and the constraint is that y must be above 0.5 for the term to be near-zero. The integration targets x and v_y.
-
-The Expected Outcome is an increase in Mean Descent Efficiency from 0.047 to >0.400 and a reduction in landed_off_centered rate.
-
-Moving on to Proposal 2, titled "The 'Radial Convergence' Term (Addition)". The hypothesis is about adding a term to provide a directional compass, improving trajectory isomorphism and SNR. The mathematical formulation is another LaTeX equation with w_conv = 0.8 and epsilon = 1e-6. There are no deletions, so the Code Deletions/Modifications will state that no components are being excised.
-
-The scaling coefficients are 0.8, and there are no explicit constraints. The integration targets x, y, v_x, and v_y. The expected outcomes are improvements in Trajectory Isomorphism and SNR.
-
-Proposal 3 is "The 'Landing Stability' Cluster (Synergistic Cluster)". The hypothesis links smoothness and attitude control. The formulation includes two terms with their respective coefficients. The synergy between the terms is explained, so I need to capture that in the integration part.
-
-The scaling coefficients are w_smooth and w_damp, but their exact values aren't provided in the raw output. The constraints are based on y and angle. The expected outcomes are reductions in landed_off_centered and Actuator Chatter Rate.
-
-I need to ensure that each section is correctly mapped without losing any data. Also, I must avoid adding any new information or sections beyond what's specified. Each proposal should follow the exact structure provided in the template.
-
-I should double-check that all mathematical formulas are correctly extracted and that no coefficients or constraints are missed. Also, making sure that the Global Excision Manifesto is included in each proposal's Code Deletions/Modifications section as required.
-
-Finally, I'll present the formatted proposals without any introductory or concluding text, just the structured sections as per the template.
-
-
-
-# Phase: organizer [Output] deepseek-r1:32b
-### Proposal 1: The "Hyperbolic Precision Sink" (Modification)
-
-**1. Conceptual Hypothesis:**  
-The current `sink_penalty` is causing a deadlock where the agent hesitates to descend quickly, leading to poor `Mean Descent Efficiency`. The proposed change introduces a y-gated precision term that only penalizes lateral error and impact velocity as the agent approaches the landing pad, removing the anti-altitude bias.
+**1. Conceptual Hypothesis:** [text]
 
 **2. Mathematical Formulation:**
-
-* **Code Additions:**  
-Let \( y_{threshold} = 0.5 \).  
-\[
-R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)
-\]  
-*Where \( w_x = 2.0 \) and \( w_{v_y} = 1.5 \).*  
-*This term is near-zero when \( y \gg y_{threshold} \) (allowing free descent) and becomes an aggressive quadratic penalty as \( y \to 0 \).*
-
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
+* **Code Additions:** [LaTeX or Python snippet]
+* **Code Deletions:** [Global Excision Manifesto list]
 
 **3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_x = 2.0 \), \( w_{v_y} = 1.5 \)
-* **Constraint/Clipping:** \( y \geq 0.5 \) (term is near-zero)
-* **Integration:** Targets \( x \) and \( v_y \)
+* **Coefficient:** [extract multiplier/scale used]
+* **Constraint/Clipping:** [extract bounds or clips]
+* **Integration:** [extract which variables/lines this targets]
 
 **4. Falsifiable Expected Outcome:**
+* **Target Metric:** [metric]
+* **Expected Change:** [numerical shift]
 
-* **Target Metric:** `Mean Descent Efficiency`
-* **Expected Change:** Increase from \( 0.047 \to >0.400 \)
-* **Side Effect:** Reduction in `landed_off_centered` rate
+We have 3 proposals.
+
+We must include the Global Excision Manifesto list: from PART 1: SURGICAL EXCISION. The list includes `ground_level`. The bullet: **`ground_level`**: This component is being excised because... So the manifesto list is just the items? The directive says: "The Strategist will output a 'Global Excision Manifesto' at the top of its response. You must extract this list of deletions and insert it verbatim into the Code Deletions bullet point for ALL THREE formatted proposals."
+
+Thus Code Deletions bullet should contain the list of deletions. The list is:
+
+- `ground_level`: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high-frequency noise into the gradient, making smooth descent impossible.
+
+But the instruction: "insert the manifesto items in this bullet point for every proposal. Do not write 'None explicitly stated' if a manifesto exists." So we need to list the items. Probably just list the component names? The manifesto might be a list of deletions. We can list the component names with the explanation? The instruction says "extract this list of deletions and insert it verbatim." So we should copy the list as is. The list is:
+
+- **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high-frequency noise into the gradient, making smooth descent impossible.
+
+Thus Code Deletions bullet should have that as bullet list.
+
+Now for each proposal we need to fill coefficient, constraint/clipping, integration.
+
+We must interpret the math to extract coefficient. For Proposal 1: New Form: $r_{ground\_level} = 4.5 \cdot \exp(-y^2/0.08) - 1.5$. The coefficient is 4.5? The multiplier on the exponential. The constraint/clipping: None explicitly stated. Integration: It targets variable y. Also maybe variable r_ground_level. We can say "applies to ground level reward component, depends on altitude y".
+
+For Proposal 2: Addition: `r_centering = -5.0 * x**2`. Coefficient: -5.0. Constraint: None. Integration: variable x, applies to centering reward.
+
+For Proposal 3: New Form: $r_{vertical\_penalty} = -(2.0 \cdot v_y^2) \cdot (1.0 + 5.0 \cdot \max(0, 1 - |y|/0.4))$. Coefficient: The base coefficient is 2.0 times the factor (1+...). The scaling factor 5.0. Constraint: None explicitly. Integration: variable v_y and y.
+
+But the template expects "Coefficient" (extract multiplier/scale used). For each we might list the main coefficient. For Proposal 1: 4.5. For Proposal 2: -5.0. For Proposal 3: 2.0 (base) with scaling factor 5.0. We could list 2.0 and mention scaling factor 5.0 in integration. Or we could just list 2.0 and note scaling factor. The template expects a single coefficient. We might choose 4.5, -5.0, and 2.0 (with mention of scaling factor 5.0). But better to provide the main coefficient and note scaling factor in integration.
+
+Constraint/Clipping: None explicitly stated.
+
+Integration: Provide variable details.
+
+Now the "Title" for each proposal: Provided as "Smooth Ground Affinity (Modification)", "Lateral Centering (Addition)", "Dynamic Vertical Damping (Modification)". Use those.
+
+Now produce output.
+
+Be careful with Markdown formatting: Use exactly the headers and sub-bullets. Use bullet lists with *.
+
+Make sure to include "### Proposal 1: Smooth Ground Affinity (Modification)" etc.
+
+Now produce final.
+
+
+# Phase: organizer [Output] gpt-oss:20b
+### Proposal 1: Smooth Ground Affinity (Modification)
+
+**1. Conceptual Hypothesis:**  
+The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro‑oscillations and high‑frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks.
+
+**2. Mathematical Formulation:**  
+* **Code Additions:**  
+  \[
+  r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high‑frequency noise into the gradient, making smooth descent impossible.
+
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** 4.5  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the ground‑level reward component, operating on the altitude variable $y$.
+
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** Actuator Chatter Rate (↓)  
+* **Expected Change:** Decrease from $0.499$ to $<0.20$.
 
 ---
 
-### Proposal 2: The "Radial Convergence" Term (Addition)
+### Proposal 2: Lateral Centering (Addition)
 
 **1. Conceptual Hypothesis:**  
-The low `Trajectory Isomorphism` and chaotic `SNR` indicate the agent lacks a global directional compass. Adding a term that rewards alignment of the velocity vector with the negative position vector provides a consistent gradient toward the origin, improving optimization across seeds.
+The agent currently experiences high `landed_off_centered` rates because the reward landscape is purely velocity‑dependent ($v_x \to 0$); there is no spatial incentive to reach the center ($x=0$). By adding a quadratic position‑based penalty, we create a "restorative spring" effect that penalizes lateral displacement, forcing the agent to prioritize centered landings during its descent.
 
-**2. Mathematical Formulation:**
-
+**2. Mathematical Formulation:**  
 * **Code Additions:**  
-\[
-R_{convergence} = -w_{conv} \cdot \left( \frac{x \cdot v_x + y \cdot v_y}{\sqrt{x^2 + y^2 + \epsilon}} \right)
-\]  
-*Where \( w_{conv} = 0.8 \) and \( \epsilon = 1e-6 \).*  
-*This is the negative dot product of the normalized position and velocity. When the agent moves toward the origin, \( x \cdot v_x + y \cdot v_y < 0 \), making \( R_{convergence} \) positive. This creates a "gravity well" effect without using time-based variables.*
+  \[
+  r_{\text{centering}} = -5.0 \cdot x^2
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high‑frequency noise into the gradient, making smooth descent impossible.
 
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** -5.0  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the centering reward component, operating on the horizontal position variable $x$.
 
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_{conv} = 0.8 \)
-* **Constraint/Clipping:** None explicitly stated
-* **Integration:** Targets \( x, y, v_x, v_y \)
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** `Trajectory Isomorphism (Pairwise \( \rho \))`
-* **Expected Change:** Increase from \( 0.053 \to >0.300 \)
-* **Target Metric:** `Signal-to-Noise Ratio (SNR)`
-* **Expected Change:** Increase from \( -154.35 \to > -10.0 \)
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** landed_off_centered (↓)  
+* **Expected Change:** Decrease from $25.0\%$ to $<10.0\%$.
 
 ---
 
-### Proposal 3: The "Landing Stability" Cluster (Synergistic Cluster)
+### Proposal 3: Dynamic Vertical Damping (Modification)
 
 **1. Conceptual Hypothesis:**  
-The high `landed_off_centered` rate suggests decoupled lateral and attitude control during landing. The proposed cluster couples `smoothness` with `attitude`, penalizing high-frequency control changes only when the agent's angle is non-zero, forcing the agent to prioritize "uprighting" for stable deceleration.
+The current `vertical_penalty` is purely kinetic, treating all vertical motion equally regardless of altitude. This provides no specific incentive to "brake" or settle more carefully as the lander approaches the surface. By coupling the $v_y$ penalty to the altitude $y$, we create a "soft landing" regime: the damping becomes increasingly aggressive as $y \to 0$, teaching the agent to minimize vertical velocity precisely at the moment of contact.
 
-**2. Mathematical Formulation:**
-
+**2. Mathematical Formulation:**  
 * **Code Additions:**  
-This cluster consists of two interacting terms:  
-* **Term A (Gated Smoothness):**  
-\[
-R_{smooth} = -w_{smooth} \cdot \text{abs}(\Delta \text{action}) \cdot (1 + |\text{angle}|)
-\]  
-* **Term B (Angular Damping):**  
-\[
-R_{damp} = -w_{damp} \cdot (v_{ang}^2 \cdot \text{exp}(-y))
-\]  
+  \[
+  r_{\text{vertical\_penalty}} = -\bigl(2.0 \cdot v_y^2\bigr) \cdot \left(1.0 + 5.0 \cdot \max\!\left(0,\;1 - \frac{|y|}{0.4}\right)\right)
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high‑frequency noise into the gradient, making smooth descent impossible.
 
-* **Synergy:**  
-As \( y \to 0 \), the `smoothness` penalty is amplified by the `angle` error, and the `angular_damping` vanishes (allowing for necessary high-torque maneuvers during descent). However, as the agent nears the ground, the `smoothness` penalty forces the agent to stabilize its `angle` to avoid massive penalties, effectively linking attitude stability to lateral precision.
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** 2.0 (base) with a scaling factor of 5.0 applied near the ground  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the vertical‑penalty reward component, operating on the vertical velocity $v_y$ and altitude $y$.
 
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
-
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_{smooth}, w_{damp} \) (values not explicitly stated)
-* **Constraint/Clipping:** \( y \geq 0 \) (damping term vanishes as \( y \to 0 \))
-* **Integration:** Targets `angle`, `v_ang`, and control changes
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** `landed_off_centered`
-* **Expected Change:** Reduction from \( 43.3\% \to < 20.0\% \)
-* **Target Metric:** `Actuator Chatter Rate`
-* **Expected Change:** Reduction from \( 0.105 \to < 0.080 \) (due to the reduction in high-frequency oscillations near the landing boundary).
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** Mean Descent Efficiency (↑)  
+* **Expected Change:** Increase from $0.006$ to $>0.04$.
 
 
 # Phase: research_lead [System] deepseek-r1:32b
@@ -865,275 +1061,260 @@ This is the immutable record of past iterations. Do not repeat previous failed h
 ### Iteration 1 Historical Record
 **The Proposed Intervention:**
 
-**Conceptual Hypothesis:** The current "Spin" cluster is a centrifuge that maximizes kinetic energy. To land, the agent must minimize the potential energy of rotation. Replacing the spin-centric cluster with a quadratic penalty cluster will provide a smooth gradient near the target state, reducing oscillations and critic saturation.
-**Falsifiable Expected Outcome:** - Target Metric: Critic Saturation Index (CSI)
+**Conceptual Hypothesis:** The current orientation signal is both incorrectly signed and non-smooth. By transforming the angle-based term into a continuous quadratic penalty that includes angular velocity, we provide a smooth gradient toward angle=0 and prevent the high-frequency oscillations caused by the previous threshold-based upright_penalty.
+**Falsifiable Expected Outcome:** - Target Metric: Population Success Rate
 
-* Expected Change: Reduction from $45.74 \to < 10.0$
+* Expected Change: increase
 * Side Effects: None
 
 
 **The Physical Outcome & Lesson:**
-* **Status:** `Regressed` - [Cite the exact expected metric vs. the actual metric achieved. If using Productive Deviation, explicitly state the unexpected global improvement that saved the run].  
-* **Behavioral Reality:** [Describe the actual physical outcome and diagnostic shifts].
+
+
+* **Status:** `Regressed` - The Population Success Rate did not increase as expected and showed significant issues with policy fragility and unintended behaviors.
+* **Behavioral Reality:** The agent exhibits high actuator chatter, policy fragility, and a strong tendency to crash (43.0%) or land off-center (17.0%), with low alignment between reward components and success.
 ----------------------------------------
 
 ### Iteration 2 Historical Record
 **The Proposed Intervention:**
 
-**Conceptual Hypothesis:** The current reward landscape lacks a "gravity well" to pull the agent from the high-altitude hover state toward the landing pad. By removing the positive `survival` reward and replacing it with a multi-variable sink, we create a continuous gradient that rewards the reduction of both potential energy (altitude $y$) and lateral error ($x$), while simultaneously penalizing high-velocity impacts ($v_y$). This forces the agent to prioritize the origin $(0,0)$ as the global optimum.
-**Falsifiable Expected Outcome:** - Target Metric: Objective Alignment ($\rho$)
+**Conceptual Hypothesis:** The agent is currently suffering from “skidding” and macro-oscillations because the positive reward for $v_x$ (`sliding_legs`) is fighting the vertical stabilization. By transforming the vertical penalty into a two-axis stability penalty that heavily penalizes horizontal velocity, we provide a continuous, non-adversarial gradient that encourages the agent to settle both vertically and laterally before/during contact.
+**Falsifiable Expected Outcome:** - Target Metric: Mean Descent Efficiency, Population Success Rate, landed_off_centered
 
-* Expected Change: Increase from $0.000 \to >0.450$
-* Side Effects: Decrease in `hover_timeout` percentage
+* Expected Change: Decrease magnitude of v_x at touchdown, increase Population Success Rate, significant decrease landed_off_centered
+* Side Effects: None
 
 
 **The Physical Outcome & Lesson:**
-* **Status:** `Productive Deviation` - [Objective Alignment ($\rho$) expected >0.450 vs. actual 0.200, but Population Success Rate improved from 0.0% to 53.3%].  
-* **Behavioral Reality:** [The agent now crashes (40.0%) or lands off-center (30.0%), replacing the previous hover_timeout (73.3%). Actuator chatter improved (0.265 vs. 0.755), but macro-oscillations persist].
+
+
+* **Status:** `Validated` - [Population Success Rate increased by 34pp (30.0% to 64.0%), Mean Descent Efficiency improved 10x (0.005 to 0.055)].  
+* **Behavioral Reality:** The agent achieved a significant increase in Centered Landings (1.0% to 35.0%), with a corresponding decrease in crashes (43.0% to 24.0%), though landed_off_centered slightly increased (17.0% to 19.0%).  
+
+* **Status:** `Productive Deviation` - [Despite expected landed_off_centered decrease not materializing, the overall Population Success Rate and Centered Landing improvements indicate a successful policy shift].  
+* **Behavioral Reality:** The agent demonstrated improved stability and reduced skidding, with a notable increase in Centered Landings, though some off-center landings persisted.  
+
+* **Status:** `Mixed` - [Population Success Rate increased (30.0% to 64.0%), but landed_off_centered did not decrease as expected (17.0% to 19.0%)].  
+* **Behavioral Reality:** The agent showed progress in Centered Landings (1.0% to 35.0%) and reduced crashes (43.0% to 24.0%), but landed_off_centered remained stable.  
+
+* **Status:** `Goodhart Trap` - [While Population Success Rate increased (30.0% to 64.0%), the terminal distribution shows a concerning increase in landed_off_centered (17.0% to 19.0%)].  
+* **Behavioral Reality:** The agent achieved more Centered Landings (1.0% to 35.0%), but the increase in off-center landings suggests a potential reward hacking issue.  
+
+* **Status:** `Regressed` - [Population Success Rate decreased (30.0% to 64.0%)].  
+* **Behavioral Reality:** The agent showed significant improvement in Centered Landings (1.0% to 35.0%), but the increase in landed_off_centered (17.0% to 19.0%) indicates a potential regression.
 ----------------------------------------
 
 ### Iteration 3 Historical Record
 **The Proposed Intervention:**
 
-**Conceptual Hypothesis:** The `Actuator Chatter Rate` is dangerously high ($0.265$), indicating the agent is oscillating between opposing thruster commands. This suggests the policy is over-reacting to the gradients of the $x$ and $v_x$ penalties. Adding a penalty for high-frequency action changes will smooth the control signal, reducing the "jagged" landscape that causes the high `Intra-Rollout Reward CV`.  
-**Falsifiable Expected Outcome:**  
-* Target Metric: `Actuator Chatter Rate`  
-  * Expected Change: Reduction from $0.265 \to < 0.150$  
-* Target Metric: `Intra-Rollout Reward CV`  
-  * Expected Change: Reduction from $0.232 \to < 0.150$  
+**Conceptual Hypothesis:** The current reward landscape is highly “jagged” because several critical stability components (`orientation_penalty`, `velocity_stability`, and `vertical_penalty`) utilize the \(L_1\)-norm (`abs()`). In optimization, the derivative of \(|x|\) is discontinuous at \(x=0\), creating a “pointy” minimum. This causes the agent to oscillate rapidly around the equilibrium point, leading to the observed high **Actuator Chatter Rate** and high **Intra‑Rollout Reward CV**. By transitioning these terms to a squared \(L_2\)-norm (quadratic), the gradient will smoothly approach zero as the agent stabilizes, allowing for a smooth “settle.”
+**Falsifiable Expected Outcome:** 
+- Target Metric: Actuator Chatter Rate (↓) Expected shift from 0.498 to <0.25  
+- Target Metric: Intra‑Rollout Reward CV (↓) Expected shift from 1.806 to <1.0
+
+* Expected Change: Actuator Chatter Rate <0.25, Intra‑Rollout Reward CV <1.0  
 * Side Effects: None
 
 
 **The Physical Outcome & Lesson:**
-* **Status:** `Goodhart Trap` - The `Actuator Chatter Rate` was reduced from 0.265 to 0.105, meeting the target, but the `Intra-Rollout Reward CV` increased from 0.232 to 0.249, and the `Objective Alignment ($\rho$)` is weak at 0.305, indicating the reward function may be exploited rather than guiding optimal behavior.
-* **Behavioral Reality:** The agent exhibits smoother control actions but with increased off-center landings (43.3%) and crashes (20%), suggesting a misalignment between reward signals and desired outcomes. The reward topology is chaotic, leading to unstable optimization dynamics.
+
+
+* **Status:** `Productive Deviation` - The target metric for `Actuator Chatter Rate` (expected <0.25) was not achieved (0.499), but the `Intra-Rollout Reward CV` improved significantly from 1.806 to 0.418, and the `Population Success Rate` increased by 27 percentage points (64.0% → 91.0%).  
+* **Behavioral Reality:** The agent now successfully lands in the center 58.0% of the time (up from 35.0%), with a marked reduction in crashes (24.0% → 7.0%). However, severe actuator chattering persists, and macro-oscillations have emerged, indicating continued instability in the reward landscape.
 ----------------------------------------
 
 ### [2. STRATEGIST PROPOSALS]
 
-### Proposal 1: The "Hyperbolic Precision Sink" (Modification)
+### Proposal 1: Smooth Ground Affinity (Modification)
 
 **1. Conceptual Hypothesis:**  
-The current `sink_penalty` is causing a deadlock where the agent hesitates to descend quickly, leading to poor `Mean Descent Efficiency`. The proposed change introduces a y-gated precision term that only penalizes lateral error and impact velocity as the agent approaches the landing pad, removing the anti-altitude bias.
+The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro‑oscillations and high‑frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks.
 
-**2. Mathematical Formulation:**
-
+**2. Mathematical Formulation:**  
 * **Code Additions:**  
-Let \( y_{threshold} = 0.5 \).  
-\[
-R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)
-\]  
-*Where \( w_x = 2.0 \) and \( w_{v_y} = 1.5 \).*  
-*This term is near-zero when \( y \gg y_{threshold} \) (allowing free descent) and becomes an aggressive quadratic penalty as \( y \to 0 \).*
+  \[
+  r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high‑frequency noise into the gradient, making smooth descent impossible.
 
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** 4.5  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the ground‑level reward component, operating on the altitude variable $y$.
 
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_x = 2.0 \), \( w_{v_y} = 1.5 \)
-* **Constraint/Clipping:** \( y \geq 0.5 \) (term is near-zero)
-* **Integration:** Targets \( x \) and \( v_y \)
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** `Mean Descent Efficiency`
-* **Expected Change:** Increase from \( 0.047 \to >0.400 \)
-* **Side Effect:** Reduction in `landed_off_centered` rate
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** Actuator Chatter Rate (↓)  
+* **Expected Change:** Decrease from $0.499$ to $<0.20$.
 
 ---
 
-### Proposal 2: The "Radial Convergence" Term (Addition)
+### Proposal 2: Lateral Centering (Addition)
 
 **1. Conceptual Hypothesis:**  
-The low `Trajectory Isomorphism` and chaotic `SNR` indicate the agent lacks a global directional compass. Adding a term that rewards alignment of the velocity vector with the negative position vector provides a consistent gradient toward the origin, improving optimization across seeds.
+The agent currently experiences high `landed_off_centered` rates because the reward landscape is purely velocity‑dependent ($v_x \to 0$); there is no spatial incentive to reach the center ($x=0$). By adding a quadratic position‑based penalty, we create a "restorative spring" effect that penalizes lateral displacement, forcing the agent to prioritize centered landings during its descent.
 
-**2. Mathematical Formulation:**
-
+**2. Mathematical Formulation:**  
 * **Code Additions:**  
-\[
-R_{convergence} = -w_{conv} \cdot \left( \frac{x \cdot v_x + y \cdot v_y}{\sqrt{x^2 + y^2 + \epsilon}} \right)
-\]  
-*Where \( w_{conv} = 0.8 \) and \( \epsilon = 1e-6 \).*  
-*This is the negative dot product of the normalized position and velocity. When the agent moves toward the origin, \( x \cdot v_x + y \cdot v_y < 0 \), making \( R_{convergence} \) positive. This creates a "gravity well" effect without using time-based variables.*
+  \[
+  r_{\text{centering}} = -5.0 \cdot x^2
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high‑frequency noise into the gradient, making smooth descent impossible.
 
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** -5.0  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the centering reward component, operating on the horizontal position variable $x$.
 
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_{conv} = 0.8 \)
-* **Constraint/Clipping:** None explicitly stated
-* **Integration:** Targets \( x, y, v_x, v_y \)
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** `Trajectory Isomorphism (Pairwise \( \rho \))`
-* **Expected Change:** Increase from \( 0.053 \to >0.300 \)
-* **Target Metric:** `Signal-to-Noise Ratio (SNR)`
-* **Expected Change:** Increase from \( -154.35 \to > -10.0 \)
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** landed_off_centered (↓)  
+* **Expected Change:** Decrease from $25.0\%$ to $<10.0\%$.
 
 ---
 
-### Proposal 3: The "Landing Stability" Cluster (Synergistic Cluster)
+### Proposal 3: Dynamic Vertical Damping (Modification)
 
 **1. Conceptual Hypothesis:**  
-The high `landed_off_centered` rate suggests decoupled lateral and attitude control during landing. The proposed cluster couples `smoothness` with `attitude`, penalizing high-frequency control changes only when the agent's angle is non-zero, forcing the agent to prioritize "uprighting" for stable deceleration.
+The current `vertical_penalty` is purely kinetic, treating all vertical motion equally regardless of altitude. This provides no specific incentive to "brake" or settle more carefully as the lander approaches the surface. By coupling the $v_y$ penalty to the altitude $y$, we create a "soft landing" regime: the damping becomes increasingly aggressive as $y \to 0$, teaching the agent to minimize vertical velocity precisely at the moment of contact.
 
-**2. Mathematical Formulation:**
-
+**2. Mathematical Formulation:**  
 * **Code Additions:**  
-This cluster consists of two interacting terms:  
-* **Term A (Gated Smoothness):**  
-\[
-R_{smooth} = -w_{smooth} \cdot \text{abs}(\Delta \text{action}) \cdot (1 + |\text{angle}|)
-\]  
-* **Term B (Angular Damping):**  
-\[
-R_{damp} = -w_{damp} \cdot (v_{ang}^2 \cdot \text{exp}(-y))
-\]  
+  \[
+  r_{\text{vertical\_penalty}} = -\bigl(2.0 \cdot v_y^2\bigr) \cdot \left(1.0 + 5.0 \cdot \max\!\left(0,\;1 - \frac{|y|}{0.4}\right)\right)
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high‑frequency noise into the gradient, making smooth descent impossible.
 
-* **Synergy:**  
-As \( y \to 0 \), the `smoothness` penalty is amplified by the `angle` error, and the `angular_damping` vanishes (allowing for necessary high-torque maneuvers during descent). However, as the agent nears the ground, the `smoothness` penalty forces the agent to stabilize its `angle` to avoid massive penalties, effectively linking attitude stability to lateral precision.
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** 2.0 (base) with a scaling factor of 5.0 applied near the ground  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the vertical‑penalty reward component, operating on the vertical velocity $v_y$ and altitude $y$.
 
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
-
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_{smooth}, w_{damp} \) (values not explicitly stated)
-* **Constraint/Clipping:** \( y \geq 0 \) (damping term vanishes as \( y \to 0 \))
-* **Integration:** Targets `angle`, `v_ang`, and control changes
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** `landed_off_centered`
-* **Expected Change:** Reduction from \( 43.3\% \to < 20.0\% \)
-* **Target Metric:** `Actuator Chatter Rate`
-* **Expected Change:** Reduction from \( 0.105 \to < 0.080 \) (due to the reduction in high-frequency oscillations near the landing boundary).
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** Mean Descent Efficiency (↑)  
+* **Expected Change:** Increase from $0.006$ to $>0.04$.
 
 ### [3. DIAGNOSTIC REPORT (CURRENT BEHAVIOR)]
 ### 1. Optimization Dynamics & Critic Health
-**Status:** 🔴 **UNSTABLE/FAILED**
+**Status:** 🟢 **CONVERGED**
 
-#### A. Cross-Seed Robustness
-- **Signal-to-Noise Ratio (SNR):** `-154.35`
-  - *Diagnosis:* The cross-seed variance exceeds the mean reward. The current reward topology is highly chaotic and fails to enforce a universal policy.
+#### A. Cross-Seed Robustness & Terminal Stationarity
+- **Cross-Seed Reproducibility (CV):** `0.0200`  *(lower = more reproducible)*
+  - *Diagnosis:* Strong cross-seed consistency. The reward landscape is learnable and reproducible.
+- **Within-Seed Terminal Stationarity (CV):** `0.0470`  *(lower = more settled)*
+  - *Diagnosis:* Policy has settled. Final-quartile reward is stationary within each seed.
 
 #### B. Value Network (Critic) Integrity
-- **Critic Saturation Index (CSI):** `0.03`
+- **Critic Saturation Index (CSI):** `0.00`
   - *Diagnosis:* Healthy. The Critic is accurately mapping the advantage landscape.
 
 #### C. Optimization Landscape
-- **Trajectory Isomorphism (Pairwise $\rho$):** `0.053`
-  - *Diagnosis:* The learning curves are completely uncorrelated across seeds. The reward function has created a jagged landscape with multiple competing local minima.
+- **Trajectory Isomorphism (Pairwise $\rho$):** `-0.155`
 ### 2. Kinematic Behavior & Physical Robustness
 
 #### A. Universal Policy Robustness
-- **Population Success Rate:** `80.0%`
+- **Population Success Rate:** `91.0%`
 
 #### B. Thermodynamic & Actuator Efficiency
-- **Mean Descent Efficiency:** `0.047`
-- **Actuator Chatter Rate:** `0.105`
+- **Mean Descent Efficiency:** `0.006`
+- **Actuator Chatter Rate:** `0.499`
+  - *Action Required:* **Severe Actuator Chattering detected.** The agent is rapidly vibrating opposing thrusters. The reward gradient near the decision boundary is too jagged. Consider smoothing penalties or adding a minor action-continuity reward.
+  - *Action Required:* **Macro-Oscillations detected.** The agent is overcorrecting laterally (drifting left/right). Ensure X-velocity and angle penalties are properly balanced.
 
 #### C. Population Terminal Distribution
-- `landed_off_centered`: 43.3%
-- `landed_centered`: 33.3%
-- `crashed`: 20.0%
-- `landed_but_slid_into_valley`: 3.3%
+- `landed_centered`: 58.0%
+- `landed_off_centered`: 25.0%
+- `crashed`: 7.0%
+- `landed_off_centered_timeout`: 6.0%
+- `hover_timeout`: 2.0%
+- `landed_but_slid_into_valley`: 2.0%
 ### 3. Reward Topology & Algorithmic Credit Assignment
 
 #### A. Global Objective Alignment (Oracle Test)
-- **Objective Alignment ($\rho$):** `0.305`
-  - *Diagnosis:* Weak alignment. The shaped reward landscape is poorly correlated with the actual goal of landing.
+- **Global Conditional Delta** $\Delta = \mathbb{E}[R \mid \text{land}] - \mathbb{E}[R \mid \text{fail}]$: `-192.639`  *(ground truth)*
+- **Objective Alignment ($\rho$):** `0.647`  *(narrative descriptor — point-biserial estimator)*
 
 #### B. Component-Level Contribution (Algorithmic Credit Assignment)
 This table isolates the exact mathematical impact of each component you generated.
 This table includes Mutual Information (MI) alongside ρ to surface non-linear dependencies that linear correlation misses.
 | Reward Component | ρ w/ Success | MI w/ Success | Relative Magnitude | Diagnostic Flag |
 |:---|:---:|:---:|:---:|:---|
-| `attitude_penalty` | 0.370 | 0.117 | 21.1% | 🟢 Optimal |
-| `sink_penalty` | 0.153 | 0.023 | 69.9% | ⚪ Neutral/Noisy |
-| `smoothness_penalty` | 0.153 | 0.026 | 9.0% | ⚪ Neutral/Noisy |
+| `ground_level` | 0.480 | 0.137 | 44.2% | 🟢 Optimal |
+| `vertical_penalty` | 0.399 | 0.099 | 4.9% | 🟢 Optimal |
+| `leg_maintenance` | 0.485 | 0.226 | 28.6% | 🟢 Optimal |
+| `orientation_penalty` | 0.273 | 0.109 | 7.1% | 🟢 Optimal |
+| `velocity_stability` | 0.405 | 0.115 | 15.3% | 🟢 Optimal |
 
 #### C. Stochastic Policy Fragility
-- **Intra-Rollout Reward CV:** `0.249` (Variance across seeds with *frozen* weights)
-- **Terminal Mode Entropy:** `0.724`
+- **Intra-Rollout Reward CV:** `0.418` (Variance across seeds with *frozen* weights)
+- **Terminal Mode Entropy:** `0.657`
 
 **ACTION REQUIRED:**
 Evaluate the proposals based on your evaluation criteria. Output your `EXECUTIVE DECISION` selecting the single most viable Mathematical Contract.
 
 
 # Phase: research_lead [Thinking Trace] deepseek-r1:32b
-Okay, I'm trying to help the user make an executive decision for their Reinforcement Learning project. They provided a detailed problem with historical data, proposals, and a diagnostic report. Let me break this down step by step.
 
-First, I need to understand the current state of the system. The LunarLander-v3 is in iteration 4, and the diagnostics show that the optimization dynamics are unstable. The cross-seed robustness is very low, with a SNR of -154.35, which means the reward function isn't consistent across different seeds. The trajectory isomorphism is also low, indicating that the learning curves aren't correlated, leading to multiple local minima.
+Alright, so I'm trying to figure out which proposal to choose for the next iteration of the LunarLander-v3 project. The system is currently at iteration 4, and there are three proposals on the table. I need to evaluate each one based on the given criteria: Novelty Check, Falsifiability, and Physical Grounding.
 
-Looking at the current metrics, the population success rate is 80%, which is good, but the distribution shows that 43.3% of landings are off-center, which is a problem. The mean descent efficiency is low at 0.047, and the actuator chatter rate is 0.105, which is better than before but still indicates some oscillations.
+First, let me look at the Experiment Ledger to understand past iterations. Iteration 1 tried modifying the orientation signal, but it caused policy fragility and increased crashes. Iteration 2 aimed to reduce skidding by penalizing horizontal velocity, which actually helped increase the success rate but had some unintended side effects. Iteration 3 switched some penalties from L1 to L2 norms, which helped with reward variability but didn't solve the actuator chatter issue.
 
-The reward topology shows that the `attitude_penalty` is performing well, but the `sink_penalty` and `smoothness_penalty` are not contributing effectively. The objective alignment is weak, which means the reward function isn't guiding the agent optimally.
+Now, looking at the current diagnostic report, the main issues are severe actuator chatter and macro-oscillations. The success rate is high, but the agent is still having trouble landing smoothly and centered. The reward components show that `ground_level` is contributing a lot to the success, but maybe it's causing some instability because of its step function.
 
-Now, I need to evaluate the three proposals against the evaluation criteria: Novelty, Falsifiability, and Physical Grounding.
+Proposal 1 suggests replacing the hard threshold in `ground_level` with a Gaussian function. This makes sense because the step function at y=0.4 is likely causing sudden reward changes, leading to high-frequency oscillations. By making it smooth, the agent can approach the ground more gently, which should reduce actuator chatter and improve stability.
 
-Starting with Proposal 1: The "Hyperbolic Precision Sink." This proposal aims to address the low mean descent efficiency by modifying the `sink_penalty` to only penalize lateral error and impact velocity as the agent approaches the landing pad. The mathematical formulation introduces a y-gated term that becomes active as y decreases. This makes sense because it allows the agent to descend freely until it's close to the ground, where it needs to be precise. 
+Proposal 2 adds a quadratic penalty on the horizontal position x. This aims to make the agent prioritize landing at x=0. While this could help with centered landings, it might not address the underlying issue of actuator chatter. Also, adding another penalty might complicate the reward landscape further, potentially leading to unintended behaviors.
 
-Looking at the Experiment Ledger, in Iteration 1, a quadratic penalty was tried but led to regressions. However, Proposal 1 isn't just a quadratic penalty; it's gated by altitude, which is a novel approach. So, it passes the Novelty Check. The expected outcome is clear: increasing descent efficiency and reducing off-center landings. Physically, it addresses the kinematics by focusing on the landing phase, which is grounded in the environment's physics.
+Proposal 3 modifies the vertical penalty to increase near the ground. This could encourage softer landings, but it might also interfere with the agent's ability to control its descent smoothly. The coupling of v_y with y could create a more complex gradient, which might not be as effective as smoothing the existing penalties.
 
-Proposal 2: The "Radial Convergence" Term. This adds a reward term that encourages the agent to move towards the origin by rewarding alignment of velocity with position. This could help create a consistent gradient. However, the current reward function is already causing issues with chaotic behavior. Adding another term might complicate the reward landscape further, potentially leading to more instability. Also, the physical grounding here is less direct compared to Proposal 1, which specifically targets the descent phase.
+Considering the Novelty Check, Proposal 1 doesn't repeat past failed hypotheses. Iteration 1 dealt with orientation, and Iteration 3 with penalties using L2 norms. Smoothing the ground_level hasn't been tried before, so it's novel.
 
-Proposal 3: The "Landing Stability" Cluster. This aims to reduce off-center landings by coupling smoothness with attitude control. It introduces two terms that interact based on the agent's angle and altitude. While this could help stabilize the landing, the formulation is more complex, and the synergy between terms might be hard to balance. The current issues with high off-center landings might be due to the reward function's inability to guide the agent smoothly, and adding more penalties might not address the root cause as effectively as Proposal 1.
+For Falsifiability, Proposal 1 clearly states the expected outcome: a decrease in actuator chatter rate. This is measurable and can be validated in the next run. The other proposals either target different metrics or have less direct outcomes.
 
-Considering the Ledger, Proposal 1 doesn't repeat past failures because it's a novel approach with the altitude gating. Proposal 2's radial convergence idea wasn't tested before, but the risk of adding complexity is higher. Proposal 3's approach is new but might not directly address the main issue of descent efficiency.
+Physical Grounding is key here. Proposal 1 directly addresses the physics of the environment by smoothing the reward signal, which should lead to smoother control inputs. This is more grounded than adding arbitrary penalties or complicating the vertical damping.
 
-In terms of execution, Proposal 1 clearly targets the mean descent efficiency, which is a critical metric. The expected outcome is measurable and directly tied to improving the landing process. The mathematical formulation is straightforward and grounded in the physics of the landing phase.
-
-So, after evaluating all factors, Proposal 1 seems to be the most viable option. It addresses the main issue, is novel, and is physically grounded, making it the best choice for the next iteration.
+So, putting it all together, Proposal 1 seems to be the best choice. It addresses the main issue causing actuator chatter, is novel, has a clear measurable outcome, and is physically grounded in the environment's dynamics.
 
 
 
 # Phase: research_lead [Output] deepseek-r1:32b
+
+
 ### EXECUTIVE DECISION
 
-**Selected Proposal:** Proposal 1: The "Hyperbolic Precision Sink" (Modification)
+**Selected Proposal:** Proposal 1: Smooth Ground Affinity (Modification)
 
 **1. Scientific Rationale:**  
-This proposal introduces a physically grounded, altitude-gated precision term that resolves the chaotic reward landscape by focusing penalization on the final descent phase. The y-gated exponential function provides a smooth gradient that aligns with the kinematics of landing, addressing the root cause of poor `Mean Descent Efficiency` while avoiding the pitfalls of global anti-altitude bias seen in prior iterations.
+This proposal addresses the root cause of actuator chatter by smoothing the reward gradient near ground level, which is physically grounded and mathematically novel compared to past iterations. The continuous Gaussian affinity provides a stable gradient that should reduce high-frequency oscillations and improve policy robustness.
 
 **2. Ledger Clearance:**  
-Ledger confirms we have not yet tested soft-clipping the angular velocity. This proposal does not mirror any previously failed hypotheses, as it introduces a novel altitude-gating mechanism that was not explored in Iterations 1-3.
+The Experiment Ledger confirms we have not yet tested replacing the hard threshold in `ground_level` with a smooth function. Previous attempts focused on velocity penalties and orientation, not reward smoothing at ground level.
 
 **3. Execution Hand-off:**
 
 **1. Conceptual Hypothesis:**  
-The current `sink_penalty` is causing a deadlock where the agent hesitates to descend quickly, leading to poor `Mean Descent Efficiency`. The proposed change introduces a y-gated precision term that only penalizes lateral error and impact velocity as the agent approaches the landing pad, removing the anti-altitude bias.
+The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro-oscillations and high-frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks.
 
-**2. Mathematical Formulation:**
-
+**2. Mathematical Formulation:**  
 * **Code Additions:**  
-Let \( y_{threshold} = 0.5 \).  
-\[
-R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)
-\]  
-*Where \( w_x = 2.0 \) and \( w_{v_y} = 1.5 \).*  
-*This term is near-zero when \( y \gg y_{threshold} \) (allowing free descent) and becomes an aggressive quadratic penalty as \( y \to 0 \).*
+  \[
+  r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high-frequency noise into the gradient, making smooth descent impossible.
 
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** 4.5  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the ground-level reward component, operating on the altitude variable $y$.
 
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_x = 2.0 \), \( w_{v_y} = 1.5 \)
-* **Constraint/Clipping:** \( y \geq 0.5 \) (term is near-zero)
-* **Integration:** Targets \( x \) and \( v_y \)
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** `Mean Descent Efficiency`
-* **Expected Change:** Increase from \( 0.047 \to >0.400 \)
-* **Side Effect:** Reduction in `landed_off_centered` rate
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** Actuator Chatter Rate (↓)  
+* **Expected Change:** Decrease from $0.499$ to $<0.20$.
 
 
-# Phase: dispatcher [System] deepseek-r1:32b
+# Phase: dispatcher [System] gpt-oss:20b
 **[ROLE AND OBJECTIVE]**
 You are the Technical Dispatcher for an autonomous Reinforcement Learning pipeline. Your role is strict data extraction and routing.
 You will receive an `EXECUTIVE DECISION` from the Research Lead, which contains a selected Mathematical Contract for a new reward function.
@@ -1141,18 +1322,25 @@ Your ONLY job is to split this decision into two highly isolated, specific paylo
 
 **[ROUTING DIRECTIVES]**
 
-1. **Zero Hallucination:** You must extract verbatim from the Research Lead's output. Do not change the math, do not change the coefficients, and do not alter the predicted metrics.
-2. **The Coder Payload:** The Coder only cares about syntax and math. Extract the "Code Additions", "Code Deletions/Modifications", "Coefficient", "Constraint/Clipping", and "Integration" details. Strip away the philosophical hypotheses or expected outcomes. The 'Code Deletions/Modifications' section of the CODER_PAYLOAD must contain the exact backticked component names verbatim from the Research Lead's excision list, one per line. Do not summarize, paraphrase, group, or replace these with descriptive text. If no excisions were specified, write 'None'.
+1. **Zero Hallucination:** Extract verbatim from the Research Lead's output. Do not change the math, the coefficients, or the predicted metrics.
+
+2. **The Coder Payload.** Extract only math and syntax; strip hypotheses and outcomes. Route into four fields:
+   - **Code Deletions:** components to delete ENTIRELY. Copy the exact backticked component names from the Research Lead's excision list, one per line, verbatim — do not summarize, paraphrase, group, or rename. Write `None` if the excision list is empty. A deleted component is removed completely; it is never kept or modified.
+   - **Code Additions:** the reward math to implement — either a new component, or a replacement formula for an existing component (a replacement formula modifies that component). Extract the math verbatim.
+   - **Scaling & Constraints:** coefficients and clip bounds for the additions.
+   - **Integration:** the obs variables the additions touch.
+   A component name appears in **Code Deletions** OR **Code Additions**, never both.
+
 3. **The Validator Payload:** The Validator only cares about the scientific method. Extract the "Conceptual Hypothesis", the "Target Metric", the "Expected Change", and any "Expected Side Effects". Strip away the raw Python code or LaTeX math.
 
 **[OUTPUT CONSTRAINTS]**
-You must output your response strictly wrapped in the following XML-style tags so the downstream orchestration script can parse it. Do not include any conversational text outside these tags. Used a structured list if any field in either payload requires more than 1 numerical value.
+You must output your response strictly wrapped in the following XML-style tags so the downstream orchestration script can parse it. Do not include any conversational text outside these tags. Use a structured list if any field in either payload requires more than 1 numerical value.
 
 <CODER_PAYLOAD>
-**Code Additions:** [Extracted additions]
-**Code Deletions/Modifications:** [Extracted deletions]
-**Scaling & Constraints:** [Extracted coefficients, clips or named constants]
-**Integration:** [Extracted integration targets]
+**Code Deletions:** [Component names to delete entirely, one per line, or None]
+**Code Additions:** [New or replacement reward math]
+**Scaling & Constraints:** [Coefficients and clips for the math above]
+**Integration:** [obs variables the math above touches]
 </CODER_PAYLOAD>
 
 <VALIDATOR_PAYLOAD>
@@ -1164,7 +1352,7 @@ You must output your response strictly wrapped in the following XML-style tags s
 </VALIDATOR_PAYLOAD>
 
 
-# Phase: dispatcher [User] deepseek-r1:32b
+# Phase: dispatcher [User] gpt-oss:20b
 **TARGET SYSTEM:** LunarLander-v3
 **CURRENT TASK:** Payload Routing
 
@@ -1172,199 +1360,212 @@ Parse the following Executive Decision from the Research Lead and route the data
 
 ### [RESEARCH LEAD EXECUTIVE DECISION]
 
+
+
 ### EXECUTIVE DECISION
 
-**Selected Proposal:** Proposal 1: The "Hyperbolic Precision Sink" (Modification)
+**Selected Proposal:** Proposal 1: Smooth Ground Affinity (Modification)
 
 **1. Scientific Rationale:**  
-This proposal introduces a physically grounded, altitude-gated precision term that resolves the chaotic reward landscape by focusing penalization on the final descent phase. The y-gated exponential function provides a smooth gradient that aligns with the kinematics of landing, addressing the root cause of poor `Mean Descent Efficiency` while avoiding the pitfalls of global anti-altitude bias seen in prior iterations.
+This proposal addresses the root cause of actuator chatter by smoothing the reward gradient near ground level, which is physically grounded and mathematically novel compared to past iterations. The continuous Gaussian affinity provides a stable gradient that should reduce high-frequency oscillations and improve policy robustness.
 
 **2. Ledger Clearance:**  
-Ledger confirms we have not yet tested soft-clipping the angular velocity. This proposal does not mirror any previously failed hypotheses, as it introduces a novel altitude-gating mechanism that was not explored in Iterations 1-3.
+The Experiment Ledger confirms we have not yet tested replacing the hard threshold in `ground_level` with a smooth function. Previous attempts focused on velocity penalties and orientation, not reward smoothing at ground level.
 
 **3. Execution Hand-off:**
 
 **1. Conceptual Hypothesis:**  
-The current `sink_penalty` is causing a deadlock where the agent hesitates to descend quickly, leading to poor `Mean Descent Efficiency`. The proposed change introduces a y-gated precision term that only penalizes lateral error and impact velocity as the agent approaches the landing pad, removing the anti-altitude bias.
+The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro-oscillations and high-frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks.
 
-**2. Mathematical Formulation:**
-
+**2. Mathematical Formulation:**  
 * **Code Additions:**  
-Let \( y_{threshold} = 0.5 \).  
-\[
-R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)
-\]  
-*Where \( w_x = 2.0 \) and \( w_{v_y} = 1.5 \).*  
-*This term is near-zero when \( y \gg y_{threshold} \) (allowing free descent) and becomes an aggressive quadratic penalty as \( y \to 0 \).*
+  \[
+  r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
+  \]
+* **Code Deletions:**  
+  - **`ground_level`**: This component is being excised because its functional form is a discontinuous step function; the vertical jump at $y=0.4$ creates a "reward shock" that injects high-frequency noise into the gradient, making smooth descent impossible.
 
-* **Code Deletions/Modifications:**  
-* **No components are being excised.** The `attitude_penalty` is currently performing optimally (\( \rho=0.370 \)); the `sink_penalty` and `smoothness_penalty` contain salvageable structural information that is currently misaligned due to scaling and gating failures, rather than fundamental incoherence.
+**3. Reward Scaling & Constraints:**  
+* **Coefficient:** 4.5  
+* **Constraint/Clipping:** None explicitly stated.  
+* **Integration:** Applies to the ground-level reward component, operating on the altitude variable $y$.
 
-**3. Reward Scaling & Constraints:**
-
-* **Coefficient:** \( w_x = 2.0 \), \( w_{v_y} = 1.5 \)
-* **Constraint/Clipping:** \( y \geq 0.5 \) (term is near-zero)
-* **Integration:** Targets \( x \) and \( v_y \)
-
-**4. Falsifiable Expected Outcome:**
-
-* **Target Metric:** `Mean Descent Efficiency`
-* **Expected Change:** Increase from \( 0.047 \to >0.400 \)
-* **Side Effect:** Reduction in `landed_off_centered` rate
+**4. Falsifiable Expected Outcome:**  
+* **Target Metric:** Actuator Chatter Rate (↓)  
+* **Expected Change:** Decrease from $0.499$ to $<0.20$.
 
 **ACTION REQUIRED:**
 Extract and route the mathematical instructions to the `<CODER_PAYLOAD>` and the intervention parameters and predicted effects to the `<VALIDATOR_PAYLOAD>`. Output nothing else.
 
 
-# Phase: dispatcher [Thinking Trace] deepseek-r1:32b
-Okay, so I need to process this Executive Decision from the Research Lead and split it into two payloads: one for the Coder and one for the Validator. Let me go through each part step by step.
+# Phase: dispatcher [Thinking Trace] gpt-oss:20b
+We need to parse the executive decision. Provide two payloads.
 
-First, looking at the Coder Payload. The user mentioned that the Coder only cares about syntax and math. So, I should extract the Code Additions, Deletions/Modifications, Scaling & Constraints, and Integration details.
+CODER_PAYLOAD fields:
 
-Starting with Code Additions, the Research Lead provided a mathematical formulation. They defined y_threshold as 0.5 and the R_precision formula. So I'll write that verbatim.
+- Code Deletions: list of component names to delete. They mention `ground_level`. It says "- **`ground_level`**: This component is being excised". So deletion list: ground_level. The format: each on separate line, verbatim. So:
 
-Next, Code Deletions/Modifications. The Lead said no components are being excised, so I'll note that as 'None'.
+**Code Deletions:**
 
-For Scaling & Constraints, the coefficients are given as w_x = 2.0 and w_v_y = 1.5. The constraint is y >= 0.5. So I'll list these.
+ground_level
 
-Integration targets are x and v_y, so that's straightforward.
+- Code Additions: reward math: r_ground_level = 4.5 * exp(-y^2/0.08) - 1.5
 
-Now, moving on to the Validator Payload. The Validator is concerned with the scientific method, so I need the Conceptual Hypothesis, Target Metric, Expected Change, and Side Effects.
+We need to output exactly that math? The instruction says "Extract the math verbatim." So we include the LaTeX expression? It says "extract the math verbatim". In the example, they wrote LaTeX. So we should provide the same string. Use the same formatting. So:
 
-The Conceptual Hypothesis is that the current sink_penalty is causing hesitation, leading to poor Mean Descent Efficiency. The proposed change introduces a y-gated term to penalize only near the landing pad.
+**Code Additions:**
 
-The Target Metric is Mean Descent Efficiency, which is expected to increase from 0.047 to above 0.400. The side effect mentioned is a reduction in the landed_off_centered rate.
+r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
 
-I need to make sure I extract these points exactly as given without adding any extra information or changing the numbers.
+- Scaling & Constraints: Coefficients and clip bounds. Coefficient: 4.5. Constraint: None. So list: [4.5, None] maybe? They say "Coefficients and clip bounds for the additions." So we can list coefficient 4.5 and constraint None. Format: [4.5, None] or separate lines? The instructions: "Use a structured list if any field in either payload requires more than 1 numerical value." So we can provide list. So:
 
-Putting it all together, I'll structure the XML tags as specified, ensuring each section is correctly filled with the extracted data. I'll avoid any markdown or conversational text, keeping it strictly within the XML tags.
+**Scaling & Constraints:** [4.5, None]
 
+But maybe we should specify "None" as string? Probably "None". Good.
 
+- Integration: obs variables the additions touch: altitude variable y. So list: y. Provide as [y] maybe. Use structured list. So:
 
-# Phase: dispatcher [Output] deepseek-r1:32b
+**Integration:** [y]
+
+Now Validator payload:
+
+- Conceptual Hypothesis: The text: "The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro-oscillations and high-frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks."
+
+We need to extract that as the hypothesis. Probably just the entire paragraph.
+
+- Falsifiable Expected Outcome: Target Metric: Actuator Chatter Rate (↓). So we need to put Target Metric: Actuator Chatter Rate (↓). Then Expected Change: Decrease from 0.499 to <0.20. Side Effects: None? They didn't mention side effects. So we can leave side effects empty? The format: "* Side Effects: [Extracted side effects]". If none, maybe "None".
+
+Thus:
+
+**Conceptual Hypothesis:** [the paragraph]
+
+**Falsifiable Expected Outcome:** - Target Metric: Actuator Chatter Rate (↓)
+
+* Expected Change: Decrease from 0.499 to <0.20
+
+* Side Effects: None
+
+We need to wrap everything in tags:
+
 <CODER_PAYLOAD>
-**Code Additions:** Let \( y_{threshold} = 0.5 \).  
-\[
-R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)
-\]  
-*Where \( w_x = 2.0 \) and \( w_{v_y} = 1.5 \).*  
-**Code Deletions/Modifications:** None  
-**Scaling & Constraints:** \( w_x = 2.0 \), \( w_{v_y} = 1.5 \); \( y \geq 0.5 \) (term is near-zero)  
-**Integration:** Targets \( x \) and \( v_y \)  
+**Code Deletions:** [Component names to delete entirely, one per line, or None]
+**Code Additions:** [New or replacement reward math]
+**Scaling & Constraints:** [Coefficients and clips for the math above]
+**Integration:** [obs variables the math above touches]
 </CODER_PAYLOAD>
 
 <VALIDATOR_PAYLOAD>
-**Conceptual Hypothesis:** The current `sink_penalty` is causing a deadlock where the agent hesitates to descend quickly, leading to poor `Mean Descent Efficiency`. The proposed change introduces a y-gated precision term that only penalizes lateral error and impact velocity as the agent approaches the landing pad, removing the anti-altitude bias.  
-**Falsifiable Expected Outcome:** - Target Metric: `Mean Descent Efficiency`  
-* Expected Change: Increase from \( 0.047 \to >0.400 \)  
-* Side Effects: Reduction in `landed_off_centered` rate  
+**Conceptual Hypothesis:** [Extracted hypothesis]
+**Falsifiable Expected Outcome:** - Target Metric: [Extracted metric]
+
+* Expected Change: [Extracted change]
+* Side Effects: [Extracted side effects]
+</VALIDATOR_PAYLOAD>
+
+We need to keep formatting exactly.
+
+We need to ensure we don't include any extraneous text. Also we must not include any code fences or backticks. The "Component names" are backticked in the source: `ground_level`. The instructions say "Copy the exact backticked component names from the Research Lead's excision list, one per line, verbatim". So we need to include the backticks. So Code Deletions: `ground_level`. But they also say "Write `None` if the excision list is empty." So we need to list the component names with backticks. So the line should be `ground_level`. So in the output:
+
+**Code Deletions:** `ground_level`
+
+Now Code Additions: we need to provide the math verbatim, including backslashes. So:
+
+**Code Additions:** r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
+
+Scaling & Constraints: [4.5, None]
+
+Integration: [y]
+
+Now Validator:
+
+**Conceptual Hypothesis:** The paragraph.
+
+We need to preserve the paragraph. Probably we can keep line breaks or just keep as one string. But no extraneous formatting. Let's keep as one paragraph.
+
+**Falsifiable Expected Outcome:** - Target Metric: Actuator Chatter Rate (↓)
+
+* Expected Change: Decrease from 0.499 to <0.20
+
+* Side Effects: None
+
+Check for any extra spaces. Provide as exactly.
+
+Let's produce final output.
+
+
+# Phase: dispatcher [Output] gpt-oss:20b
+<CODER_PAYLOAD>
+**Code Deletions:** `ground_level`
+**Code Additions:** r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
+**Scaling & Constraints:** [4.5, None]
+**Integration:** [y]
+</CODER_PAYLOAD>
+
+<VALIDATOR_PAYLOAD>
+**Conceptual Hypothesis:** The current `ground_level` component uses a hard threshold ($y=0.4$) that creates a massive discontinuity in the reward signal ($ \Delta R = 4.5 $). As the agent approaches the $0.4$ boundary, this "wall" of reward induces macro-oscillations and high-frequency actuator chatter as the policy struggles to settle. By replacing the step function with a continuous, smooth Gaussian affinity, we provide a stable, differentiable gradient that guides the agent toward the ground without sudden reward shocks.
+**Falsifiable Expected Outcome:** - Target Metric: Actuator Chatter Rate (↓)
+
+* Expected Change: Decrease from 0.499 to <0.20
+* Side Effects: None
 </VALIDATOR_PAYLOAD>
 
 
 # Phase: coder [System] qwen3-coder:30b
 **[ROLE AND OBJECTIVE]**
-You are the Lead Implementation Engineer (Coder) for a Reinforcement Learning pipeline. Your ONLY job is to translate explicit mathematical instructions into production-ready, bug-free Python code for a Gymnasium environment wrapper.
-
-You are a rigorous editor working from an existing reward function. You will receive instructions for both "Code Additions" and "Code Deletions/Modifications". Do not question the math, do not invent new penalties, and do not write explanations. Just write the code.
+You are the Coder for an autonomous RL pipeline. Your only job is to translate explicit mathematical instructions into bug-free Python. You are an editor of an existing reward function — not a designer. Do not question the math, invent new terms, or write explanations. Write code only.
 
 **[ENVIRONMENT & API CONSTRAINTS]**
-**State Space & Variables Available:**
 You are writing the reward function for `LunarLander-v3`.
 * `obs`: A numpy array `[x_pos, y_pos, x_vel, y_vel, angle, angular_vel, leg1_contact, leg2_contact]`
 * `info['prev_obs']`: The observation array from the previous step.
 * `info['action']`: The discrete action taken by the agent.
+* `info.get('terminal_observation')`: Terminal observation if the episode just ended.
+* Libraries: `numpy` (as `np`) and standard Python only.
+* Helper functions are permitted outside `calculate_reward`, but `calculate_reward(obs, info)` must be the entry point.
 
-You must strictly adhere to the following function signature and constraints:
+**[RETURN CONTRACT]**
+The function MUST return exactly two items:
+1. `total_reward` — a single `float`, equal to `sum(components.values())`.
+2. `components` — a `dict` of every scalar reward term with a descriptive string key.
 
-1. **Signature:** `def calculate_reward(obs, info):`
-2. **Info Dictionary:** You have access to the previous observation (`info['prev_obs']`), the action taken (`info['action']`), and the terminal observation if the episode just ended (`info.get('terminal_observation')`).
-3. **Libraries:** You may only use `numpy` (as `np`) and standard Python math operations.
-4. **Helper Functions:** You may write helper functions outside the main function if necessary, but `calculate_reward` must be the primary entry point.
+**[COMPONENTS DICTIONARY CONTRACT]**
+`components` is consumed by the diagnostic layer for per-component credit assignment. Every entry must be a primitive scalar — never a derived expression that recombines other entries in the same dict.
 
-**[CRITICAL RETURN CONTRACT]**
-The function **MUST** return exactly two items:
+**RULE:** For any cluster formulation `R = A * B` or `R = A + B + C`, include ONLY the constituents in `components` — never the combined term. The combined term exists as an intermediate variable only.
 
-1. `total_reward`: A single `float` representing the sum of all reward components.
-2. `components_dict`: A dictionary containing the individual values of every mathematical component calculated. (e.g., `{"velocity_penalty": -0.5, "descent_bonus": 1.2}`). Give each component a clear, descriptive key name.
+```python
+# Proposed cluster: r_sink = clip(r_prox * r_diss, 0, 2.0)
+r_prox = np.exp(-(x**2 + y**2))
+r_diss = np.exp(-(vx**2 + vy**2))
+r_sink = np.clip(r_prox * r_diss, 0, 2.0)  # intermediate only — never a dict entry
 
-**[COMPONENTS DICTIONARY CONTRACT — STRICT]**
-The `components` dictionary is the authoritative gradient decomposition of `total_reward`. It is consumed by the diagnostic layer to compute per-component correlation with task success. Including a derived expression alongside its constituents corrupts the diagnostic and inflates the gradient applied during PPO training.
+# ❌ INCORRECT — combined term in dict (opaque to diagnostics):
+components = {
+    "sink_cluster": float(r_sink),
+}
+
+# ✅ CORRECT — constituents only:
+components = {
+    "terminal_proximity":   float(r_prox),
+    "velocity_dissipation": float(r_diss),
+}
+# total = r_prox + r_diss as intended; r_sink used in computation but not reported
+```
+
+**[DELETION CONTRACT]**
+Every component named on the deletion list must be completely removed from the function.
 
 **RULES — non-negotiable:**
+1. Read the full deletion list before writing any code.
+2. Do not preserve a deleted component for any reason — not for safety, not because it exists in `current_code`.
+3. For each deleted component, remove: (a) the variable computation, (b) its `components` dict entry, (c) any section comment that describes only that variable (e.g. `# === component_name ===`).
+4. Leave no orphaned variables, unused imports, or commented-out remnants.
+5. Empty deletion list (`None`) → preserve all existing components exactly.
 
-1. Every entry in `components` MUST be a primitive scalar value, not a derived expression involving other entries.
-2. If the Strategist proposes a "Combined", "Cluster", or "Synergy" formulation as a sum or product (e.g., `R_total = r_a + r_b + r_c` or `R_landing = R_contact * M_stable`), include ONLY the constituent terms in the dictionary. NEVER include the combined value as a separate entry.
-3. The line `total_reward = float(sum(components.values()))` must produce the intended total without double-counting.
-
-**WORKED EXAMPLE — INCORRECT:**
-```python
-# Strategist proposed: "Combined: R_damp = r_v_horiz + r_v_vert"
-r_v_horiz = -1.0 * np.tanh(1.5 * np.abs(vx))
-r_v_vert  = -1.0 * np.tanh(1.5 * np.abs(vy))
-r_damp    = r_v_horiz + r_v_vert  # derived
-
-components = {
-    "velocity_horizontal_damp":   float(r_v_horiz),
-    "velocity_vertical_damp":     float(r_v_vert),
-    "velocity_damping_combined":  float(r_damp),  # ❌ DOUBLE-COUNT
-}
-total_reward = float(sum(components.values()))
-# total = r_v_horiz + r_v_vert + (r_v_horiz + r_v_vert) = 2x intended weight
-```
-
-**WORKED EXAMPLE — CORRECT:**
-```python
-r_v_horiz = -1.0 * np.tanh(1.5 * np.abs(vx))
-r_v_vert  = -1.0 * np.tanh(1.5 * np.abs(vy))
-
-components = {
-    "velocity_horizontal_damp": float(r_v_horiz),
-    "velocity_vertical_damp":   float(r_v_vert),
-}
-total_reward = float(sum(components.values()))
-# r_damp may be referenced in comments or used as an intermediate name,
-# but it does not appear as a dictionary entry alongside its constituents.
-```
-
-The same rule applies to multiplicative compositions: if `R_landing = R_contact * M_stable` is proposed, include `R_landing` as a single component OR include `R_contact` and `M_stable` as separate components — never all three.
-
-**[DELETION LIST CONTRACT — STRICT]**
-The CODER_PAYLOAD contains a "Code Deletions/Modifications" section listing reward components the Strategist has identified as adversarial, redundant, or replaced. Every name appearing in that list MUST NOT appear as a key in the output `components` dictionary, and the variable computing it MUST be removed from the function body.
-
-**RULES — non-negotiable:**
-
-1. Read the full deletion list before writing any code. Treat each named component as required-to-remove.
-2. Do not preserve a deleted component "for safety" or because it appears in `current_code`. The Strategist has reasoned about its effect and decided it is harmful or replaced.
-3. Remove both the variable computation (e.g., `r_legs_penalty = -2.0 * (leg1+leg2)`) AND the dictionary entry (`"legs_interrupt_penalty": float(r_legs_penalty)`).
-4. Do not leave orphaned code, unused variables, or commented-out remnants of deleted components.
-5. If the deletion list is empty, "None", or "No components excised", make additions/modifications as instructed while preserving all existing components.
-
-**WORKED EXAMPLE — INCORRECT:**
-Deletion list: `legs_interrupt_penalty`, `survival`
-```python
-r_landing_cluster = 20.0 * (leg1+leg2) * np.exp(-np.abs(angle)) * np.exp(-np.abs(vy))
-r_survival        = 0.08
-r_legs_penalty    = -2.0 * (leg1+leg2)  # ❌ should have been removed
-
-components = {
-    "landing_cluster":         float(r_landing_cluster),
-    "survival":                float(r_survival),         # ❌ on deletion list
-    "legs_interrupt_penalty":  float(r_legs_penalty),     # ❌ on deletion list
-}
-```
-
-**WORKED EXAMPLE — CORRECT:**
-Deletion list: `legs_interrupt_penalty`, `survival`
-```python
-r_landing_cluster = 20.0 * (leg1+leg2) * np.exp(-np.abs(angle)) * np.exp(-np.abs(vy))
-
-components = {
-    "landing_cluster": float(r_landing_cluster),
-}
-```
+**PRESERVATION RULE:** Every component that is neither on the deletion list nor given a replacement formula in Code Additions must survive unchanged — same variable name, dict key, and computation. Do not autonomously drop, rename, or modify any other component. A replacement formula in Code Additions for an existing component is an intended modification — apply it.
 
 **[OUTPUT FORMAT]**
-Output ONLY valid Python code wrapped in standard `python` markdown blocks. Do not include any conversational text before or after the code block.
+Output ONLY valid Python code in a standard `python` markdown block. No text before or after the code block.
 
 
 # Phase: coder [User] qwen3-coder:30b
@@ -1395,28 +1596,39 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
     
     x, y, vx, vy, angle, v_ang, leg1, leg2 = obs
     prev_obs = info.get('prev_obs', obs)
-    prev_angle, prev_v_ang = prev_obs[4], prev_obs[5]
+    prev_vx, prev_legs = prev_obs[2], prev_obs[6] + prev_obs[7]
     action = info.get('action', 0)
     
-    # === 1. ATTITUDE PENALTY (new addition) ===
-    w_att = 1.5
-    r_attitude = -w_att * (angle**2 + v_ang**2)
+    # === 1. LEG CONTACT + HORIZONTAL SLIDE (core reward) ===
+    legs_contact = leg1 + leg2
+    horiz_slide_speed = abs(vx)
     
-    # === 2. SINK PENALTY (new addition) ===
-    w_x = 0.5
-    w_y = 0.5
-    w_v = 0.2
-    r_sink = -(w_x * np.abs(x) + w_y * np.abs(y) + w_v * (vy**2))
+    # === 3. HORIZONTAL DIRECTION CHANGES (slalom sliding) ===
+    vx_sign_flip = (np.sign(vx) != np.sign(prev_vx)) and abs(vx) > 0.8
     
-    # === 3. SMOOTHNESS PENALTY (new addition) ===
-    w_smooth = 0.1
-    prev_action = info.get('prev_action', 0)
-    r_smooth = -w_smooth * np.abs(action - prev_action)
+    # === 5. GROUND LEVEL PREFERENCE (slide near y=0) ===
+    near_ground = abs(y) < 0.4
+    r_ground_level = 3.0 if near_ground else -1.5
+    
+    # === 7. SURVIVAL + LEG MAINTENANCE ===
+    r_survival = 0.1
+    r_leg_maintenance = 1.0 * legs_contact  # Keep at least one leg down
+    
+    # === 8. ORIENTATION PENALTY ===
+    r_orientation = -(10.0 * angle**2 + 2.0 * v_ang**2)
+    
+    # === 9. VELOCITY STABILITY PENALTY ===
+    r_velocity_stability = -(3.0 * vy**2 + 10.0 * vx**2)
+    
+    # === 6. PENALIZE VERTICAL MOTION (stay low) ===
+    r_vertical_penalty = -2.0 * vy**2
     
     components = {
-        "attitude_penalty": float(r_attitude),
-        "sink_penalty": float(r_sink),
-        "smoothness_penalty": float(r_smooth),
+        "ground_level": float(r_ground_level),
+        "vertical_penalty": float(r_vertical_penalty),
+        "leg_maintenance": float(r_leg_maintenance),
+        "orientation_penalty": float(r_orientation),
+        "velocity_stability": float(r_velocity_stability),
     }
     
     total_reward = float(sum(components.values()))
@@ -1428,18 +1640,20 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
 
 These are the explicit mathematical updates you must integrate into the code above.
 
-**Code Additions:** Let \( y_{threshold} = 0.5 \).  
-\[
-R_{precision} = -\exp\left(\frac{y_{threshold} - y}{y_{threshold}}\right) \cdot \left( w_{x} \cdot x^2 + w_{v_y} \cdot v_y^2 \right)
-\]  
-*Where \( w_x = 2.0 \) and \( w_{v_y} = 1.5 \).*  
-**Code Deletions/Modifications:** None  
-**Scaling & Constraints:** \( w_x = 2.0 \), \( w_{v_y} = 1.5 \); \( y \geq 0.5 \) (term is near-zero)  
-**Integration:** Targets \( x \) and \( v_y \)  
+**Code Deletions:** `ground_level`
+**Code Additions:** r_{\text{ground\_level}} = 4.5 \cdot \exp\!\left(-\frac{y^2}{0.08}\right) - 1.5
+**Scaling & Constraints:** [4.5, None]
+**Integration:** [y]
 
+
+**EXECUTION CHECKLIST — complete in this order before writing any code:**
+1. Read the deletion list. For each named component: mark its variable, its `components` dict entry, and its section comment for removal.
+2. Confirm every component not on the deletion list and not redefined in Code Additions is preserved with its exact variable name, dict key, and computation unchanged.
+3. Implement the Code Additions using the specified Scaling & Constraints.
+4. Check the `components` dict: verify no entry is a derived combination (sum or product) of other entries already in the dict.
 
 **ACTION REQUIRED:**
-Write the complete, updated Python script containing `calculate_reward(obs, info)`. You MUST aggressively execute any specified Code Deletions by removing that logic entirely, and integrate all Code Additions exactly as specified.
+Write the complete, updated Python script containing `calculate_reward(obs, info)`.
 
 
 # Phase: coder [Output] qwen3-coder:30b
@@ -1461,35 +1675,38 @@ def calculate_reward(obs: np.ndarray, info: Dict) -> Tuple[float, Dict[str, floa
     
     x, y, vx, vy, angle, v_ang, leg1, leg2 = obs
     prev_obs = info.get('prev_obs', obs)
-    prev_angle, prev_v_ang = prev_obs[4], prev_obs[5]
+    prev_vx, prev_legs = prev_obs[2], prev_obs[6] + prev_obs[7]
     action = info.get('action', 0)
     
-    # === 1. ATTITUDE PENALTY (new addition) ===
-    w_att = 1.5
-    r_attitude = -w_att * (angle**2 + v_ang**2)
+    # === 1. LEG CONTACT + HORIZONTAL SLIDE (core reward) ===
+    legs_contact = leg1 + leg2
+    horiz_slide_speed = abs(vx)
     
-    # === 2. SINK PENALTY (new addition) ===
-    w_x = 0.5
-    w_y = 0.5
-    w_v = 0.2
-    r_sink = -(w_x * np.abs(x) + w_y * np.abs(y) + w_v * (vy**2))
+    # === 3. HORIZONTAL DIRECTION CHANGES (slalom sliding) ===
+    vx_sign_flip = (np.sign(vx) != np.sign(prev_vx)) and abs(vx) > 0.8
     
-    # === 3. SMOOTHNESS PENALTY (new addition) ===
-    w_smooth = 0.1
-    prev_action = info.get('prev_action', 0)
-    r_smooth = -w_smooth * np.abs(action - prev_action)
+    # === 5. GROUND LEVEL PREFERENCE (slide near y=0) ===
+    r_ground_level = 4.5 * np.exp(-y**2 / 0.08) - 1.5
     
-    # === 4. PRECISION PENALTY (new addition) ===
-    y_threshold = 0.5
-    w_x = 2.0
-    w_v_y = 1.5
-    r_precision = -np.exp((y_threshold - y) / y_threshold) * (w_x * x**2 + w_v_y * vy**2)
+    # === 7. SURVIVAL + LEG MAINTENANCE ===
+    r_survival = 0.1
+    r_leg_maintenance = 1.0 * legs_contact  # Keep at least one leg down
+    
+    # === 8. ORIENTATION PENALTY ===
+    r_orientation = -(10.0 * angle**2 + 2.0 * v_ang**2)
+    
+    # === 9. VELOCITY STABILITY PENALTY ===
+    r_velocity_stability = -(3.0 * vy**2 + 10.0 * vx**2)
+    
+    # === 6. PENALIZE VERTICAL MOTION (stay low) ===
+    r_vertical_penalty = -2.0 * vy**2
     
     components = {
-        "attitude_penalty": float(r_attitude),
-        "sink_penalty": float(r_sink),
-        "smoothness_penalty": float(r_smooth),
-        "precision_penalty": float(r_precision),
+        "ground_level": float(r_ground_level),
+        "vertical_penalty": float(r_vertical_penalty),
+        "leg_maintenance": float(r_leg_maintenance),
+        "orientation_penalty": float(r_orientation),
+        "velocity_stability": float(r_velocity_stability),
     }
     
     total_reward = float(sum(components.values()))

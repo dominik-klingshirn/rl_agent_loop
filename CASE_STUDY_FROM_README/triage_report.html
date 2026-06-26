@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ARD Triage — 2026-06-14_sideways_slide_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run3</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:   #0f1115; --bg2: #181a20; --bdr: #262931;
+    --txt:  #e6e6e6; --txt2: #a8c5f0; --txt3: #888; --txt4: #555;
+    --grn:  #6ee093; --red:  #e66e6e; --ylw: #e6c46e; --blu: #76b7b2;
+    --gc:   rgba(255,255,255,0.05);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body   { font-family: ui-monospace, "JetBrains Mono", "Fira Code", monospace;
+           background: var(--bg); color: var(--txt); padding: 28px;
+           font-size: 13px; line-height: 1.5; }
+  h1     { font-size: 20px; font-weight: 700; letter-spacing: .03em;
+           color: #fff; margin-bottom: 4px; }
+  h2     { font-size: 12px; font-weight: 600; letter-spacing: .1em;
+           text-transform: uppercase; color: var(--txt2);
+           border-bottom: 1px solid var(--bdr); padding-bottom: 5px;
+           margin: 22px 0 10px; }
+  .meta  { font-size: 11px; color: var(--txt3); margin-bottom: 20px; }
+  .meta code { color: var(--txt); }
+  /* ── headline cards ── */
+  .cards { display: grid;
+           grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+           gap: 8px; margin-bottom: 20px; }
+  .card  { background: var(--bg2); border: 1px solid var(--bdr);
+           border-radius: 6px; padding: 12px 14px; }
+  .card .lbl { font-size: 10px; color: var(--txt3); letter-spacing: .06em;
+               text-transform: uppercase; margin-bottom: 5px; }
+  .card .val { font-size: 22px; font-weight: 700; color: #fff; }
+  .card .sub { font-size: 10px; color: var(--txt4); margin-top: 3px; }
+  /* ── chart cards ── */
+  .cc      { background: var(--bg2); border: 1px solid var(--bdr);
+             border-radius: 6px; padding: 14px; margin-bottom: 12px; }
+  .grid2   { display: grid; grid-template-columns: 1fr 1fr;
+             gap: 12px; margin-bottom: 12px; }
+  .cbox    { position: relative; height: 200px; }
+  .cbox-sm { position: relative; height: 130px; }
+  /* ── tables ── */
+  table   { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th, td  { padding: 5px 8px; text-align: left;
+            border-bottom: 1px solid var(--bdr); }
+  th      { color: var(--txt2); font-weight: 600; font-size: 10px;
+            letter-spacing: .05em; text-transform: uppercase; }
+  td.num  { text-align: right; font-variant-numeric: tabular-nums; }
+  th.num  { text-align: right; }
+  tr.fl-hard td { background: #200f0f; color: var(--red); }
+  tr.fl-soft td { background: #1e1800; color: var(--ylw); }
+  tr.fl-ok   td { color: var(--txt4); }
+  tr.fl-unk  td { color: var(--txt4); opacity: .6; }
+  /* ── verdict chips ── */
+  .chip-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .chip  { display: inline-flex; flex-direction: column; align-items: center;
+           width: 44px; padding: 4px 2px; border-radius: 4px;
+           font-size: 9px; font-weight: 700; line-height: 1.4;
+           cursor: default; }
+  .chip .n { font-size: 10px; font-weight: 400; color: #666; margin-top: 1px; }
+  .chip-Validated,.chip-Confirmed       { background:#0e2318; color:var(--grn); }
+  .chip-ProductiveDeviation             { background:#0b1e26; color:var(--blu); }
+  .chip-Mixed,.chip-PyrrhicVictory      { background:#241b00; color:var(--ylw); }
+  .chip-Inconclusive                    { background:#1c1f26; color:#888; }
+  .chip-Regressed,.chip-Refuted,
+  .chip-GoodhartTrap                    { background:#200f0f; color:var(--red); }
+  .chip-Unparsed                        { background:#22252d; color:#555; }
+  /* ── inline tags ── */
+  .tag { display:inline-block; padding:1px 5px; border-radius:3px;
+         font-size:10px; font-weight:600; margin:1px; white-space:nowrap; }
+  .t-ex    { background:#200f0f; color:var(--red); }
+  .t-add   { background:#0e2318; color:var(--grn); }
+  .t-dc    { background:#241b00; color:var(--ylw); }
+  .t-gh    { background:#1e1e10; color:#c8c860; }
+  .t-warn  { background:#1a1a2e; color:#9898c8; }
+  .t-retry { background:#22102a; color:#d080d0; }
+  .dim     { color:var(--txt4); }
+</style>
+</head>
+<body>
+
+<h1>ARD Pipeline — Triage Report</h1>
+<div class="meta">
+  Campaign: <code>2026-06-14_sideways_slide_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run3</code> &nbsp;·&nbsp;
+  Generated: <code id="ts"></code> &nbsp;·&nbsp;
+  Run Score: <code id="rs" style="color:#e6c46e;font-weight:700"></code>
+</div>
+
+<div id="root"></div>
+
+<script>
+const D    = {"campaign_tag": "2026-06-14_sideways_slide_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run3", "model": "gemma4:26b-mlx", "iteration_count": 10, "total_wall_s": 3613.9, "peak_psr": 0.99, "peak_iter": 7, "final_psr": 0.86, "collapse_count": 2, "sharp_regression_count": 2, "recovery_count": 1, "unrecovered_count": 1, "stability_score": 0.3038157336281319, "validator_verdicts": {"Regressed": 6, "Validated": 2, "Productive Deviation": 1, "Unparsed": 1}, "iterations_with_warnings": 10, "iterations": [{"iter": 1, "psr": 0.3, "centered": 0.01, "baseline_psr": 0.0, "validator_status": "Regressed", "floor": {"status": "hard_violation", "delta_pp": 30.0, "label": "HARD: +30.0pp \u2192 cannot be Regressed"}, "n_components": 6, "n_excised": 4, "n_added": 1, "excised_components": ["side_thruster_bonus", "survival", "tilt_preference", "upright_penalty"], "added_components": ["orientation_penalty"], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 6, "lines_removed": 20, "patch_available": true, "edit_distance": 0.5, "excision_count": 0, "selected_proposal": 1, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": null, "term_centered": 0.01, "term_off_centered": 0.17, "term_off_centered_timeout": 0.01, "term_slid": 0.11, "term_crashed": 0.43, "term_oob": 0.14, "term_hover": 0.13, "n_optimal": 0, "n_traitor": 1, "n_dead_weight": 1, "n_hidden_dependency": 0, "n_hidden_helper": 3, "n_neutral_noisy": 1, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.187, "within_seed_cv": 0.147, "is_terminal_unstable": false, "macro_oscillations": 5.25, "seed_success_rates": [0.584192439862543, 0.5536384096024006, 0.4954022988505747, 0.5405786873676782], "cross_seed_success_std": 0.108, "objective_alignment_rho": 0.193, "is_sharp_regression": false, "regression_threshold_pp": 10.0, "recovered": false, "recovery_iter": null}, {"iter": 2, "psr": 0.64, "centered": 0.35, "baseline_psr": 0.3, "validator_status": "Validated", "floor": {"status": "ok", "delta_pp": 34.0, "label": "ok (+34.0pp)"}, "n_components": 5, "n_excised": 2, "n_added": 1, "excised_components": ["slalom_bonus", "sliding_legs"], "added_components": ["velocity_stability"], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 4, "lines_removed": 7, "patch_available": true, "edit_distance": 0.42857142857142855, "excision_count": 8, "selected_proposal": 1, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.01, "term_centered": 0.35, "term_off_centered": 0.19, "term_off_centered_timeout": 0.02, "term_slid": 0.08, "term_crashed": 0.24, "term_oob": 0.11, "term_hover": 0.01, "n_optimal": 2, "n_traitor": 0, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 3, "n_high_magnitude_neutral": 0, "cross_seed_cv": 4.884, "within_seed_cv": 0.95, "is_terminal_unstable": true, "macro_oscillations": 1.85, "seed_success_rates": [0.7282340500528728, 0.7829373650107991, 0.7145886344359627, 0.7084661707403471], "cross_seed_success_std": 0.268, "objective_alignment_rho": 0.357, "is_sharp_regression": false, "regression_threshold_pp": 21.6, "recovered": false, "recovery_iter": null}, {"iter": 3, "psr": 0.91, "centered": 0.58, "baseline_psr": 0.64, "validator_status": "Productive Deviation", "floor": {"status": "ok", "delta_pp": 27.0, "label": "ok (+27.0pp)"}, "n_components": 5, "n_excised": 0, "n_added": 0, "excised_components": [], "added_components": [], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 5, "lines_removed": 5, "patch_available": true, "edit_distance": 0.0, "excision_count": 0, "selected_proposal": 1, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.35, "term_centered": 0.58, "term_off_centered": 0.25, "term_off_centered_timeout": 0.06, "term_slid": 0.02, "term_crashed": 0.07, "term_oob": null, "term_hover": 0.02, "n_optimal": 5, "n_traitor": 0, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.02, "within_seed_cv": 0.047, "is_terminal_unstable": false, "macro_oscillations": 3.46, "seed_success_rates": [0.8589211618257261, 0.8701825557809331, 0.8523206751054853, 0.8712273641851107], "cross_seed_success_std": 0.044, "objective_alignment_rho": 0.647, "is_sharp_regression": false, "regression_threshold_pp": 53.6, "recovered": false, "recovery_iter": null}, {"iter": 4, "psr": 0.84, "centered": 0.6, "baseline_psr": 0.91, "validator_status": "Regressed", "floor": {"status": "ok", "delta_pp": -7.0, "label": "ok (-7.0pp)"}, "n_components": 5, "n_excised": 0, "n_added": 0, "excised_components": [], "added_components": [], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 1, "lines_removed": 2, "patch_available": true, "edit_distance": 0.0, "excision_count": 1, "selected_proposal": 1, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.58, "term_centered": 0.6, "term_off_centered": 0.1, "term_off_centered_timeout": 0.09, "term_slid": 0.05, "term_crashed": 0.1, "term_oob": null, "term_hover": 0.06, "n_optimal": 5, "n_traitor": 0, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.034, "within_seed_cv": 0.05, "is_terminal_unstable": false, "macro_oscillations": 2.74, "seed_success_rates": [0.8633663366336634, 0.8678038379530917, 0.880085653104925, 0.8786008230452675], "cross_seed_success_std": 0.11, "objective_alignment_rho": 0.619, "is_sharp_regression": false, "regression_threshold_pp": 10.0, "recovered": false, "recovery_iter": null}, {"iter": 5, "psr": 0.94, "centered": 0.59, "baseline_psr": 0.84, "validator_status": "Regressed", "floor": {"status": "ok", "delta_pp": 10.0, "label": "ok (+10.0pp)"}, "n_components": 6, "n_excised": 0, "n_added": 1, "excised_components": [], "added_components": ["action_smoothness"], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 5, "lines_removed": 1, "patch_available": true, "edit_distance": 0.16666666666666666, "excision_count": 0, "selected_proposal": 1, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.6, "term_centered": 0.59, "term_off_centered": 0.15, "term_off_centered_timeout": 0.06, "term_slid": 0.14, "term_crashed": 0.05, "term_oob": null, "term_hover": 0.01, "n_optimal": 5, "n_traitor": 1, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.028, "within_seed_cv": 0.046, "is_terminal_unstable": false, "macro_oscillations": 4.72, "seed_success_rates": [0.8694852941176471, 0.8752475247524752, 0.8614457831325302, 0.8589511754068716], "cross_seed_success_std": 0.045, "objective_alignment_rho": 0.62, "is_sharp_regression": false, "regression_threshold_pp": 22.0, "recovered": false, "recovery_iter": null}, {"iter": 6, "psr": 0.87, "centered": 0.53, "baseline_psr": 0.94, "validator_status": "Regressed", "floor": {"status": "ok", "delta_pp": -7.0, "label": "ok (-7.0pp)"}, "n_components": 7, "n_excised": 0, "n_added": 1, "excised_components": [], "added_components": ["lateral_viscosity"], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 4, "lines_removed": 0, "patch_available": true, "edit_distance": 0.14285714285714285, "excision_count": 0, "selected_proposal": 2, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.59, "term_centered": 0.53, "term_off_centered": 0.17, "term_off_centered_timeout": 0.06, "term_slid": 0.11, "term_crashed": 0.1, "term_oob": null, "term_hover": 0.03, "n_optimal": 6, "n_traitor": 1, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.062, "within_seed_cv": 0.033, "is_terminal_unstable": false, "macro_oscillations": 2.83, "seed_success_rates": [0.8470588235294118, 0.8315217391304348, 0.8845401174168297, 0.8767857142857143], "cross_seed_success_std": 0.033, "objective_alignment_rho": 0.599, "is_sharp_regression": false, "regression_threshold_pp": 10.0, "recovered": false, "recovery_iter": null}, {"iter": 7, "psr": 0.99, "centered": 0.79, "baseline_psr": 0.87, "validator_status": "Validated", "floor": {"status": "ok", "delta_pp": 12.0, "label": "ok (+12.0pp)"}, "n_components": 7, "n_excised": 1, "n_added": 1, "excised_components": ["action_smoothness"], "added_components": ["landing_precision"], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 7, "lines_removed": 4, "patch_available": true, "edit_distance": 0.25, "excision_count": 0, "selected_proposal": 3, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.53, "term_centered": 0.79, "term_off_centered": 0.04, "term_off_centered_timeout": 0.07, "term_slid": 0.09, "term_crashed": null, "term_oob": null, "term_hover": 0.01, "n_optimal": 7, "n_traitor": 0, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.044, "within_seed_cv": 0.037, "is_terminal_unstable": false, "macro_oscillations": 1.74, "seed_success_rates": [0.8757894736842106, 0.8863636363636364, 0.9117647058823529, 0.8838709677419355], "cross_seed_success_std": 0.017, "objective_alignment_rho": 0.618, "is_sharp_regression": false, "regression_threshold_pp": 10.0, "recovered": false, "recovery_iter": null}, {"iter": 8, "psr": 0.81, "centered": 0.36, "baseline_psr": 0.99, "validator_status": "Regressed", "floor": {"status": "ok", "delta_pp": -18.0, "label": "ok (-18.0pp)"}, "n_components": 7, "n_excised": 0, "n_added": 0, "excised_components": [], "added_components": [], "n_double_count": 0, "double_count_flags": [], "n_ghost": 1, "ghost_vars": ["r_survival"], "lines_added": 2, "lines_removed": 2, "patch_available": true, "edit_distance": 0.0, "excision_count": 0, "selected_proposal": 1, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.79, "term_centered": 0.36, "term_off_centered": 0.06, "term_off_centered_timeout": 0.03, "term_slid": 0.36, "term_crashed": 0.08, "term_oob": null, "term_hover": 0.11, "n_optimal": 7, "n_traitor": 0, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.064, "within_seed_cv": 0.044, "is_terminal_unstable": false, "macro_oscillations": 2.73, "seed_success_rates": [0.9037199124726477, 0.8347457627118644, 0.851685393258427, 0.8942115768463074], "cross_seed_success_std": 0.218, "objective_alignment_rho": 0.606, "is_sharp_regression": true, "regression_threshold_pp": 10.0, "recovered": false, "recovery_iter": null}, {"iter": 9, "psr": 0.0, "centered": null, "baseline_psr": 0.81, "validator_status": "Regressed", "floor": {"status": "ok", "delta_pp": -81.0, "label": "ok (-81.0pp)"}, "n_components": 7, "n_excised": 1, "n_added": 1, "excised_components": ["leg_maintenance"], "added_components": ["x_kill"], "n_double_count": 0, "double_count_flags": [], "n_ghost": 0, "ghost_vars": [], "lines_added": 4, "lines_removed": 5, "patch_available": true, "edit_distance": 0.25, "excision_count": 1, "selected_proposal": 3, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed"], "baseline_centered": 0.36, "term_centered": null, "term_off_centered": null, "term_off_centered_timeout": null, "term_slid": null, "term_crashed": null, "term_oob": 1.0, "term_hover": null, "n_optimal": 3, "n_traitor": 3, "n_dead_weight": 1, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.372, "within_seed_cv": 0.17, "is_terminal_unstable": true, "macro_oscillations": 0.25, "seed_success_rates": [0.0, 0.0, 0.0, 0.0], "cross_seed_success_std": 0.0, "objective_alignment_rho": -0.07, "is_sharp_regression": true, "regression_threshold_pp": 43.6, "recovered": true, "recovery_iter": 10}, {"iter": 10, "psr": 0.86, "centered": 0.49, "baseline_psr": 0.0, "validator_status": null, "floor": {"status": "soft_violation", "delta_pp": 86.0, "label": "SOFT: +86.0pp \u2192 should be DEV/Validated (got Unparsed)"}, "n_components": 5, "n_excised": 3, "n_added": 1, "excised_components": ["landing_precision", "lateral_viscosity", "x_kill"], "added_components": ["vh_brake"], "n_double_count": 0, "double_count_flags": [], "n_ghost": 4, "ghost_vars": ["r_landing_precision", "r_settle_a", "r_settle_v", "r_x_kill"], "lines_added": 4, "lines_removed": 6, "patch_available": true, "edit_distance": 0.5, "excision_count": 3, "selected_proposal": 1, "prop_modification": 0, "prop_addition": 0, "prop_cluster": 0, "coder_retries": 0, "parse_warnings": ["no_proposals_parsed", "ledger_post_mortem_pending"], "baseline_centered": null, "term_centered": 0.49, "term_off_centered": 0.02, "term_off_centered_timeout": 0.28, "term_slid": 0.07, "term_crashed": null, "term_oob": null, "term_hover": 0.14, "n_optimal": 5, "n_traitor": 0, "n_dead_weight": 0, "n_hidden_dependency": 0, "n_hidden_helper": 0, "n_neutral_noisy": 0, "n_high_magnitude_neutral": 0, "cross_seed_cv": 0.042, "within_seed_cv": 0.065, "is_terminal_unstable": false, "macro_oscillations": 0.75, "seed_success_rates": [0.7597042513863216, 0.7554671968190855, 0.793040293040293, 0.7702479338842976], "cross_seed_success_std": 0.115, "objective_alignment_rho": 0.24, "is_sharp_regression": false, "regression_threshold_pp": 10.0, "recovered": false, "recovery_iter": null}], "chat_rows": [{"iteration": 1, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 137.9803035, "eval_s": 130.2264305, "prompt_tokens": 3666, "gen_tokens": 10143, "think_tokens": 9257, "resp_tokens": 886}, {"iteration": 1, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 39.243563542, "eval_s": 32.24846, "prompt_tokens": 1375, "gen_tokens": 2415, "think_tokens": 1898, "resp_tokens": 517}, {"iteration": 1, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 78.136119459, "eval_s": 57.720936, "prompt_tokens": 2175, "gen_tokens": 954, "think_tokens": 699, "resp_tokens": 255}, {"iteration": 1, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 28.019933166, "eval_s": 23.115429, "prompt_tokens": 1084, "gen_tokens": 1748, "think_tokens": 1584, "resp_tokens": 164}, {"iteration": 1, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 14.2175365, "eval_s": 7.654258, "prompt_tokens": 1953, "gen_tokens": 646, "think_tokens": 0, "resp_tokens": 646}, {"iteration": 2, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 59.495914708, "eval_s": 41.632272, "prompt_tokens": 1933, "gen_tokens": 692, "think_tokens": 621, "resp_tokens": 71}, {"iteration": 2, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 98.115441916, "eval_s": 91.408731292, "prompt_tokens": 3776, "gen_tokens": 7244, "think_tokens": 6239, "resp_tokens": 1005}, {"iteration": 2, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 64.29716975, "eval_s": 56.843753, "prompt_tokens": 1613, "gen_tokens": 4292, "think_tokens": 3201, "resp_tokens": 1091}, {"iteration": 2, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 113.075159208, "eval_s": 86.632286, "prompt_tokens": 3004, "gen_tokens": 1423, "think_tokens": 1005, "resp_tokens": 418}, {"iteration": 2, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 25.226889417, "eval_s": 20.212906, "prompt_tokens": 1264, "gen_tokens": 1559, "think_tokens": 1340, "resp_tokens": 219}, {"iteration": 2, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 13.049434417, "eval_s": 6.641877, "prompt_tokens": 1771, "gen_tokens": 592, "think_tokens": 0, "resp_tokens": 592}, {"iteration": 3, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 96.437705083, "eval_s": 77.236341, "prompt_tokens": 2109, "gen_tokens": 1285, "think_tokens": 906, "resp_tokens": 379}, {"iteration": 3, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 94.561084875, "eval_s": 87.407972791, "prompt_tokens": 4237, "gen_tokens": 6914, "think_tokens": 5683, "resp_tokens": 1231}, {"iteration": 3, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 42.925005625, "eval_s": 35.58773, "prompt_tokens": 1917, "gen_tokens": 2656, "think_tokens": 1701, "resp_tokens": 955}, {"iteration": 3, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 118.707005083, "eval_s": 89.593716, "prompt_tokens": 3410, "gen_tokens": 1459, "think_tokens": 1038, "resp_tokens": 421}, {"iteration": 3, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 33.521188666, "eval_s": 28.517805, "prompt_tokens": 1289, "gen_tokens": 2153, "think_tokens": 1828, "resp_tokens": 325}, {"iteration": 3, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 12.886884542, "eval_s": 6.800502, "prompt_tokens": 1739, "gen_tokens": 586, "think_tokens": 0, "resp_tokens": 586}, {"iteration": 4, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 59.995227542, "eval_s": 41.020367, "prompt_tokens": 2125, "gen_tokens": 681, "think_tokens": 542, "resp_tokens": 139}, {"iteration": 4, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 113.284261459, "eval_s": 105.913933042, "prompt_tokens": 4591, "gen_tokens": 8303, "think_tokens": 7214, "resp_tokens": 1089}, {"iteration": 4, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 34.952286833, "eval_s": 27.789557, "prompt_tokens": 1625, "gen_tokens": 2084, "think_tokens": 1095, "resp_tokens": 989}, {"iteration": 4, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 100.371411042, "eval_s": 68.765313, "prompt_tokens": 3733, "gen_tokens": 1114, "think_tokens": 709, "resp_tokens": 405}, {"iteration": 4, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 23.582976375, "eval_s": 18.632321, "prompt_tokens": 1209, "gen_tokens": 1412, "think_tokens": 1192, "resp_tokens": 220}, {"iteration": 4, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 12.813726291, "eval_s": 6.777665, "prompt_tokens": 1683, "gen_tokens": 584, "think_tokens": 0, "resp_tokens": 584}, {"iteration": 5, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 62.159868083, "eval_s": 43.897702, "prompt_tokens": 2032, "gen_tokens": 730, "think_tokens": 625, "resp_tokens": 105}, {"iteration": 5, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 96.868965708, "eval_s": 89.207766416, "prompt_tokens": 4899, "gen_tokens": 7009, "think_tokens": 6000, "resp_tokens": 1009}, {"iteration": 5, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 29.345931042, "eval_s": 22.187466, "prompt_tokens": 1628, "gen_tokens": 1667, "think_tokens": 744, "resp_tokens": 923}, {"iteration": 5, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 90.913026959, "eval_s": 57.176283, "prompt_tokens": 3981, "gen_tokens": 923, "think_tokens": 599, "resp_tokens": 324}, {"iteration": 5, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 20.222407875, "eval_s": 15.345005, "prompt_tokens": 1117, "gen_tokens": 1166, "think_tokens": 965, "resp_tokens": 201}, {"iteration": 5, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 13.724189833, "eval_s": 7.393619, "prompt_tokens": 1681, "gen_tokens": 639, "think_tokens": 0, "resp_tokens": 639}, {"iteration": 6, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 57.697539083, "eval_s": 38.609741, "prompt_tokens": 2119, "gen_tokens": 640, "think_tokens": 513, "resp_tokens": 127}, {"iteration": 6, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 114.849819292, "eval_s": 106.801695416, "prompt_tokens": 5380, "gen_tokens": 8340, "think_tokens": 7276, "resp_tokens": 1064}, {"iteration": 6, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 38.283448625, "eval_s": 31.092302, "prompt_tokens": 1676, "gen_tokens": 2329, "think_tokens": 1568, "resp_tokens": 761}, {"iteration": 6, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 104.818292875, "eval_s": 68.700388999, "prompt_tokens": 4293, "gen_tokens": 1106, "think_tokens": 769, "resp_tokens": 337}, {"iteration": 6, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 20.409431042, "eval_s": 15.520234, "prompt_tokens": 1135, "gen_tokens": 1179, "think_tokens": 943, "resp_tokens": 236}, {"iteration": 6, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 14.649637958, "eval_s": 8.271607, "prompt_tokens": 1733, "gen_tokens": 709, "think_tokens": 0, "resp_tokens": 709}, {"iteration": 7, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 56.043242625, "eval_s": 36.652493, "prompt_tokens": 2187, "gen_tokens": 606, "think_tokens": 531, "resp_tokens": 75}, {"iteration": 7, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 113.707949084, "eval_s": 105.25069775, "prompt_tokens": 5769, "gen_tokens": 8181, "think_tokens": 7168, "resp_tokens": 1013}, {"iteration": 7, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 43.464372417, "eval_s": 36.280847, "prompt_tokens": 1670, "gen_tokens": 2713, "think_tokens": 1924, "resp_tokens": 789}, {"iteration": 7, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 102.57635425, "eval_s": 63.517404, "prompt_tokens": 4674, "gen_tokens": 1017, "think_tokens": 623, "resp_tokens": 394}, {"iteration": 7, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 29.001968875, "eval_s": 24.058896, "prompt_tokens": 1186, "gen_tokens": 1820, "think_tokens": 1571, "resp_tokens": 249}, {"iteration": 7, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 15.365303542, "eval_s": 9.182986, "prompt_tokens": 1864, "gen_tokens": 783, "think_tokens": 0, "resp_tokens": 783}, {"iteration": 8, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 66.7788225, "eval_s": 48.094782, "prompt_tokens": 2076, "gen_tokens": 799, "think_tokens": 639, "resp_tokens": 160}, {"iteration": 8, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 110.949147, "eval_s": 102.133801417, "prompt_tokens": 6107, "gen_tokens": 7916, "think_tokens": 6781, "resp_tokens": 1135}, {"iteration": 8, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 30.677389834, "eval_s": 23.449979, "prompt_tokens": 1733, "gen_tokens": 1759, "think_tokens": 848, "resp_tokens": 911}, {"iteration": 8, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 105.255626041, "eval_s": 63.522598, "prompt_tokens": 5017, "gen_tokens": 1012, "think_tokens": 587, "resp_tokens": 425}, {"iteration": 8, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 38.920298125, "eval_s": 33.970044, "prompt_tokens": 1215, "gen_tokens": 2559, "think_tokens": 2317, "resp_tokens": 242}, {"iteration": 8, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 15.818659167, "eval_s": 9.333703, "prompt_tokens": 1860, "gen_tokens": 790, "think_tokens": 0, "resp_tokens": 790}, {"iteration": 9, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 66.885773958, "eval_s": 47.800464, "prompt_tokens": 2125, "gen_tokens": 794, "think_tokens": 676, "resp_tokens": 118}, {"iteration": 9, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 112.430580084, "eval_s": 103.261656084, "prompt_tokens": 6526, "gen_tokens": 7959, "think_tokens": 6945, "resp_tokens": 1014}, {"iteration": 9, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 43.032357666, "eval_s": 35.900858, "prompt_tokens": 1611, "gen_tokens": 2687, "think_tokens": 1891, "resp_tokens": 796}, {"iteration": 9, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 125.897771583, "eval_s": 81.245651, "prompt_tokens": 5344, "gen_tokens": 1291, "think_tokens": 909, "resp_tokens": 382}, {"iteration": 9, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 27.684476917, "eval_s": 22.775698, "prompt_tokens": 1193, "gen_tokens": 1722, "think_tokens": 1483, "resp_tokens": 239}, {"iteration": 9, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 15.544502958, "eval_s": 9.076792, "prompt_tokens": 1869, "gen_tokens": 773, "think_tokens": 0, "resp_tokens": 773}, {"iteration": 10, "phase": "validator", "model": "deepseek-r1:32b", "total_s": 46.658534917, "eval_s": 27.835039, "prompt_tokens": 2073, "gen_tokens": 459, "think_tokens": 378, "resp_tokens": 81}, {"iteration": 10, "phase": "strategist", "model": "gemma4:26b-mlx", "total_s": 139.477506084, "eval_s": 130.018654416, "prompt_tokens": 6786, "gen_tokens": 9930, "think_tokens": 8996, "resp_tokens": 934}, {"iteration": 10, "phase": "organizer", "model": "gpt-oss:20b", "total_s": 49.832880416, "eval_s": 42.374553, "prompt_tokens": 1552, "gen_tokens": 3174, "think_tokens": 2423, "resp_tokens": 751}, {"iteration": 10, "phase": "research_lead", "model": "deepseek-r1:32b", "total_s": 142.961962917, "eval_s": 98.422317, "prompt_tokens": 5502, "gen_tokens": 1556, "think_tokens": 1207, "resp_tokens": 349}, {"iteration": 10, "phase": "dispatcher", "model": "gpt-oss:20b", "total_s": 20.993163875, "eval_s": 16.100352, "prompt_tokens": 1135, "gen_tokens": 1222, "think_tokens": 1016, "resp_tokens": 206}, {"iteration": 10, "phase": "coder", "model": "qwen3-coder:30b", "total_s": 15.090367166, "eval_s": 8.59745, "prompt_tokens": 1864, "gen_tokens": 732, "think_tokens": 0, "resp_tokens": 732}], "run_score_data": {"run_score": 0.649339, "sub_scores": {"ppv": 0.59411, "policy_retention": 0.580027, "tr": 0.972137}, "validity": {"is_diverged": false, "diverged_k_iterations": []}}};
+const root = document.getElementById('root');
+
+document.getElementById('ts').textContent =
+  new Date().toISOString().replace('T',' ').slice(0,19);
+document.getElementById('rs').textContent =
+  (D.run_score_data && D.run_score_data.run_score != null)
+    ? (+D.run_score_data.run_score).toFixed(3) : '—';
+
+// ── formatting helpers ──────────────────────────────────────────────────────
+function fmt(v, d=3)   { if (v==null) return '—'; return (+v).toFixed(d); }
+function pct(v)        { if (v==null) return '—'; return (v*100).toFixed(1)+'%'; }
+function dpp(v)        { if (v==null) return '—';
+                          return (v>=0?'+':'')+v.toFixed(1)+'pp'; }
+function dash(x)       { return x || '<span class="dim">—</span>'; }
+function fmtK(n) {
+  if (n == null) return '—';
+  if (n >= 10000) return Math.round(n/1000)+'K';
+  if (n >= 1000)  return (n/1000).toFixed(1)+'K';
+  return ''+n;
+}
+
+// ── verdict helpers ─────────────────────────────────────────────────────────
+function chipClass(s)  { return 'chip chip-'+(s||'Unparsed').replace(/[^A-Za-z]/g,''); }
+function short(s) {
+  return ({Validated:'VAL',Confirmed:'CON','Productive Deviation':'DEV',
+           Mixed:'MIX','Pyrrhic Victory':'PYR',Regressed:'REG',
+           Refuted:'REF','Goodhart Trap':'GHT',Inconclusive:'INC'})[s]
+    || (s||'?').slice(0,3).toUpperCase();
+}
+
+const PHASES = ['validator','strategist','organizer','research_lead','dispatcher','coder'];
+const PC = { validator:'#e15759', strategist:'#f28e2b', organizer:'#edc948',
+             research_lead:'#76b7b2', dispatcher:'#b07aa1', coder:'#4e79a7' };
+const gc = 'rgba(255,255,255,0.05)';
+const tc = '#555';
+
+function baseOpts(xLabel, yLabel) {
+  return {
+    animation: false,
+    maintainAspectRatio: false,
+    scales: {
+      x: { title:{display:true,text:xLabel,color:tc}, ticks:{color:tc}, grid:{color:gc} },
+      y: { title:{display:true,text:yLabel,color:tc}, ticks:{color:tc}, grid:{color:gc} },
+    },
+    plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HEADLINE CARDS
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const wrap = document.createElement('div');
+  wrap.className = 'cards';
+
+  const wallMin = D.total_wall_s ? D.total_wall_s/60 : null;
+  const wall    = wallMin != null ? wallMin.toFixed(1) + ' min' : '—';
+  const wallSub = (wallMin != null && D.iteration_count)
+                ? `≈ ${(wallMin / D.iteration_count).toFixed(1)} min/iter`
+                : '';
+
+  const totalIn    = D.chat_rows.reduce((s,r) => s + (r.prompt_tokens || 0), 0);
+  const totalThink = D.chat_rows.reduce((s,r) => s + (r.think_tokens  || 0), 0);
+  const totalOut   = D.chat_rows.reduce((s,r) => s + (r.resp_tokens   || 0), 0);
+
+  const peakSub = D.peak_iter != null
+                ? `iter ${D.peak_iter}`
+                : 'population success rate';
+
+  const hardViol = D.iterations.filter(i=>i.floor&&i.floor.status==='hard_violation').length;
+
+  [
+    { lbl:'Iterations',  val:D.iteration_count,         sub:'' },
+    { lbl:'Wall time',   val:wall,                      sub:wallSub },
+    { lbl:'Total in',    val:fmtK(totalIn),
+      sub: totalIn.toLocaleString()+' tokens' },
+    { lbl:'Total think', val:fmtK(totalThink),
+      sub: totalThink.toLocaleString()+' tokens' },
+    { lbl:'Total out',   val:fmtK(totalOut),
+      sub: totalOut.toLocaleString()+' tokens' },
+    { lbl:'Peak PSR',    val:pct(D.peak_psr),           sub:peakSub },
+    { lbl:'Final PSR',   val:pct(D.final_psr),          sub:'last iteration' },
+    { lbl:'Sharp Regress.', val:D.sharp_regression_count,
+      sub:'unrecovered: ' + D.unrecovered_count },
+    { lbl:'Floor Viol.', val:hardViol,
+      sub: hardViol > 0 ? 'hard violations' : 'all compliant' },
+  ].forEach(c => {
+    wrap.innerHTML += `<div class="card">
+      <div class="lbl">${c.lbl}</div>
+      <div class="val" style="${c.lbl==='Floor Viol.'&&hardViol>0?'color:#e66e6e':''}">${c.val}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`;
+  });
+  root.appendChild(wrap);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PSR TRAJECTORY — full width
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const iters   = D.iterations.map(i => i.iter);
+  const psrPct  = D.iterations.map(i => i.psr      != null ? i.psr*100      : null);
+  const centPct = D.iterations.map(i => i.centered != null ? i.centered*100 : null);
+
+  const psrCard = document.createElement('div');
+  psrCard.className = 'cc';
+  psrCard.innerHTML = '<h2>PSR Trajectory</h2>'
+    + `<div style="font-size:10px;color:#888;margin:-4px 0 6px">${D.sharp_regression_count} sharp regression${D.sharp_regression_count!==1?'s':''} · peak ${(D.peak_psr*100).toFixed(1)}% at iter ${D.peak_iter} · final ${(D.final_psr*100).toFixed(1)}%</div>`
+    + '<div class="cbox"><canvas id="cPSR"></canvas></div>';
+  root.appendChild(psrCard);
+
+  const ptCol = D.iterations.map(i => {
+    const isTerminal = (i.iter === D.iteration_count);
+    const s = i.validator_status;
+    if (isTerminal && (!s || s === 'Unparsed'))              return '#666';
+    if (!s||s==='Unparsed')                                  return '#444';
+    if (s==='Validated'||s==='Confirmed')                    return '#6ee093';
+    if (s==='Productive Deviation')                          return '#76b7b2';
+    if (s==='Mixed'||s==='Pyrrhic Victory')                  return '#e6c46e';
+    if (s==='Regressed'||s==='Refuted'||s==='Goodhart Trap') return '#e66e6e';
+    return '#888';
+  });
+
+  const regressionIters = D.iterations.filter(i => i.is_sharp_regression).map(i => i.iter);
+  const recoveryIters   = D.iterations.filter(i => i.recovered).map(i => i.iter);
+
+  const spanPlugin = {
+    id: 'iterSpans',
+    beforeDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      if (!chartArea) return;
+
+      // Category scale: getPixelForValue takes 0-based index, not label value
+      const tickW = iters.length > 1
+        ? Math.abs(scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0))
+        : 40;
+
+      function shade(iterList, fillStyle) {
+        ctx.save();
+        ctx.fillStyle = fillStyle;
+        iterList.forEach(iter => {
+          const idx = iters.indexOf(iter);
+          if (idx === -1) return;
+          const x = scales.x.getPixelForValue(idx);
+          ctx.fillRect(x - tickW / 2, chartArea.top, tickW, chartArea.bottom - chartArea.top);
+        });
+        ctx.restore();
+      }
+
+      shade(regressionIters, 'rgba(230,110,110,0.10)');
+      shade(recoveryIters,   'rgba(110,224,147,0.07)');
+    }
+  };
+
+  new Chart(document.getElementById('cPSR'), {
+    type: 'line',
+    data: { labels: iters, datasets: [
+      { label:'PSR (%)', data:psrPct,
+        borderColor:'#4e79a7', backgroundColor:'rgba(78,121,167,.12)',
+        tension:.2, fill:true, spanGaps:false,
+        pointRadius:5, pointBackgroundColor:ptCol, pointBorderColor:ptCol },
+      { label:'Centered (%)', data:centPct,
+        borderColor:'#59a14f', borderDash:[4,3],
+        tension:.2, fill:false, spanGaps:false, pointRadius:3 },
+      { label:`Peak PSR (${(D.peak_psr*100).toFixed(1)}%)`,
+        data: iters.map(() => D.peak_psr * 100),
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderDash: [2, 4],
+        pointRadius: 0,
+        fill: false },
+    ]},
+    options: {
+      animation:false, maintainAspectRatio:false,
+      scales: {
+        x:{ title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
+        y:{ min:0, max:105, title:{display:true,text:'% success',color:tc},
+            ticks:{color:tc,callback:v=>v+'%'}, grid:{color:gc} },
+      },
+      plugins: {
+        legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
+        tooltip:{ callbacks:{ afterLabel: ctx => {
+          const it = D.iterations[ctx.dataIndex];
+          const isTerminalIter = (it.iter === D.iteration_count);
+          const rawV = it.validator_status;
+          const v = (isTerminalIter && (!rawV || rawV === 'Unparsed'))
+                    ? 'terminal (unreviewed)' : (rawV || '—');
+          const f  = it.floor ? it.floor.label : '';
+          const rr = it.is_sharp_regression
+            ? `  ⚠ sharp regression (threshold: ${it.regression_threshold_pp}pp)` : '';
+          const rc = it.recovered
+            ? `  ↗ recovered at iter ${it.recovery_iter}` : '';
+          return [`  verdict: ${v}`, f ? `  floor: ${f}` : '', rr, rc].filter(Boolean);
+        }}}
+      },
+    },
+    plugins: [spanPlugin],
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TERMINAL MODE DISTRIBUTION — full width
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const iters = D.iterations.map(i => i.iter);
+
+  const termCard = document.createElement('div');
+  termCard.className = 'cc';
+  termCard.innerHTML = '<h2>Terminal Mode Distribution per Iteration</h2>'
+                     + '<div class="cbox"><canvas id="cTerm"></canvas></div>';
+  root.appendChild(termCard);
+
+  const TERM_MODES = [
+    { key:'term_centered',             label:'landed_centered',             color:'#2ca02c' },
+    { key:'term_off_centered',         label:'landed_off_centered',         color:'#1f77b4' },
+    { key:'term_off_centered_timeout', label:'landed_off_centered_timeout', color:'#186499' },
+    { key:'term_slid',                 label:'landed_but_slid',             color:'#1A6BA4' },
+    { key:'term_crashed',              label:'crashed',                     color:'#d62728' },
+    { key:'term_oob',                  label:'out_of_bounds',               color:'#9467bd' },
+    { key:'term_hover',                label:'hover_timeout',               color:'#ff7f0e' },
+  ];
+  const termDs = TERM_MODES.map(m => ({
+    label: m.label,
+    data:  D.iterations.map(i => i[m.key] != null ? i[m.key]*100 : null),
+    backgroundColor: m.color,
+  }));
+
+  new Chart(document.getElementById('cTerm'), {
+    type: 'bar',
+    data: { labels: iters, datasets: termDs },
+    options: {
+      animation:false, maintainAspectRatio:false,
+      scales: {
+        x:{ stacked:true, title:{display:true,text:'Iteration',color:tc},
+            ticks:{color:tc}, grid:{color:gc} },
+        y:{ stacked:true, min:0, max:100,
+            title:{display:true,text:'% of episodes',color:tc},
+            ticks:{color:tc, callback:v=>v+'%'}, grid:{color:gc} },
+      },
+      plugins:{
+        legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
+        tooltip:{ callbacks:{ afterBody: (items) => {
+          const idx = items[0].dataIndex;
+          if (idx === 0) return [];
+          const curr = D.iterations[idx];
+          const prev = D.iterations[idx - 1];
+          let maxDelta = 0, maxMode = '';
+          TERM_MODES.forEach(m => {
+            const d = Math.abs((curr[m.key] || 0) - (prev[m.key] || 0));
+            if (d > maxDelta) { maxDelta = d; maxMode = m.label; }
+          });
+          return maxDelta > 0.05 ? [`  largest shift: ${maxMode} (${(maxDelta*100).toFixed(1)}pp)`] : [];
+        }}}
+      },
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REWARD DESIGN QUALITY grid2
+// Left: Cross-Seed PSR Spread + Objective Alignment ρ
+// Right: Run Score + Component Classification
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const rdGrid = document.createElement('div');
+  rdGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto;gap:12px;margin-bottom:20px';
+  root.appendChild(rdGrid);
+
+  // ── Top-left: Cross-Seed PSR Spread ──────────────────────────────────────
+  const seedCard = document.createElement('div');
+  seedCard.className = 'cc';
+  seedCard.style.gridArea = '1 / 1 / 2 / 2';
+  seedCard.innerHTML = '<h2>Cross-Seed PSR Spread per Iteration <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#888;font-size:10px">(late-stage training, stochastic policy)</span></h2>'
+                     + '<div class="cbox"><canvas id="cSeedSpread"></canvas></div>';
+  rdGrid.appendChild(seedCard);
+
+  const maxSeeds = Math.max(...D.iterations.map(i => (i.seed_success_rates || []).length));
+  const SEED_COLORS = Array.from({ length: maxSeeds }, (_, i) =>
+    `hsl(${Math.round(i * 360 / maxSeeds)}, 65%, 58%)`
+  );
+  const scatterDs = Array.from({ length: maxSeeds }, (_, si) => ({
+    type: 'scatter',
+    label: `Seed ${si}`,
+    backgroundColor: SEED_COLORS[si],
+    pointRadius: 5,
+    data: D.iterations.flatMap(i => {
+      const rates = i.seed_success_rates;
+      if (!rates || rates[si] == null) return [];
+      return [{ x: i.iter, y: rates[si] * 100 }];
+    }),
+  }));
+
+  const seedMeanData = D.iterations.map(i => {
+    const rates = i.seed_success_rates;
+    if (!rates || !rates.length) return i.psr != null ? i.psr*100 : null;
+    return (rates.reduce((s,v)=>s+v,0)/rates.length)*100;
+  });
+
+  const itersForBand = D.iterations.map(i => i.iter);
+
+  const upperBoundData = D.iterations.map((i, idx) => {
+    const std  = i.cross_seed_success_std;
+    const mean = seedMeanData[idx];
+    return mean != null && std != null ? mean + std*100 : null;
+  });
+  const lowerBoundData = D.iterations.map((i, idx) => {
+    const std  = i.cross_seed_success_std;
+    const mean = seedMeanData[idx];
+    return mean != null && std != null ? mean - std*100 : null;
+  });
+
+  const upperDs = {
+    type: 'line',
+    label: '±1σ cross-seed',
+    data: itersForBand.map((iter, idx) => ({ x: iter, y: upperBoundData[idx] })),
+    borderColor: 'rgba(255,255,255,0)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    pointRadius: 0,
+    fill: '+1',
+    spanGaps: false,
+  };
+  const lowerDs = {
+    type: 'line',
+    label: '',
+    data: itersForBand.map((iter, idx) => ({ x: iter, y: lowerBoundData[idx] })),
+    borderColor: 'rgba(255,255,255,0)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    pointRadius: 0,
+    fill: false,
+    spanGaps: false,
+  };
+  const meanDs = {
+    type: 'line',
+    label: 'Stochastic mean PSR',
+    borderColor: '#e6e6e6',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderDash: [4, 3],
+    pointRadius: 0,
+    tension: 0.2,
+    data: itersForBand.map((iter, idx) => ({ x: iter, y: seedMeanData[idx] })),
+    spanGaps: false,
+  };
+  new Chart(document.getElementById('cSeedSpread'), {
+    type: 'scatter',
+    data: { datasets: [...scatterDs, upperDs, lowerDs, meanDs] },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { type: 'linear', title: { display: true, text: 'Iteration', color: tc },
+             ticks: { color: tc, stepSize: 1 }, grid: { color: gc } },
+        y: { min: 0, max: 100, title: { display: true, text: '% success', color: tc },
+             ticks: { color: tc, callback: v => v + '%' }, grid: { color: gc } },
+      },
+      plugins: { legend: { labels: { color: '#aaa', boxWidth: 10, font: { size: 10 },
+        filter: item => item.text !== '' } } },
+    },
+  });
+
+  // ── Bottom-left: Objective Alignment ρ ───────────────────────────────────
+  const rhoCard = document.createElement('div');
+  rhoCard.className = 'cc';
+  rhoCard.style.gridArea = '2 / 1 / 3 / 2';
+  rhoCard.innerHTML = '<h2>Objective Alignment ρ per Iteration</h2>'
+    + '<div style="font-size:10px;color:#888;margin:-4px 0 6px">Training-side leading indicator — point-biserial correlation of reward with is_success</div>'
+    + '<div class="cbox"><canvas id="cRho"></canvas></div>';
+  rdGrid.appendChild(rhoCard);
+
+  const rhoIters = D.iterations.map(i => i.iter);
+  const rhoData  = D.iterations.map(i => i.objective_alignment_rho ?? null);
+
+  new Chart(document.getElementById('cRho'), {
+    type: 'line',
+    data: { labels: rhoIters, datasets: [
+      { label: 'ρ (objective alignment)',
+        data: rhoData,
+        borderColor: '#76b7b2',
+        backgroundColor: 'rgba(118,183,178,0.1)',
+        tension: 0.2,
+        fill: true,
+        spanGaps: false,
+        pointRadius: 3 },
+      { label: 'zero',
+        data: rhoIters.map(() => 0),
+        borderColor: 'rgba(255,255,255,0.2)',
+        borderDash: [4, 4],
+        pointRadius: 0,
+        fill: false },
+      { label: 'weak alignment (0.3)',
+        data: rhoIters.map(() => 0.3),
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderDash: [2, 6],
+        pointRadius: 0,
+        fill: false },
+    ]},
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
+        y: { min: -1, max: 1,
+             title:{display:true,text:'ρ',color:tc},
+             ticks:{color:tc, stepSize:0.25}, grid:{color:gc} },
+      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    }
+  });
+
+  // ── Top-right: Run Score ─────────────────────────────────────────────────
+  if (D.run_score_data) {
+    const rs  = D.run_score_data.run_score;
+    const sub = D.run_score_data.sub_scores;
+    const SUB_LABELS = { ppv:'PPV', policy_retention:'PolicyRet', tr:'TR' };
+    const SUB_FULL   = { ppv:'Peak Graded Value',
+                         policy_retention:'Policy Retention',
+                         tr:'Training Reliability' };
+    const scoreColor = rs >= 0.7 ? '#6ee093' : rs >= 0.4 ? '#e6c46e' : '#e66e6e';
+
+    const rsCard = document.createElement('div');
+    rsCard.className = 'cc';
+    rsCard.style.gridArea = '1 / 2 / 2 / 3';
+    let barsHtml = '';
+    for (const [k, v] of Object.entries(sub)) {
+      const pct  = (v * 100).toFixed(1);
+      const col  = v >= 0.7 ? '#6ee093' : v >= 0.4 ? '#e6c46e' : '#e66e6e';
+      barsHtml += `
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;
+                      font-size:10px;color:#aaa;margin-bottom:3px">
+            <span><strong>${SUB_LABELS[k]}</strong> — ${SUB_FULL[k]}</span>
+            <span style="color:${col}">${pct}%</span>
+          </div>
+          <div style="background:#262931;border-radius:3px;height:6px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${col};border-radius:3px"></div>
+          </div>
+        </div>`;
+    }
+    const divTag = D.run_score_data.validity && D.run_score_data.validity.is_diverged
+      ? `<div style="margin-top:10px;font-size:10px;color:#e66e6e">
+           ⚠ Diverged run — excluded from MWU
+         </div>`
+      : '';
+    rsCard.innerHTML = `
+      <h2>Run Score</h2>
+      <div style="font-size:36px;font-weight:700;color:${scoreColor};margin:8px 0 14px">
+        ${rs.toFixed(3)}
+      </div>
+      ${barsHtml}
+      ${divTag}`;
+    rdGrid.appendChild(rsCard);
+  }
+
+  // ── Bottom-right: Component Classification + Traitor line ─────────────────
+  const compCard = document.createElement('div');
+  compCard.className = 'cc';
+  compCard.style.gridArea = '2 / 2 / 3 / 3';
+  compCard.innerHTML = '<h2>Reward Component Classification per Iteration</h2>'
+                     + '<div class="cbox"><canvas id="cCompClass"></canvas></div>';
+  rdGrid.appendChild(compCard);
+
+  const COMP_CATS = [
+    { key: 'n_optimal',              label: 'optimal',              color: '#2ca02c' },
+    { key: 'n_hidden_helper',        label: 'hidden_helper',        color: '#17becf' },
+    { key: 'n_neutral_noisy',        label: 'neutral_noisy',        color: '#aec7e8' },
+    { key: 'n_hidden_dependency',    label: 'hidden_dependency',    color: '#9467bd' },
+    { key: 'n_high_magnitude_neutral', label: 'high_magnitude_neutral', color: '#ff7f0e' },
+    { key: 'n_dead_weight',          label: 'dead_weight',          color: '#bcbd22' },
+    { key: 'n_traitor',              label: 'traitor',              color: '#d62728' },
+  ];
+
+  const compMaxTraitor = Math.max(3, ...D.iterations.map(i => i.n_traitor||0));
+
+  new Chart(document.getElementById('cCompClass'), {
+    type: 'bar',
+    data: {
+      labels: D.iterations.map(i => i.iter),
+      datasets: [
+        ...COMP_CATS.map(cat => ({
+          label: cat.label,
+          data: D.iterations.map(i => i[cat.key] ?? 0),
+          backgroundColor: cat.color,
+        })),
+        {
+          type: 'line',
+          label: 'Traitor count',
+          data: D.iterations.map(i => i.n_traitor ?? null),
+          borderColor: '#e66e6e',
+          backgroundColor: 'rgba(230,110,110,0.15)',
+          yAxisID: 'yTraitor',
+          pointRadius: 4,
+          tension: 0,
+          fill: false,
+          order: 0,
+        },
+      ],
+    },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, title: { display: true, text: 'Iteration', color: tc },
+             ticks: { color: tc }, grid: { color: gc } },
+        y: { stacked: true, beginAtZero: true,
+             title: { display: true, text: 'Component count', color: tc },
+             ticks: { color: tc, stepSize: 1 }, grid: { color: gc } },
+        yTraitor: {
+          position: 'right',
+          min: 0,
+          max: compMaxTraitor + 1,
+          title: { display: true, text: 'Traitors', color: '#e66e6e' },
+          ticks: { color: '#e66e6e', stepSize: 1 },
+          grid: { drawOnChartArea: false },
+        },
+      },
+      plugins: { legend: { labels: { color: '#aaa', boxWidth: 10, font: { size: 10 } } } },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOOR RULE COMPLIANCE TABLE
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const hard = D.iterations.filter(i=>i.floor&&i.floor.status==='hard_violation').length;
+  const soft = D.iterations.filter(i=>i.floor&&i.floor.status==='soft_violation').length;
+  const cc = document.createElement('div');
+  cc.className = 'cc';
+  cc.innerHTML = `<h2>Floor Rule Compliance
+    <span style="font-size:11px;margin-left:10px;
+      color:${hard>0?'#e66e6e':'#6ee093'}">${hard} hard</span>
+    <span style="font-size:11px;margin-left:6px;
+      color:${soft>0?'#e6c46e':'#888'}">${soft} soft</span>
+  </h2>`;
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr>
+    <th>Iter</th>
+    <th class="num">Baseline PSR</th>
+    <th class="num">Actual PSR</th>
+    <th class="num">Δ pp</th>
+    <th class="num">Δ Centered-PP</th>
+    <th>Verdict</th>
+    <th class="num">Prop</th>
+    <th>Assessment</th>
+  </tr></thead>`;
+  const tb = document.createElement('tbody');
+  D.iterations.forEach(it => {
+    const fl = it.floor || {};
+    const rc = fl.status==='hard_violation' ? 'fl-hard'
+             : fl.status==='soft_violation' ? 'fl-soft'
+             : fl.status==='ok'             ? 'fl-ok'
+             : 'fl-unk';
+    const dCent = (it.centered != null && it.baseline_centered != null)
+      ? ((it.centered - it.baseline_centered) * 100) : null;
+    const isTerminalIter = (it.iter === D.iteration_count);
+    const rawVerdict = it.validator_status;
+    const verdictLabel = (isTerminalIter && (!rawVerdict || rawVerdict === 'Unparsed'))
+      ? '<span style="color:#888">terminal (unreviewed)</span>'
+      : (rawVerdict || '—');
+    const propLabel = it.selected_proposal != null ? `P${it.selected_proposal}` : '—';
+    tb.innerHTML += `<tr class="${rc}">
+      <td>${it.iter}</td>
+      <td class="num">${pct(it.baseline_psr)}</td>
+      <td class="num">${pct(it.psr)}</td>
+      <td class="num">${dpp(fl.delta_pp)}</td>
+      <td class="num">${dCent != null ? (dCent >= 0 ? '+' : '') + dCent.toFixed(1) + 'pp' : '—'}</td>
+      <td>${verdictLabel}</td>
+      <td class="num">${propLabel}</td>
+      <td>${fl.label || '—'}</td>
+    </tr>`;
+  });
+  tbl.appendChild(tb);
+  cc.appendChild(tbl);
+  root.appendChild(cc);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CODE INTEGRITY TABLE
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const cc = document.createElement('div');
+  cc.className = 'cc';
+  cc.innerHTML = '<h2>Code Integrity per Iteration</h2>';
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr>
+    <th>Iter</th><th>Comps</th>
+    <th>Excised</th><th>Added</th>
+    <th style="color:#59a14f">+Lines</th><th style="color:#e15759">−Lines</th>
+    <th>Double-count</th><th>Ghost vars</th>
+    <th>Retries</th><th>Warnings</th>
+  </tr></thead>`;
+  const tb = document.createElement('tbody');
+  D.iterations.forEach(it => {
+    const ex = (it.excised_components||[]).map(e=>`<span class="tag t-ex">${e}</span>`).join('');
+    const ad = (it.added_components||[]).map(a=>`<span class="tag t-add">${a}</span>`).join('');
+    const dc = (it.double_count_flags||[]).map(f=>
+      `<span class="tag t-dc" title="Shared: ${(f.shared_r_vars||[]).join(', ')}">
+        ${f.component_a}↔${f.component_b}</span>`).join('');
+    const gh = (it.ghost_vars||[]).map(g=>`<span class="tag t-gh">${g}</span>`).join('');
+    const wr = (it.parse_warnings||[])
+      .filter(w=>!w.startsWith('iter1_no_prev')&&w!=='ledger_post_mortem_pending')
+      .map(w=>`<span class="tag t-warn">${w}</span>`).join('');
+    const rt = it.coder_retries > 0
+      ? `<span class="tag t-retry">${it.coder_retries}✗</span>`
+      : '';
+
+    tb.innerHTML += `<tr>
+      <td>${it.iter}</td>
+      <td class="num">${it.n_components ?? '—'}</td>
+      <td>${dash(ex)}</td><td>${dash(ad)}</td>
+      <td class="num" style="color:#59a14f">${it.lines_added  ?? '—'}</td>
+      <td class="num" style="color:#e15759">${it.lines_removed ?? '—'}</td>
+      <td>${dash(dc)}</td><td>${dash(gh)}</td>
+      <td>${dash(rt)}</td><td>${dash(wr)}</td>
+    </tr>`;
+  });
+  tbl.appendChild(tb);
+  cc.appendChild(tbl);
+  root.appendChild(cc);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PIPELINE PROCESS — grid2 (Edit Distance | Proposal Types) + Thinking Depth
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const ppGrid = document.createElement('div');
+  ppGrid.className = 'grid2';
+  root.appendChild(ppGrid);
+
+  const iters = D.iterations.map(i => i.iter);
+
+  // ── Left: Structural Edit Distance ───────────────────────────────────────
+  const editVals = D.iterations.map(i => i.edit_distance);
+  const meanED   = (() => {
+    const vs = editVals.filter(v => v != null);
+    return vs.length ? vs.reduce((s,v)=>s+v,0) / vs.length : null;
+  })();
+
+  const editCard = document.createElement('div');
+  editCard.className = 'cc';
+  editCard.innerHTML = `<h2>Structural Edit Distance
+    <span style="font-size:11px;margin-left:10px;color:#888">
+      mean ${meanED != null ? meanED.toFixed(2) : '—'}
+      &nbsp;·&nbsp; 0 = identical to prior iter, 1 = fully replaced
+    </span>
+  </h2><div class="cbox"><canvas id="cEdit"></canvas></div>`;
+  ppGrid.appendChild(editCard);
+
+  const edColors = editVals.map(v => {
+    if (v == null) return '#333';
+    if (v >= 0.6)  return '#e6c46e';
+    if (v >= 0.3)  return '#76b7b2';
+    return '#4e79a7';
+  });
+
+  new Chart(document.getElementById('cEdit'), {
+    type: 'bar',
+    data: {
+      labels: D.iterations.map(i => i.iter),
+      datasets: [{
+        label: 'Jaccard distance',
+        data: editVals,
+        backgroundColor: edColors,
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { min: 0, max: 1,
+             title:{display:true,text:'Jaccard dist.',color:tc},
+             ticks:{color:tc, stepSize:0.25}, grid:{color:gc} },
+      },
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: {
+          label: ctx => {
+            const it = D.iterations[ctx.dataIndex];
+            const v  = ctx.parsed.y;
+            if (v == null) return 'no baseline (iter 1)';
+            return `dist ${v.toFixed(2)}   (${it.n_excised}× excised, ${it.n_added}× added)`;
+          }
+        }}
+      },
+    }
+  });
+
+  // ── Right: Proposal Types Generated ──────────────────────────────────────
+  const propCard = document.createElement('div');
+  propCard.className = 'cc';
+  propCard.innerHTML = '<h2>Proposal Types Generated per Iteration</h2>'
+                     + '<div class="cbox"><canvas id="cPropType"></canvas></div>';
+  ppGrid.appendChild(propCard);
+
+  const PROP_COLORS = { modification:'#f28e2b', addition:'#59a14f', cluster:'#b07aa1' };
+  const propDs = ['modification','addition','cluster'].map(t => ({
+    label: t,
+    data:  D.iterations.map(i => i['prop_'+t] || 0),
+    backgroundColor: PROP_COLORS[t],
+  }));
+
+  new Chart(document.getElementById('cPropType'), {
+    type: 'bar',
+    data: { labels: iters, datasets: propDs },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked:true, title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { stacked:true, beginAtZero:true,
+             ticks:{color:tc, stepSize:1},
+             title:{display:true,text:'Proposals',color:tc}, grid:{color:gc} },
+      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    }
+  });
+}
+
+// Thinking Depth per Phase — full width, after pipeline grid2
+{
+  const iters = D.iterations.map(i => i.iter);
+
+  const thinkCard = document.createElement('div');
+  thinkCard.className = 'cc';
+  thinkCard.innerHTML = '<h2>Thinking Depth per Phase (est. tokens)</h2>'
+                      + '<div class="cbox"><canvas id="cThinkPhase"></canvas></div>';
+  root.appendChild(thinkCard);
+
+  const thinkPhaseDs = PHASES.map(p => ({
+    label: p,
+    data: iters.map(i => {
+      const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
+      return rows.reduce((s,r) => s + (r.think_tokens || 0), 0);
+    }),
+    borderColor: PC[p],
+    backgroundColor: 'transparent',
+    tension: 0.2,
+    pointRadius: 3,
+    spanGaps: false,
+  }));
+
+  new Chart(document.getElementById('cThinkPhase'), {
+    type: 'line',
+    data: { labels: iters, datasets: thinkPhaseDs },
+    options: {
+      animation:false, maintainAspectRatio:false,
+      scales: {
+        x:{ title:{display:true,text:'Iteration',color:tc}, ticks:{color:tc}, grid:{color:gc} },
+        y:{ title:{display:true,text:'Est. thinking tokens',color:tc},
+            ticks:{color:tc}, grid:{color:gc} },
+      },
+      plugins:{ legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPUTE — Gen Tokens + Wall Time
+// ─────────────────────────────────────────────────────────────────────────────
+if (D.chat_rows && D.chat_rows.length) {
+  const maxIter = Math.max(...D.chat_rows.map(r=>r.iteration||0));
+  const iterLabels = Array.from({length:maxIter}, (_,i)=>i+1);
+
+  const grid = document.createElement('div');
+  grid.className = 'grid2';
+  root.appendChild(grid);
+
+  // ── Left: gen tokens stacked by phase ───────────────────────────────────
+  const tokCard = document.createElement('div');
+  tokCard.className = 'cc';
+  tokCard.innerHTML = '<h2>Gen Tokens per Iteration (by phase)</h2>'
+                    + '<div class="cbox"><canvas id="cTok"></canvas></div>';
+  grid.appendChild(tokCard);
+
+  const tokDs = PHASES.map(p => ({
+    label: p,
+    data: iterLabels.map(i => {
+      const rows = D.chat_rows.filter(r=>r.iteration===i&&r.phase===p);
+      return rows.reduce((s,r)=>s+(r.gen_tokens||0),0);
+    }),
+    backgroundColor: PC[p],
+  }));
+
+  new Chart(document.getElementById('cTok'), {
+    type:'bar',
+    data:{ labels:iterLabels, datasets:tokDs },
+    options:{
+      animation: false,
+      maintainAspectRatio: false,
+      scales:{
+        x:{ stacked:true, title:{display:true,text:'Iteration',color:tc},
+            ticks:{color:tc}, grid:{color:gc} },
+        y:{ stacked:true, title:{display:true,text:'Gen tokens',color:tc},
+            ticks:{color:tc}, grid:{color:gc} },
+      },
+      plugins: { legend:{ labels:{color:'#aaa',boxWidth:10,font:{size:10}} } },
+    }
+  });
+
+  // ── Right: wall time per iteration, stacked by phase ────────────────────
+  const timeCard = document.createElement('div');
+  timeCard.className = 'cc';
+  timeCard.innerHTML = '<h2>Wall Time per Iteration (by phase)</h2>'
+                     + '<div class="cbox"><canvas id="cTime"></canvas></div>';
+  grid.appendChild(timeCard);
+
+  const timeDs = PHASES.map(p => ({
+    label: p,
+    data: iterLabels.map(i => {
+      const rows = D.chat_rows.filter(r => r.iteration === i && r.phase === p);
+      return rows.reduce((s, r) => s + (r.total_s || 0), 0);
+    }),
+    backgroundColor: PC[p],
+  }));
+
+  new Chart(document.getElementById('cTime'), {
+    type: 'bar',
+    data: { labels: iterLabels, datasets: timeDs },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true,
+             title:{display:true,text:'Iteration',color:tc},
+             ticks:{color:tc}, grid:{color:gc} },
+        y: { stacked: true, beginAtZero: true,
+             title:{display:true,text:'Wall time (s)',color:tc},
+             ticks:{color:tc, callback: v => v + 's'}, grid:{color:gc} },
+      },
+      plugins: {
+        legend: { labels:{color:'#aaa',boxWidth:10,font:{size:10}} },
+        tooltip: { callbacks: {
+          afterTitle: ctx => {
+            const i = +ctx[0].label;
+            const total = D.chat_rows
+              .filter(r => r.iteration === i)
+              .reduce((s,r) => s + (r.total_s || 0), 0);
+            return `Iter total: ${(total/60).toFixed(1)} min`;
+          }
+        }}
+      },
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE AVERAGES (across run)
+// ─────────────────────────────────────────────────────────────────────────────
+if (D.chat_rows && D.chat_rows.length) {
+  const totalRunTime = D.chat_rows.reduce((s,r) => s + (r.total_s || 0), 0);
+  const phaseStats = PHASES.map(p => {
+    const rows = D.chat_rows.filter(r => r.phase === p);
+    const n    = rows.length;
+    if (n === 0) return { phase: p, n: 0 };
+    const sumIn    = rows.reduce((s,r) => s + (r.prompt_tokens || 0), 0);
+    const sumThink = rows.reduce((s,r) => s + (r.think_tokens  || 0), 0);
+    const sumOut   = rows.reduce((s,r) => s + (r.resp_tokens   || 0), 0);
+    const sumGen   = rows.reduce((s,r) => s + (r.gen_tokens    || 0), 0);
+    const sumTime  = rows.reduce((s,r) => s + (r.total_s       || 0), 0);
+    return {
+      phase:      p,
+      n:          n,
+      model:      rows[0]?.model || '—',
+      avg_in:     Math.round(sumIn    / n),
+      avg_think:  Math.round(sumThink / n),
+      avg_gen:    Math.round(sumGen   / n),
+      avg_resp:   Math.round(sumOut   / n),
+      avg_total:  Math.round((sumIn + sumGen) / n),
+      avg_time_s: sumTime / n,
+      ratio:      sumOut > 0 ? sumThink / sumOut : 0,
+      pct_time:   totalRunTime > 0 ? sumTime / totalRunTime * 100 : 0,
+      tok_per_s:  sumTime > 0 ? sumGen / sumTime : 0,
+    };
+  });
+
+  const cc = document.createElement('div');
+  cc.className = 'cc';
+  cc.innerHTML = '<h2>Phase Averages (across run)</h2>';
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr>
+    <th>Phase</th><th>Model</th>
+    <th class="num">Avg Total</th>
+    <th class="num">Avg In-Tok</th>
+    <th class="num">Avg Out-Tok</th>
+    <th class="num">Avg Think</th>
+    <th class="num">Avg Response</th>
+    <th class="num">Think/Out</th>
+    <th class="num">Avg Time</th>
+    <th class="num">% Time</th>
+    <th class="num">Avg Tok/s</th>
+  </tr></thead>`;
+  const tb = document.createElement('tbody');
+  phaseStats.forEach(s => {
+    if (!s.n) {
+      tb.innerHTML += `<tr><td>${s.phase}</td><td class="dim">—</td>` +
+        `<td class="num dim">—</td>`.repeat(9) + `</tr>`;
+      return;
+    }
+    // Colour cue: high ratio = deep reasoning, 0 ratio = no thinking trace
+    const ratioStyle = s.ratio >= 2   ? 'color:#76b7b2'
+                     : s.ratio === 0  ? 'color:#e15759'
+                     :                  '';
+    tb.innerHTML += `<tr>
+      <td>${s.phase}</td>
+      <td style="font-size:10px;color:#888">${s.model}</td>
+      <td class="num">${fmtK(s.avg_total)}</td>
+      <td class="num">${s.avg_in.toLocaleString()}</td>
+      <td class="num">${s.avg_gen.toLocaleString()}</td>
+      <td class="num">${s.avg_think.toLocaleString()}</td>
+      <td class="num">${s.avg_resp.toLocaleString()}</td>
+      <td class="num" style="${ratioStyle}">${s.ratio.toFixed(2)}×</td>
+      <td class="num">${s.avg_time_s.toFixed(1)}s</td>
+      <td class="num">${s.pct_time.toFixed(1)}%</td>
+      <td class="num">${s.tok_per_s.toFixed(1)}</td>
+    </tr>`;
+  });
+  tbl.appendChild(tb);
+  cc.appendChild(tbl);
+  root.appendChild(cc);
+}
+</script>
+</body>
+</html>
