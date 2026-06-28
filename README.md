@@ -1,3 +1,7 @@
+
+
+
+
 # Autonomous Reward Design (ARD) via Multi-Agent Orchestration
 
 **This project demonstrates a closed-loop system that runs an autonomous search over reinforcement learning reward functions. Starting from deliberately flawed objectives that produce unstable behavior, the system iteratively diagnoses failure modes and rewrites the reward until it reliably produces stable, successful control policies.**
@@ -10,6 +14,7 @@ The system inherited a deliberately broken reward that paid out a healthy mean r
 > Autonomous walkthrough: the pipeline diagnoses a deliberately broken reward and rewrites it
 > into a stable landing policy, with no human edits to the reward function.
 
+https://github.com/user-attachments/assets/4da3a6f8-9826-429e-bd6e-a11183b3de16
 
 ## Core Insight
 
