@@ -165,7 +165,7 @@ def compute_tr(gs: list[float], sigma_norm: list[float], diverged: list[bool]) -
 
 def compute_run_score(
     run_dir: str | Path,
-    gs_w: float = 0.5,
+    gs_w: float = 0.35,
     lambda2: float = 0.5,
     eps: float = 0.001,
     e_pen_key: str = "population_mean_chatter_rate",
