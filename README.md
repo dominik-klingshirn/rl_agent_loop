@@ -217,7 +217,7 @@ Every run writes a `run_manifest.json` containing a **`config_fingerprint`** —
 Each run auto-generates a self-contained HTML dashboard (`analyze_run.py` → `triage_report.html`): RL outcomes, validator verdicts, per-iteration code evolution (AST-level component diffs), and LLM cognition/cost. Campaign-level aggregation across the 6 runs (`aggregate_runs.py`) produces mean±std pipeline-performance, compute-cost, and code-evolution views. Robustness of these dashboards to unstructured LLM prose is being extended via a dedicated Extractor/Evaluator node (see Future Work).
 
 The panels below are static captures; the full interactive dashboard renders live via
-[View ARD Dashboard](https://dominik-klingshirn.github.io/rl_agent_loop/CASE_STUDY_FROM_README/triage_report.html)
+[View ARD Dashboard](https://dominik-klingshirn.github.io/rl_agent_loop/)
 Cognition logs, the generated reward functions, and the per-iteration Diagnostic Reports for this run are in [`CASE_STUDY_FROM_README/`](CASE_STUDY_FROM_README/).
 
 ![Run score and alignment](assets/dash_runscore.png)
