@@ -14,7 +14,7 @@ The system inherited a deliberately broken reward that paid out a healthy mean r
 > Autonomous walkthrough: the pipeline diagnoses a deliberately broken reward and rewrites it
 > into a stable landing policy, with no human edits to the reward function.
 
-https://github.com/user-attachments/assets/4da3a6f8-9826-429e-bd6e-a11183b3de16
+https://github.com/user-attachments/assets/26b3dd6f-e1d2-4b37-b090-4d3fa7b66bb7
 
 ## Core Insight
 
