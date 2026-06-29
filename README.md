@@ -74,7 +74,7 @@ To prevent syntax collapse, reasoning is isolated from execution using 6 highly 
 
 **Detailed Data Flow**
 ```mermaid
-flowchart LR
+flowchart TD
 
   %% =========================
   %% Node 1: Execution Node
@@ -95,7 +95,7 @@ flowchart LR
     TRANS["Deterministic translation\nanalysis.py"]
     DIAG[(Diagnostic Report)]
 
-    subgraph AGENTS["Multi-agent\nmeta-reasoning"]
+    subgraph AGENTS["&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Multi-agent<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;meta-reasoning"]
       VAL["Validator\npost-mortem"]
       STRAT["Strategist\ntopology proposals"]
       ORG["Organizer\nformat structuring"]
@@ -177,27 +177,27 @@ This project treats its own evaluation as a first-class engineering surface.
 A single run produces noisy, multi-objective telemetry. RunScore collapses a full run into one comparable scalar in `[0, 1]`, computed post-hoc from per-iteration metric payloads (`post_hoc_analysis/compute_run_score.py`):
 
 $$
-\mathrm{RunScore} \;=\; \mathrm{PPV}^{\,0.4}\cdot \mathrm{PolRet}^{\,0.4}\cdot \mathrm{TR}^{\,0.2}
+\mathrm{RunScore} = \mathrm{PPV}^{\,0.4}\cdot \mathrm{PolRet}^{\,0.4}\cdot \mathrm{TR}^{\,0.2}
 $$
 
 A weighted **geometric mean** of three independent components, each in $[0, 1]$ — a collapse in any one term drags the whole score down, so no dimension can mask a failure in another.
 
 $$
-\mathrm{PPV} \;=\; \max_{i}\Big[\, \mathrm{GS}_i \cdot \max\big(0,\; 1 - \lambda_2\,\mathrm{chatter}_i\big) \Big]
+\mathrm{PPV} = \max_{i}\Big[\, \mathrm{GS}_i \cdot \max\big(0, 1 - \lambda_2\,\mathrm{chatter}_i\big) \Big]
 $$
 
 $$
-\mathrm{PolRet} \;=\; \frac{1}{N-1}\sum_{i=1}^{N-1} \frac{\mathrm{GS}_i + \mathrm{GS}_{i+1}}{2}
+\mathrm{PolRet} = \frac{1}{N-1}\sum_{i=1}^{N-1} \frac{\mathrm{GS}_i + \mathrm{GS}_{i+1}}{2}
 $$
 
 $$
-\mathrm{TR} \;=\; \frac{1}{|K|}\sum_{i \in K}\Big(1 - \min\big(1,\, \tfrac{\sigma_i}{0.5}\big)\Big), \qquad K = \text{top-}\lceil N/3 \rceil \text{ iterations by } \mathrm{GS}_i
+\mathrm{TR} = \frac{1}{|K|}\sum_{i \in K}\Big(1 - \min\big(1,\, \tfrac{\sigma_i}{0.5}\big)\Big), \qquad K = \text{top-}\lceil N/3 \rceil \text{ iterations by } \mathrm{GS}_i
 $$
 
 Each component is built on a per-iteration **graded success** that nests a precision goal inside the basic one:
 
 $$
-\mathrm{GS}_i \;=\; w\cdot S^{\text{any}}_i + (1 - w)\cdot S^{\text{cen}}_i, \qquad w = 0.35
+\mathrm{GS}_i = w\cdot S^{\text{any}}_i + (1 - w)\cdot S^{\text{cen}}_i, \qquad w = 0.35
 $$
 
 where, at iteration $i$: $S^{\text{any}}_i$ is the **any-landing** rate (the lander touches down at all, centered or not), $S^{\text{cen}}_i$ is the **centered-landing** rate (on the pad), $\mathrm{chatter}_i$ is the mean actuator-chatter rate (efficiency penalty, $\lambda_2 = 0.5$), and $\sigma_i$ is the cross-seed standard deviation of per-seed success.
