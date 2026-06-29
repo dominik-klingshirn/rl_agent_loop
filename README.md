@@ -65,7 +65,7 @@ Before the LLM sees any data, a Python layer intercepts the PPO training logs an
 **Phase 2: Multi-Agent Meta-Reasoning (The Brain)**
 
 To prevent syntax collapse, reasoning is isolated from execution using 6 highly restricted agents:
-1. **Strategist:** Reads the previous `.py` file, ledger of previous function intervetions ("Experiment Ledger") and diagnostic report. Guided by both $\rho$ and MI signals to distinguish negatively aligned components from non-linear hidden dependencies,to generate 3 distinct mathematical interventions proposals accompanied with falsifiable expected outcome.
+1. **Strategist:** Reads the previous `.py` file, ledger of previous function interventions ("Experiment Ledger") and diagnostic report. Guided by both $\rho$ and MI signals to distinguish negatively aligned components from non-linear hidden dependencies,to generate 3 distinct mathematical intervention proposals accompanied with falsifiable expected outcome.
 2. **Organizer:** A strict parser that sanitizes the Strategist's output, with zero data loss, into a pristine Markdown schema ("Mathematical Contract").
 3. **Research Lead:** The executive filter that cross-references proposals with current Diagnostic Report against the full Experiment Ledger to avoid cyclical failures and selects the single most appropriate proposal to proceed with.
 4. **Dispatcher:** Routes the decision, splitting the raw mathematical formulation from the falsifiable expected outcome into separate payloads.
@@ -347,7 +347,7 @@ The project runs along several independent axes:
     Omit it to run everything locally.
 - **Sequential vs. concurrent seed training.** 
     Hardware is detected at runtime (`src/utils.py`). 
-    On a multi-CCX Linux CPU, seeds train in parallel with each seed pinned to one CCX for L3 locality (~3.5× wall-clock on a 16-core Ryzen);everywhere else seeds run sequentially with identical learning outcomes.
+    On a multi-CCX Linux CPU, seeds train in parallel with each seed pinned to one CCX for L3 locality (~3.5× wall-clock on a 16-core Ryzen); everywhere else seeds run sequentially with identical learning outcomes.
 - **Single model vs. Mixture-of-Agents.** 
     `Config.role_model_overrides()` in `src/config.py` is the single source of truth for the per-role team; 
     `get_inference_options()` sets per-role temperature and context window. 
