@@ -53,6 +53,41 @@ The pipeline is a true autonomous loop. On each iteration, the Validator reads t
 * **Local Orchestration:**
 Designed to run completely unsupervised on local hardware. The pipeline utilizes distributed compute (a Linux server handling PPO training, and a MacBook Pro M4 Max handling LLM inference) with quantized local models ranging from 8B to 30B parameters, the practical upper bound on consumer hardware, to dynamically rewrite physics, train, and validate with no human intervention required between iterations.
 
+## The Methodology: Translating Physics to Context
+
+The core problem this project solves is simple: standard Reinforcement Learning telemetry isn't descriptive enough for an LLM to act on. If an agent gets a low score, the LLM doesn't know if it plummeted into the ground, hovered until it ran out of time, or landed perfectly but slid off the pad.
+
+To give the LLM the context it needs to rewrite the reward function, this system relies on a **Deterministic Translation Layer** with dual-channel component analysis.
+
+* **Behavior-First, Semantic Tagging:** The Gymnasium environment wrapper tracks the physical state at the terminal step and tags the episode (e.g., `crashed`, `hover_timeout`, `landed_but_slid_into_valley`, `landed_centered`), so diagnostics describe *what the agent did*, not just a scalar score.
+
+* **Dynamic Proxy Ladder:** The translation layer dynamically selects its correlation target based on the agent's current success rate. At 0% success, it shifts to a composite physical viability score weighted by the dominant failure mode. At 100% success, it shifts to impact softness. Only when the agent is partially succeeding does it correlate against binary task success, when that signal is actually discriminating.
+
+* **Dual-Channel Credit Assignment:** For each LLM-generated reward component, the system computes:
+  - **Pearson ρ** against the active target metric — captures the linear, signed direction of alignment.
+  - **Mutual Information (MI)** against binary task success, captures any statistical dependence, including non-linear ones. A component with low |ρ| but high MI is flagged as a 🟣 **Hidden Dependency**: it has real influence on outcomes that linear correlation cannot see (e.g., a threshold bonus, a quadratic attractor, or a saturating `tanh` term). The dead-weight flag (🟡) requires *both* low magnitude *and* low MI, preventing misclassification of small-coefficient gating terms as inert.
+
+## Case Study: Failure → Recovery
+
+![ARD Triage Report — PSR trajectory and per-iteration terminal-mode distribution](assets/dash_triage.png)
+
+The unit being evaluated here is **the search, not a single trained policy.** The system isn't trying to "solve LunarLander" once; it runs an iterative search over *reward functions*, and the signal that matters is how that search behaves across a full campaign — where it peaks, whether it sustains, and how it responds when it walks itself into a bad region. This run is shown **because its trajectory is non-monotonic, not in spite of it.** A clean monotonic climb would look staged; a reward-function search does not behave that way.
+
+The campaign inherits the `sideways_slide` reward, which pays the lander for keeping its legs down while sliding fast horizontally, rewards tilt, and ignores vertical control — producing a craft that skates sideways on one leg and never lands upright.
+
+1. **Inherited baseline (iter 0)** — 0% landing success; mean reward ≈ 110 while the agent crashes in 99.9% of episodes. 
+    Five of nine reward components are negatively aligned with successful landing.
+2. **Peak (iter 7)** — the search reaches a strong policy: **99% landing success**, objective alignment ρ = 0.62, cross-seed CV 0.044 (cross-seed success std 0.017), all seven active components positively aligned. 
+    By its success and cross-seed stability metrics, this reads as converged.
+3. **Self-induced blowout (iter 9)** — the search then introduces an `x_kill` term that grows to dominate **90% of total reward magnitude** at ρ = −0.74. 
+    Total reward explodes ~140× (≈3,000 → ≈427,000) while landing success collapses to **0%** and the agent flies out of bounds in 99.7% of episodes — a textbook reward-hacking signature (one dominant term, reward up, task success down). The search briefly re-created the exact failure class it was built to eliminate: a reward that pays out lavishly while the agent fails, this time of its own making.
+4. **Recovery (iter 10)** — the next iteration diagnoses the traitor, **excises `x_kill`** (and two dead-weight terms), adds a `vh_brake` term, and recovers to **86% landing success** with cross-seed CV 0.042 and all components positively aligned.
+
+Two distinct instabilities, two distinct terminal signatures. The inherited *crashing* pathology (iter 0) and the self-induced *out-of-bounds* blowout (iter 9), both diagnosed and recovered with **zero human edits to the reward function.**
+
+This is why a run is scored as a **search**, rather than read off a single iteration: what matters is the best policy the search found, whether that quality held up across iterations, and whether performance of the lander agent is reliably across random seeds. (`RunScore` formalizes this — see Evaluation & Reproducibility below.)
+
+A single 86% number hides both the 99% the search reached and the blowout it recovered from.
 
 ## System Architecture: The Decoupled Loop
 
@@ -231,41 +266,6 @@ Cognition logs, the generated reward functions, and the per-iteration Diagnostic
 > **Known gap.** Some panels render incomplete (the empty *Proposal Types* chart and the recurring `no_proposals_parsed` notices). 
 > These come from the dashboard's current regex-based extraction, which is brittle against the free-form prose stochastic LLM outputs produce. 
 > A structured Extractor node that replaces this regex layer is in active development (see Future Work); the underlying run data is complete and available in `CASE_STUDY_FROM_README/`.
-
-## The Methodology: Translating Physics to Context
-
-The core problem this project solves is simple: standard Reinforcement Learning telemetry isn't descriptive enough for an LLM to act on. If an agent gets a low score, the LLM doesn't know if it plummeted into the ground, hovered until it ran out of time, or landed perfectly but slid off the pad.
-
-To give the LLM the context it needs to rewrite the reward function, this system relies on a **Deterministic Translation Layer** with dual-channel component analysis.
-
-* **Behavior-First, Semantic Tagging:** The Gymnasium environment wrapper tracks the physical state at the terminal step and tags the episode (e.g., `crashed`, `hover_timeout`, `landed_but_slid_into_valley`, `landed_centered`), so diagnostics describe *what the agent did*, not just a scalar score.
-
-* **Dynamic Proxy Ladder:** The translation layer dynamically selects its correlation target based on the agent's current success rate. At 0% success, it shifts to a composite physical viability score weighted by the dominant failure mode. At 100% success, it shifts to impact softness. Only when the agent is partially succeeding does it correlate against binary task success, when that signal is actually discriminating.
-
-* **Dual-Channel Credit Assignment:** For each LLM-generated reward component, the system computes:
-  - **Pearson ρ** against the active target metric — captures the linear, signed direction of alignment.
-  - **Mutual Information (MI)** against binary task success, captures any statistical dependence, including non-linear ones. A component with low |ρ| but high MI is flagged as a 🟣 **Hidden Dependency**: it has real influence on outcomes that linear correlation cannot see (e.g., a threshold bonus, a quadratic attractor, or a saturating `tanh` term). The dead-weight flag (🟡) requires *both* low magnitude *and* low MI, preventing misclassification of small-coefficient gating terms as inert.
-
-## Case Study: Failure → Recovery
-
-![ARD Triage Report — PSR trajectory and per-iteration terminal-mode distribution](assets/dash_triage.png)
-
-The unit being evaluated here is **the search, not a single trained policy.** The system isn't trying to "solve LunarLander" once; it runs an iterative search over *reward functions*, and the signal that matters is how that search behaves across a full campaign — where it peaks, whether it sustains, and how it responds when it walks itself into a bad region. This run is shown **because its trajectory is non-monotonic, not in spite of it.** A clean monotonic climb would look staged; a reward-function search does not behave that way.
-
-The campaign inherits the `sideways_slide` reward, which pays the lander for keeping its legs down while sliding fast horizontally, rewards tilt, and ignores vertical control — producing a craft that skates sideways on one leg and never lands upright.
-
-1. **Inherited baseline (iter 0)** — 0% landing success; mean reward ≈ 110 while the agent crashes in 99.9% of episodes. 
-    Five of nine reward components are negatively aligned with successful landing.
-2. **Peak (iter 7)** — the search reaches a strong policy: **99% landing success**, objective alignment ρ = 0.62, cross-seed CV 0.044 (cross-seed success std 0.017), all seven active components positively aligned. 
-    By its success and cross-seed stability metrics, this reads as converged.
-3. **Self-induced blowout (iter 9)** — the search then introduces an `x_kill` term that grows to dominate **90% of total reward magnitude** at ρ = −0.74. 
-    Total reward explodes ~140× (≈3,000 → ≈427,000) while landing success collapses to **0%** and the agent flies out of bounds in 99.7% of episodes — a textbook reward-hacking signature (one dominant term, reward up, task success down). The search briefly re-created the exact failure class it was built to eliminate: a reward that pays out lavishly while the agent fails, this time of its own making.
-4. **Recovery (iter 10)** — the next iteration diagnoses the traitor, **excises `x_kill`** (and two dead-weight terms), adds a `vh_brake` term, and recovers to **86% landing success** with cross-seed CV 0.042 and all components positively aligned.
-
-Two distinct instabilities, two distinct terminal signatures. The inherited *crashing* pathology (iter 0) and the self-induced *out-of-bounds* blowout (iter 9), both diagnosed and recovered with **zero human edits to the reward function.**
-
-This is why a run is scored as a **search**, with RunScore, rather than read off a single iteration: PPV credits the best efficient policy the search found (the iter-7 peak), PolRet credits sustaining quality rather than a one-iteration spike, and TR credits cross-seed reliability. 
-A single 86% number hides both the 99% the search reached and the blowout it recovered from.
 
 ## Project Structure & Dynamic Workspaces
 
