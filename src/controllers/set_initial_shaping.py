@@ -40,7 +40,7 @@ def set_inital_shaping(reward_func:str='spin_crash'):
 
     # Path to save code and metric payload
     code_save_path = ws.get_path("code", 0, "reward.py")
-    payload_save_path= ws.get_path("telemetry_payloads", 0, "payload.json")
+    payload_save_path= ws.get_path("telemetry_payloads", 0, "metric_payload.json")
 
     # Copy to current experiment directory
     shutil.copy(code_load_path, code_save_path)

@@ -221,8 +221,12 @@ def build_triage_data(
             psr_by_iter[0]      = _p0.population_success_rate
             centered_by_iter[0] = _p0.landed_centered_rate
             std_by_iter[0]      = _p0.cross_seed_success_std
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"  ⚠  Failed to load iter00 payload {iter00_payload_path}: {exc} "
+                  f"(iter 1 baseline PSR will be unknown)")
+    else:
+        print(f"  ⚠  iter00 payload not found at {iter00_payload_path} "
+              f"(iter 1 baseline PSR will be unknown)")
 
     # Slim chat rows — pre-compute thinking/response split; drop raw text
     slim_chat = []
@@ -260,7 +264,7 @@ def build_triage_data(
         cog     = it.cognition
         cc      = it.code_change
 
-        baseline_psr = psr_by_iter.get(n - 1)          # None for iter 1 (expected)
+        baseline_psr = psr_by_iter.get(n - 1)          # iter 1 uses the iter00 payload
         floor        = _floor_rule_check(baseline_psr, o.population_success_rate,
                                          it.validator_status)
         retries      = _count_coder_retries(n, chat_rows)

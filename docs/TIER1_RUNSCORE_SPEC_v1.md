@@ -59,6 +59,10 @@ Each per-iteration signal is read from a specific block of `iter*_metric_payload
 
 A per-seed `success_rate` is the fraction of late-stage episodes ending in *any* landing status (`'landed' in status`), so both `s_any` and the dispersion term are built on the any-landing definition.
 
+**Iteration domain.** `RunScore` is computed over pipeline iterations `i = 1..N` only. The `iter00_metric_payload.json` payload is the curated controlled start (copied from `curated_reward_functions/`, not produced by the pipeline) and is excluded by design. All indices in Section 5 range over `1..N`.
+
+> **Note (2026-09-25):** RunScores computed before this date included the iter00 payload as an iteration and must be regenerated.
+
 ---
 
 ## 5. Component Definitions
@@ -66,7 +70,7 @@ A per-seed `success_rate` is the fraction of late-stage episodes ending in *any*
 ### 5.1 PPV — Peak Policy Value
 
 ```
-PPV = max_i [ GS_i · max(0, 1 − λ2 · E_pen_i) ]
+PPV = max_{i ∈ 1..N} [ GS_i · max(0, 1 − λ2 · E_pen_i) ]
 ```
 
 The single best iteration the search produced, discounted by an efficiency penalty (`λ2 = 0.5`). A peak reached through wasteful, chattery control is worth less than a clean one. This is the run's **ceiling** — proof the search *could* find a good reward function. Cross-seed reliability was intentionally removed from PPV; it is owned solely by TR (Section 5.3) to keep the three terms orthogonal.
@@ -74,7 +78,7 @@ The single best iteration the search produced, discounted by an efficiency penal
 ### 5.2 PolRet - Policy Retention
 
 ```
-PolRet = (1 / (N−1)) · Σ_{i=0}^{N−2} (GS_i + GS_{i+1}) / 2     (0 if N < 2)
+PolRet = (1 / (N−1)) · Σ_{i=1}^{N−1} (GS_i + GS_{i+1}) / 2     (0 if N < 2)
 ```
 
 The trapezoidal mean of `GS` across the iteration horizon — the time-averaged graded success of the whole search trajectory. It rewards runs that *held* their gains and penalizes runs that spiked once and collapsed. Where PPV measures the ceiling, this measures the floor-to-ceiling area.
@@ -82,7 +86,7 @@ The trapezoidal mean of `GS` across the iteration horizon — the time-averaged 
 ### 5.3 TR — Training Robustness
 
 ```
-K        = top-ceil(N/3) iterations ranked by GS_i
+K        = top-ceil(N/3) iterations i ∈ 1..N ranked by GS_i
 σ_norm_i = std(seed_success_rates_i) / 0.5        (0 if < 2 seeds)
 TR       = (1 / |K|) · Σ_{i ∈ K} [ 1 − min(1, σ_norm_i) ]
 ```

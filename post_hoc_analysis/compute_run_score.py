@@ -5,6 +5,9 @@ Computes the composite Tier 1 RunScore for a completed ARD run.
 Reads per-iteration metric_payload.json files from the standard workspace
 directory structure. No dependencies on live pipeline components.
 
+RunScore is computed over pipeline iterations i = 1..N only. The iter00 payload
+is the curated controlled start (not a pipeline output) and is excluded by design.
+
 Usage:
     python compute_run_score.py --run_dir experiments/CampaignTag/ModelName
     python compute_run_score.py --run_dir experiments/CampaignTag/ModelName --gs_w 0.35 --lambda2 0.5 --eps 0.001
@@ -12,6 +15,7 @@ Usage:
 
 import json
 import math
+import re
 import argparse
 import numpy as np
 from pathlib import Path
@@ -23,23 +27,37 @@ from pathlib import Path
 
 def load_iteration_payloads(run_dir: Path) -> list[dict]:
     """
-    Auto-detects and loads all iter*_metric_payload.json files in sorted order.
-    Returns a list of payload dicts ordered by iteration number.
+    Auto-detects and loads the pipeline iterations' iter{NN}_metric_payload.json
+    files (i = 1..N), ordered by parsed iteration number.
+
+    Iteration 0 is excluded by design: iter00 is the curated controlled start
+    copied from curated_reward_functions/, not a pipeline output.
     """
     payloads_dir = run_dir / "telemetry" / "metric_payloads"
     if not payloads_dir.exists():
         raise FileNotFoundError(f"No metric_payloads directory found at {payloads_dir}")
 
-    payload_files = sorted(payloads_dir.glob("iter*_metric_payload.json"))
-    if not payload_files:
-        raise FileNotFoundError(f"No metric_payload.json files found in {payloads_dir}")
+    indexed_files = []
+    for f in payloads_dir.glob("iter*_metric_payload.json"):
+        m = re.fullmatch(r"iter(\d+)_metric_payload\.json", f.name)
+        if m is None:
+            continue
+        iteration = int(m.group(1))
+        if iteration == 0:
+            continue  # curated controlled start — excluded from RunScore
+        indexed_files.append((iteration, f))
+    indexed_files.sort(key=lambda t: t[0])
+
+    if not indexed_files:
+        raise FileNotFoundError(f"No pipeline iteration (>=1) metric_payload.json files found in {payloads_dir}")
 
     payloads = []
-    for f in payload_files:
+    for _, f in indexed_files:
         with open(f) as fp:
             payloads.append(json.load(fp))
 
-    print(f"Loaded {len(payloads)} iteration payloads from {payloads_dir}")
+    loaded_iters = [i for i, _ in indexed_files]
+    print(f"Loaded {len(payloads)} iteration payloads from {payloads_dir} (iterations {loaded_iters}; iter0 excluded)")
     return payloads
 
 
