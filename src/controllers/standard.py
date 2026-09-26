@@ -1,4 +1,5 @@
 import argparse
+import sys
 import warnings
 import time
 from datetime import datetime, timedelta 
@@ -32,7 +33,7 @@ def run_agentic_improvement(iteration: int):
     # 1. INITIALIZATION & STATE LOADING
     # =========================================================
     ws = ExperimentWorkspace(iteration)
-    write_run_manifest(ws)   # writes once (iteration 1) via internal skip-if-exists; never aborts the run
+    write_run_manifest(ws, controller_path=__file__)   # writes once (iteration 1) via internal skip-if-exists; never aborts the run
     brain = CognitiveNode(iteration=iteration, workspace=ws, model=MODEL_NAME)
     ledger = ExperimentLedger(ws.model_root_path) 
     # Setting any model overrides for a MOE style run 
@@ -50,19 +51,12 @@ def run_agentic_improvement(iteration: int):
     metrics = ws.load_metrics(iteration-1)
     if not metrics:
         print(f"❌ No metrics found for Iteration {iteration-1}. Cannot proceed.")
-        return
+        return sys.exit(1)
     print(f"    Iteration {iteration-1} Metrics Loaded ")
     # Generate the new Diagnostic Report, Save it, Load in kinematic section of previous iteration's report
     diagnostic_report = generate_diagnostic_report(metrics) 
     ws.save_report(iteration, diagnostic_report)
 
-    if iteration > 2: 
-        prev_metrics = ws.load_metrics(iteration-2) 
-        prev_report = translate_behavior_kinematics(prev_metrics)
-        baseline_report = "".join(prev_report.split("Robustness",1)[1:])
-    else:
-        baseline_report = "No prior baseline available."
-    
     # Load the code that generated these metrics
     prev_code_path = ws.get_path("code", iteration - 1, "reward.py")
     with open(prev_code_path, "r") as f:
@@ -77,6 +71,15 @@ def run_agentic_improvement(iteration: int):
     if iteration > 1:
         print(f"🔍 Validating Hypothesis from Experiment {iteration - 1}")
         val_payload = ledger.get_hypothesis(iteration - 1)
+
+        # Baseline = metrics that intervention (iteration - 1) was applied to; iter 2 uses the iter0 payload
+        prev_metrics = ws.load_metrics(iteration-2) 
+        if not prev_metrics:
+            # A missing baseline would degrade the Validator's audit and every downstream prompt — stop the run
+            print(f"❌ No baseline metrics found for Iteration {iteration-2}. Cannot validate intervention {iteration-1}. Aborting run.")
+            sys.exit(1)
+        prev_report = translate_behavior_kinematics(prev_metrics)
+        baseline_report = "".join(prev_report.split("Robustness",1)[1:])
 
         ledger_entry = generate_ledger_entry(
             brain=brain, 

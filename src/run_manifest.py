@@ -262,12 +262,13 @@ def _build_training_block() -> dict:
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def write_run_manifest(ws) -> dict | None:
+def write_run_manifest(ws, controller_path: str | None = None) -> dict | None:
     """
     Write <model_dir>/config_snapshot/run_manifest.json once per run.
 
     Called unconditionally each iteration; the skip-if-exists guard makes it
     write only on the first call (iteration 1).  Never aborts the training run.
+    controller_path defaults to src/controllers/standard.py.
     """
     try:
         manifest_path = ws.model_root_path / "config_snapshot" / "run_manifest.json"
@@ -316,6 +317,12 @@ def write_run_manifest(ws) -> dict | None:
         else:
             initial_reward_hash = "UNAVAILABLE"
 
+        payload_path = ws.get_path("telemetry_payloads", 0, "metric_payload.json")
+        if payload_path.exists():
+            initial_payload_hash = sha256_text(open(payload_path, "r", encoding="utf-8").read())
+        else:
+            initial_payload_hash = "UNAVAILABLE"
+
         experiment = {
             "env_id":              Config.ENV_ID,
             "algorithm":           Config.ALGORITHM,
@@ -325,13 +332,17 @@ def write_run_manifest(ws) -> dict | None:
             "eval_episodes":       Config.EVAL_EPISODES,
             "initial_func":        Config.INITIAL_FUNC,
             "initial_reward_hash": initial_reward_hash,
+            "initial_payload_hash": initial_payload_hash,
         }
 
         # ── Code block (AST-normalised hashes) ───────────────────────────
         src_dir = Path(__file__).parent
         analysis_hash = ast_normalized_hash(str(src_dir / "analysis.py"))
         ledger_hash   = ast_normalized_hash(str(src_dir / "ledger.py"))
-        code = {"analysis_hash": analysis_hash, "ledger_hash": ledger_hash}
+        if controller_path is None:
+            controller_path = str(src_dir / "controllers" / "standard.py")
+        controller_hash = ast_normalized_hash(str(controller_path))
+        code = {"analysis_hash": analysis_hash, "ledger_hash": ledger_hash, "controller_hash": controller_hash}
 
         # ── Comparability dict & fingerprint ─────────────────────────────
         comparability = {
@@ -358,6 +369,8 @@ def write_run_manifest(ws) -> dict | None:
 
         analysis_ver = resolve_version(reg, "code_slots", "analysis", analysis_hash, "analysis.py", run_id)
         ledger_ver   = resolve_version(reg, "code_slots", "ledger",   ledger_hash,   "ledger.py",   run_id)
+        controller_src_name = Path(controller_path).resolve().relative_to(src_dir.resolve()).as_posix()
+        controller_ver = resolve_version(reg, "code_slots", "controller", controller_hash, controller_src_name, run_id)
         lr_fn_hash  = comparability["training"]["learning_rate"]["fn_hash"]
         ent_fn_hash = comparability["training"]["ent_coef"]["fn_hash"]
         lr_sched_ver  = resolve_version(reg, "code_slots", "lr_schedule",  lr_fn_hash,  Config.LR_SCHEDULE_TYPE,  run_id)
@@ -366,7 +379,7 @@ def write_run_manifest(ws) -> dict | None:
 
         labels = {
             "prompt_versions": prompt_versions,
-            "code_versions":   {"analysis": analysis_ver, "ledger": ledger_ver, "lr_schedule": lr_sched_ver, "ent_schedule": ent_sched_ver},
+            "code_versions":   {"analysis": analysis_ver, "ledger": ledger_ver, "controller": controller_ver, "lr_schedule": lr_sched_ver, "ent_schedule": ent_sched_ver},
             "prompt_names":    prompt_names,
         }
 
