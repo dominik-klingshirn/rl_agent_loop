@@ -9,6 +9,13 @@
           "source_name": "strategist_system_prompt",
           "first_seen": "2026-06-11T20:46:17.222074+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "8d622b1c06ec2327b34a70fdbe801cc596c3e099a2fb907b6d81df92b6f024d6",
+          "source_name": "strategist_system_prompt",
+          "first_seen": "2026-10-09T04:08:23.184565+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "strategist_system_prompt"
@@ -33,6 +40,13 @@
           "source_name": "organizer_system_prompt",
           "first_seen": "2026-06-11T20:46:17.222086+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "c8f12beb2a2a411a338b61d36c11bd4907224a3f79e1cd799fcc53d450d0b600",
+          "source_name": "organizer_system_prompt",
+          "first_seen": "2026-10-09T04:08:23.184578+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "organizer_system_prompt"
@@ -57,6 +71,13 @@
           "source_name": "lead_system_prompt",
           "first_seen": "2026-06-11T20:46:17.222090+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "b037cb235e39b5949468b1758f48d031718f47b7fd4619f9472183487ff95566",
+          "source_name": "lead_system_prompt",
+          "first_seen": "2026-10-09T04:08:23.184581+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "lead_system_prompt"
@@ -81,6 +102,13 @@
           "source_name": "dispatcher_system_prompt",
           "first_seen": "2026-06-11T20:46:17.222093+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "4e611ebe3a2467c912aa2ddca0f71992f6bced2baab3da7e15eb4045d1738ac2",
+          "source_name": "dispatcher_system_prompt",
+          "first_seen": "2026-10-09T04:08:23.184584+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "dispatcher_system_prompt"
@@ -105,6 +133,13 @@
           "source_name": "coder_system_prompt",
           "first_seen": "2026-06-11T20:46:17.222096+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "ddff8fc22638835bbed8b3e1911f9ccfca7463627d37703dc2d833a493abbdf5",
+          "source_name": "coder_system_prompt",
+          "first_seen": "2026-10-09T04:08:23.184586+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "coder_system_prompt"
@@ -117,6 +152,13 @@
           "source_name": "coder_user_prompt",
           "first_seen": "2026-06-11T20:46:17.222097+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "3466f70430c9bd07dcb347e59dd2fb373d74b7a6ce75fd98b7b70b1aeb901ed0",
+          "source_name": "coder_user_prompt",
+          "first_seen": "2026-10-09T04:08:23.184587+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "coder_user_prompt"
@@ -129,6 +171,13 @@
           "source_name": "validator_system_prompt",
           "first_seen": "2026-06-11T20:46:17.222099+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "c6682d7f18f76d44232c8bc693f368cc9954e6c503c8cfcf5aeade1a393c9c9a",
+          "source_name": "validator_system_prompt",
+          "first_seen": "2026-10-09T04:08:23.184589+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "validator_system_prompt"
@@ -141,6 +190,13 @@
           "source_name": "validator_user_prompt",
           "first_seen": "2026-06-11T20:46:17.222100+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        },
+        {
+          "version": 2,
+          "content_hash": "f1d3c1d27c6c36813f7923a244ebc2935e4ddfa7c6c6d5a4ca12f79413ab3c69",
+          "source_name": "validator_user_prompt",
+          "first_seen": "2026-10-09T04:08:23.184590+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ],
       "current_name": "validator_user_prompt"
@@ -188,6 +244,17 @@
           "source_name": "linear",
           "first_seen": "2026-06-11T20:46:17.222106+00:00",
           "first_seen_run": "2026-06-11_spin_crash_10cycles_1MSteps_remote_baselineV1_organizerDelFieldCorrection_run1/gemma4-26b-mlx"
+        }
+      ]
+    },
+    "controller": {
+      "versions": [
+        {
+          "version": 1,
+          "content_hash": "62d93a3429dec353f0291e965bfb6dc697cf07bfdd31f5fbed4c51b2009c2678",
+          "source_name": "controllers/standard.py",
+          "first_seen": "2026-10-09T04:08:23.184661+00:00",
+          "first_seen_run": "2026-10-09_wild_oscillation_10cycles_1MSteps_remote_keyOpsContractUpdate_run1/gemma4-26b-mlx"
         }
       ]
     }
