@@ -23,12 +23,18 @@ def set_inital_shaping(reward_func:str='spin_crash'):
     # Grab the curated faulty reward function
     base_load_path = PROJECT_ROOT / "curated_reward_functions"
     reward_funcs = {
-        "lunar" :          Path("lunar.py"),
-        "sideways_slide" : Path("sideways_slide.py"),
-        "spin_crash":      Path("spin_crash.py"),
-        "vertical_bounce": Path("vertical_bounce.py"),
-        "weird_reward":    Path("weird_reward.py"),
-        "wild_oscillation":Path("wild_oscillation.py")
+        "lunar" :                  Path("lunar.py"),
+        "sideways_slide" :         Path("sideways_slide.py"),
+        "spin_crash":              Path("spin_crash.py"),
+        "vertical_bounce":         Path("vertical_bounce.py"),
+        "weird_reward":            Path("weird_reward.py"),
+        "wild_oscillation":        Path("wild_oscillation.py"),
+        "lunar_cleaned" :          Path("lunar_cleaned.py"),
+        "sideways_slide_cleaned" : Path("sideways_slide_cleaned.py"),
+        "spin_crash_cleaned":      Path("spin_crash_cleaned.py"),
+        "vertical_bounce_cleaned": Path("vertical_bounce_cleaned.py"),
+        "weird_reward_cleaned":    Path("weird_reward_cleaned.py"),
+        "wild_oscillation_cleaned":Path("wild_oscillation_cleaned.py")
     }
     if reward_func not in reward_funcs.keys():
         print(f"{reward_func} is not recognized as a function for initialization")
@@ -36,7 +42,7 @@ def set_inital_shaping(reward_func:str='spin_crash'):
         return sys.exit(1)
 
     code_load_path = base_load_path /reward_funcs[reward_func]
-    payload_load_path = base_load_path / f"{reward_func}_iter00_payload.json"
+    payload_load_path = base_load_path / f"{reward_func.replace("_cleaned","")}_iter00_payload.json"
 
     # Path to save code and metric payload
     code_save_path = ws.get_path("code", 0, "reward.py")
