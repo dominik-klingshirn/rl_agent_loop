@@ -295,7 +295,7 @@ def dump_stills(iteration: int, ws: ExperimentWorkspace, iterations: list,
     is_curated_frame = (iteration == 0 and curated_reward is not None)
     if is_curated_frame:
         payload_path = (PROJECT_ROOT / "curated_reward_functions"
-                        / f"{curated_reward}_iter00_payload.json")
+                        / f"{curated_reward.removesuffix('_cleaned')}_iter00_payload.json")
         with open(payload_path) as _f:
             metrics = json.load(_f)
     else:
@@ -397,7 +397,7 @@ def build_iteration_composite(
 
     if is_curated_frame:
         videos_dir   = PROJECT_ROOT / "curated_reward_functions" / "videos"
-        payload_path = PROJECT_ROOT / "curated_reward_functions" / f"{curated_reward}_iter00_payload.json"
+        payload_path = PROJECT_ROOT / "curated_reward_functions" / f"{curated_reward.removesuffix('_cleaned')}_iter00_payload.json"
         with open(payload_path) as _f:
             metrics = json.load(_f)
     else:
@@ -409,7 +409,7 @@ def build_iteration_composite(
 
     def _clip_name(s: int) -> Path:
         if is_curated_frame:
-            return videos_dir / f"{curated_reward}_seed{s}.mp4"
+            return videos_dir / f"{curated_reward.removesuffix('_cleaned')}_seed{s}.mp4"
         return videos_dir / f"iter{iteration:02d}_seed{s}.mp4"
 
     # Load all seed clips; tolerate missing seeds
@@ -512,7 +512,7 @@ def build_full_demo(
                 curated_reward=curated_reward))
 
     # Iteration 0 payload is in a different location
-    init_payload_path = PROJECT_ROOT / "curated_reward_functions" / f"{curated_reward}_iter00_payload.json"
+    init_payload_path = PROJECT_ROOT / "curated_reward_functions" / f"{curated_reward.removesuffix('_cleaned')}_iter00_payload.json"
     with open(init_payload_path) as _f:
         init_metrics = json.load(_f)
 

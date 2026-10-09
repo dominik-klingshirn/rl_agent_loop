@@ -42,7 +42,7 @@ def set_inital_shaping(reward_func:str='spin_crash'):
         return sys.exit(1)
 
     code_load_path = base_load_path /reward_funcs[reward_func]
-    payload_load_path = base_load_path / f"{reward_func.replace("_cleaned","")}_iter00_payload.json"
+    payload_load_path = base_load_path / f"{reward_func.removesuffix('_cleaned')}_iter00_payload.json"
 
     # Path to save code and metric payload
     code_save_path = ws.get_path("code", 0, "reward.py")
