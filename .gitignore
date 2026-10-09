@@ -55,6 +55,7 @@ build_diagnostic_video.py
 post_hoc_analysis/generate_iteration_zero.py
 post_hoc_analysis/select_demo_seed.py
 curated_reward_functions/videos
+sync_runs.sh
 
 # Local operational infrastructure — not part of the project
 ard_train_start.sh
