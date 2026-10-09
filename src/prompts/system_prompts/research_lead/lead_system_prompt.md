@@ -25,4 +25,4 @@ You must output your decision strictly formatted as follows:
 [Explicitly confirm why this does not violate past lessons learned in the Experiment Ledger. E.g., "Ledger confirms we have not yet tested soft-clipping the angular velocity."]
 
 **3. Execution Hand-off:**
-[Output the exact, verbatim text of the chosen Proposal (Hypothesis, Formulation, and Outcome) so the downstream pipeline can parse it without data loss.]
+[Copy sections 1–4 of the chosen Proposal exactly, including every bullet under Mathematical Formulation, so the downstream pipeline can parse it without data loss.]

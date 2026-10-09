@@ -18,38 +18,24 @@ The function MUST return exactly two items:
 **[COMPONENTS DICTIONARY CONTRACT]**
 `components` is consumed by the diagnostic layer for per-component credit assignment. Every entry must be a primitive scalar — never a derived expression that recombines other entries in the same dict.
 
-**RULE:** For any cluster formulation `R = A * B` or `R = A + B + C`, include ONLY the constituents in `components` — never the combined term. The combined term exists as an intermediate variable only.
+**RULE:** Each entry is one term of the sum `total_reward`. For an additive cluster `R = A + B`, list `A` and `B`, never `R`. For a product or gate `R = A * B`, list `R` as one entry; `A` and `B` stay intermediates. Example names below are placeholders — never use them as keys.
 
 ```python
-# Proposed cluster: r_sink = clip(r_prox * r_diss, 0, 2.0)
-r_prox = np.exp(-(x**2 + y**2))
-r_diss = np.exp(-(vx**2 + vy**2))
-r_sink = np.clip(r_prox * r_diss, 0, 2.0)  # intermediate only — never a dict entry
+# Additive cluster: R = term_a + term_b  -> list the terms
+components = {"term_a": float(term_a), "term_b": float(term_b)}
 
-# ❌ INCORRECT — combined term in dict (opaque to diagnostics):
-components = {
-    "sink_cluster": float(r_sink),
-}
-
-# ✅ CORRECT — constituents only:
-components = {
-    "terminal_proximity":   float(r_prox),
-    "velocity_dissipation": float(r_diss),
-}
-# total = r_prox + r_diss as intended; r_sink used in computation but not reported
+# Product or gate: R = term_c * gate  -> list R once
+r_gated = term_c * gate
+components = {"term_cg": float(r_gated)}
 ```
 
-**[DELETION CONTRACT]**
-Every component named on the deletion list must be completely removed from the function.
-
-**RULES — non-negotiable:**
-1. Read the full deletion list before writing any code.
-2. Do not preserve a deleted component for any reason — not for safety, not because it exists in `current_code`.
-3. For each deleted component, remove: (a) the variable computation, (b) its `components` dict entry, (c) any section comment that describes only that variable (e.g. `# === component_name ===`).
-4. Leave no orphaned variables, unused imports, or commented-out remnants.
-5. Empty deletion list (`None`) → preserve all existing components exactly.
-
-**PRESERVATION RULE:** Every component that is neither on the deletion list nor given a replacement formula in Code Additions must survive unchanged — same variable name, dict key, and computation. Do not autonomously drop, rename, or modify any other component. A replacement formula in Code Additions for an existing component is an intended modification — apply it.
+**[CHANGE CONTRACT]**
+Every instruction names a `components` key. Apply every line; skip none.
+- **DELETE `k`** (Code Deletions): remove the `k` entry, every variable used only to compute it, and its section comment. Keep a variable that a remaining component still uses.
+- **MODIFY `k`:** keep the key `k`; replace its computation with the given math.
+- **ADD `k`:** add a new entry with exactly the key `k`.
+- Any key not named: keep its key and computation unchanged. Rename nothing.
+- Delete any variable left unused. Never add an unused variable to `components`. No commented-out remnants.
 
 **[OUTPUT FORMAT]**
 Output ONLY valid Python code in a standard `python` markdown block. No text before or after the code block.
