@@ -1,9 +1,9 @@
 **TARGET SYSTEM:** LunarLander-v3
-**ITERATION EVALUATED:** `{previous_iteration_number}`
+**ITERATION BEING EVALUATED:** `{previous_iteration_number}`
 
 Audit the outcome of the previous reward intervention to update the Intervention Log.
 
-### [1. THE EXPERIMENT PARAMETERS (FROM PREVIOUS ITERATION)]
+### [1. THE EXPERIMENT PARAMETERS ]
 
 This was the proposed reward intervention and its predicted effect.
 
@@ -22,4 +22,4 @@ This is the deterministic, mathematically extracted performance data of the agen
 {new_diagnostic_report}
 
 **ACTION REQUIRED:**
-Audit the intervention outcome against the Baseline and Actual Results. Output the strict 3-bullet-point Intervention Log entry to serve as the evolutionary memory for the next iteration.
+Audit the intervention outcome against the Baseline and Actual Results. Output the strict 2-bullet-point Intervention Log entry to serve as the evolutionary memory for the next iteration.

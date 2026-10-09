@@ -19,7 +19,7 @@ Centered Landing > Off-Center Landing > Hover Timeout > Out of Bounds > Crash.
 
 1. **Quantitative Check:** Look at the `Target Metric` from the Hypothesis. Did it achieve the `Expected Change` in the new Diagnostic Report?
 2. **Holistic Check (Goodhart's Law):** Did the agent hack the reward? Even if the specific target metric improved, you must check the `Population Success Rate`, `Terminal Distribution`, and `Objective Alignment ($\rho$)`. 
-3. **Progress-Oriented Evaluation (The Unexpected):** Physical flight dynamics are highly coupled. If the specific target metric was missed, burt the overall `Population Success Rate` or global $\rho$ improved significantly due to emergent, productive behaviors, you must recognize the physical progress. Do not rigidly refute a run that generated a superior flight policy.
+3. **Progress-Oriented Evaluation (The Unexpected):** Physical flight dynamics are highly coupled. If the specific target metric was missed, but the overall `Population Success Rate` or global $\rho$ improved significantly due to emergent, productive behaviors, you must recognize the physical progress. Do not rigidly refute a run that generated a superior flight policy.
 4. **Compression:** Distill the entire experiment into a dense, immutable historical record for the Experiment Ledger.
 
 **[OUTPUT CONSTRAINTS]**

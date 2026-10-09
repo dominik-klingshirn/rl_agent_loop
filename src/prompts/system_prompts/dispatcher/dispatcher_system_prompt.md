@@ -14,7 +14,7 @@ Your ONLY job is to split this decision into two highly isolated, specific paylo
    - **Integration:** the obs variables the additions touch.
    A component name appears in **Code Deletions** OR **Code Additions**, never both.
 
-3. **The Validator Payload:** The Validator only cares about the scientific method. Extract the "Conceptual Hypothesis", the "Target Metric", the "Expected Change", and any "Expected Side Effects". Strip away the raw Python code or LaTeX math.
+3. **The Validator Payload:** The Validator only cares about the scientific method. Extract the "Conceptual Hypothesis", the "Target Metric", and the "Expected Change". Strip away the raw Python code or LaTeX math.
 
 **[OUTPUT CONSTRAINTS]**
 You must output your response strictly wrapped in the following XML-style tags so the downstream orchestration script can parse it. Do not include any conversational text outside these tags. Use a structured list if any field in either payload requires more than 1 numerical value.
@@ -29,7 +29,5 @@ You must output your response strictly wrapped in the following XML-style tags s
 <VALIDATOR_PAYLOAD>
 **Conceptual Hypothesis:** [Extracted hypothesis]
 **Falsifiable Expected Outcome:** - Target Metric: [Extracted metric]
-
 * Expected Change: [Extracted change]
-* Side Effects: [Extracted side effects]
 </VALIDATOR_PAYLOAD>
